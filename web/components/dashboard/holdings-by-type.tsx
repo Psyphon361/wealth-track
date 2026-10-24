@@ -47,8 +47,8 @@ export function HoldingsByType({ data }: { data: DashboardResponse }) {
             >
               <TableCell className="py-1.5 pl-4">
                 <Link
-                  href="/portfolio"
-                  className="font-medium underline-offset-4 hover:underline"
+                  href={`/portfolio/${r.type}`}
+                  className="rounded-sm font-medium underline-offset-4 outline-none hover:text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
                   {ASSET_TYPE_LABELS[r.type] ?? r.label}
                 </Link>

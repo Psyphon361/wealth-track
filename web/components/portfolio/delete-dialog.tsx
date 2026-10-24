@@ -10,12 +10,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import type { AssetType, PortfolioItem } from "@/lib/types";
-import { itemName } from "./columns";
+import type { AssetType } from "@/lib/types";
 
 export interface DeleteTarget {
   type: AssetType;
-  item: PortfolioItem;
+  id: number;
+  name: string;
 }
 
 /**
@@ -41,7 +41,7 @@ export function DeleteDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Delete {target ? itemName(target.item) : ""}?
+            Delete {target ? target.name : ""}?
           </AlertDialogTitle>
           <AlertDialogDescription>
             This can&apos;t be undone.

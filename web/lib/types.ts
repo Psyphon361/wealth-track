@@ -197,3 +197,44 @@ export interface DashboardResponse {
   gain_pct: number;
   by_type: DashboardByType[];
 }
+
+// Holdings grids (GET /holdings/{type})
+
+export type HoldingStatus = "active" | "matured";
+export type SortDir = "asc" | "desc";
+
+export type FixedDepositItem = FixedDeposit & ComputedFields;
+export type RecurringDepositItem = RecurringDeposit & ComputedFields;
+export type StockItem = Stock & ComputedFields;
+export type BondItem = Bond & ComputedFields;
+export type MutualFundItem = MutualFund & ComputedFields;
+
+export type HoldingRow =
+  | FixedDepositItem
+  | RecurringDepositItem
+  | StockItem
+  | BondItem
+  | MutualFundItem;
+
+export interface FacetValue {
+  value: string;
+  count: number;
+}
+
+export interface HoldingsSummary {
+  count: number;
+  invested: number;
+  current_value: number;
+  gain: number;
+  gain_pct: number;
+}
+
+export interface HoldingsResponse<TRow extends HoldingRow = HoldingRow> {
+  items: TRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+  summary: HoldingsSummary;
+  facets: Record<string, FacetValue[]>;
+}

@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { DashboardResponse } from "@/lib/types";
-import { gainTone } from "@/components/portfolio/columns";
+import { gainTone } from "@/components/portfolio/grid/gain-cell";
 
 function Label({ children }: { children: string }) {
   return (

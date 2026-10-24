@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { RefreshCw } from "lucide-react";
+import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -13,371 +12,207 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { AssetForm } from "@/components/forms/asset-form";
-import { apiDelete, apiGet, toApiMessage } from "@/lib/api";
-import {
-  ASSET_TYPE_LABELS,
-  type AssetRecord,
-  type AssetType,
-  type Bond,
-  type FixedDeposit,
-  type MutualFund,
-  type PortfolioGroup,
-  type PortfolioItem,
-  type PortfolioResponse,
-  type RecurringDeposit,
-  type Stock,
-} from "@/lib/types";
-import {
-  bondColumns,
-  fdColumns,
-  itemName,
-  mfColumns,
-  rdColumns,
-  stockColumns,
-  type Row,
-} from "./columns";
+import { apiDelete } from "@/lib/api";
+import { getAssetEntry } from "@/lib/asset-catalog";
+import { formatINR } from "@/lib/format";
+import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
+import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
-import { GroupTable } from "./group-table";
+import { bondConfig } from "./grid/configs/bond";
+import { fdConfig } from "./grid/configs/fd";
+import { mfConfig } from "./grid/configs/mf";
+import { rdConfig } from "./grid/configs/rd";
+import { stockConfig } from "./grid/configs/stock";
+import { HoldingsGrid, TableSkeleton } from "./grid/data-table";
+import { GainCell } from "./grid/gain-cell";
+import type { GridConfig } from "./grid/types";
+import { hasActiveFilters, useHoldingsQuery } from "./grid/use-holdings-query";
 
-type State =
-  | { status: "loading" }
-  | { status: "error"; message: string; description: string }
-  | { status: "ready"; data: PortfolioResponse };
+const LABEL = "text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
 
-type Target = DeleteTarget;
-
-function EditForm({
-  target,
-  onSaved,
-}: {
-  target: Target;
-  onSaved: (record: AssetRecord) => void;
-}) {
-  const key = `${target.type}-${target.item.id}`;
-  switch (target.type) {
-    case "fd":
-      return (
-        <AssetForm
-          key={key}
-          type="fd"
-          record={target.item as FixedDeposit}
-          onSaved={onSaved}
-        />
-      );
-    case "rd":
-      return (
-        <AssetForm
-          key={key}
-          type="rd"
-          record={target.item as RecurringDeposit}
-          onSaved={onSaved}
-        />
-      );
-    case "stock":
-      return (
-        <AssetForm
-          key={key}
-          type="stock"
-          record={target.item as Stock}
-          onSaved={onSaved}
-        />
-      );
-    case "bond":
-      return (
-        <AssetForm
-          key={key}
-          type="bond"
-          record={target.item as Bond}
-          onSaved={onSaved}
-        />
-      );
-    case "mf":
-      return (
-        <AssetForm
-          key={key}
-          type="mf"
-          record={target.item as MutualFund}
-          onSaved={onSaved}
-        />
-      );
-  }
-}
-
-function removeItem(
-  data: PortfolioResponse,
-  type: AssetType,
-  id: number,
-): PortfolioResponse {
-  return {
-    groups: data.groups
-      .map((g) => {
-        if (g.type !== type) return g;
-        const removed = g.items.find((i) => i.id === id);
-        if (!removed) return g;
-        const items = g.items.filter((i) => i.id !== id);
-        const invested = g.totals.invested - removed.invested;
-        const current = g.totals.current_value - removed.current_value;
-        const gain = current - invested;
-        return {
-          ...g,
-          items,
-          totals: {
-            invested,
-            current_value: current,
-            gain,
-            gain_pct: invested > 0 ? (gain / invested) * 100 : 0,
-          },
-        };
-      })
-      .filter((g) => g.items.length > 0),
-  };
-}
-
-function mergeItem(
-  data: PortfolioResponse,
-  type: AssetType,
-  saved: AssetRecord,
-): PortfolioResponse {
-  return {
-    groups: data.groups.map((g) =>
-      g.type !== type
-        ? g
-        : {
-            ...g,
-            items: g.items.map((i) =>
-              i.id === saved.id ? ({ ...i, ...saved } as PortfolioItem) : i,
-            ),
-          },
-    ),
-  };
-}
-
-export function Portfolio() {
-  const [state, setState] = useState<State>({ status: "loading" });
-  const [refreshing, setRefreshing] = useState(false);
-  const [updatingIds, setUpdatingIds] = useState<ReadonlySet<number>>(
-    () => new Set<number>(),
+function SummaryStrip({ summary }: { summary: HoldingsSummary }) {
+  return (
+    <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+      <div className="num font-medium">
+        {summary.count} {summary.count === 1 ? "holding" : "holdings"}
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <dt className={LABEL}>Invested</dt>
+        <dd className="num">{formatINR(summary.invested)}</dd>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <dt className={LABEL}>Current</dt>
+        <dd className="num">{formatINR(summary.current_value)}</dd>
+      </div>
+      <div className="flex items-baseline gap-1.5">
+        <dt className={LABEL}>Gain</dt>
+        <dd>
+          <GainCell gain={summary.gain} pct={summary.gain_pct} />
+        </dd>
+      </div>
+    </dl>
   );
-  const [editing, setEditing] = useState<Target | null>(null);
-  const [deleting, setDeleting] = useState<Target | null>(null);
-  const requestId = useRef(0);
-  const hasData = useRef(false);
+}
 
-  const load = useCallback(() => {
-    const id = ++requestId.current;
-    apiGet<PortfolioResponse>("/portfolio")
-      .then((data) => {
-        if (id !== requestId.current) return;
-        hasData.current = true;
-        setState({ status: "ready", data });
-        setRefreshing(false);
-        setUpdatingIds(new Set<number>());
-      })
-      .catch((err: unknown) => {
-        if (id !== requestId.current) return;
-        const { message, description } = toApiMessage(err);
-        setRefreshing(false);
-        setUpdatingIds(new Set<number>());
-        if (hasData.current) notify.error(err);
-        else setState({ status: "error", message, description });
-      });
-  }, []);
+function TypedPortfolio<TRow extends HoldingRow>({
+  config,
+}: {
+  config: GridConfig<TRow>;
+}) {
+  const q = useHoldingsQuery(config);
+  const { refetch, removeItem } = q;
+  const [editing, setEditing] = useState<TRow | null>(null);
+  const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const entry = getAssetEntry(config.type);
+  const title = entry?.title ?? config.noun;
+  const addLabel = addLabelFor(config.type);
+  const count = q.data?.summary.count;
 
   useEffect(() => {
-    const counter = requestId;
-    load();
-    return () => {
-      counter.current++;
-    };
-  }, [load]);
+    if (count !== undefined) refreshAssetTabCounts();
+  }, [count]);
 
-  function refresh() {
-    setRefreshing(true);
-    load();
-  }
+  const onEdit = useCallback((row: TRow) => setEditing(row), []);
+  const onDelete = useCallback(
+    (row: TRow) =>
+      setDeleting({ type: config.type, id: row.id, name: config.rowName(row) }),
+    [config],
+  );
 
-  function retry() {
-    setState({ status: "loading" });
-    load();
-  }
-
-  function handleSaved(saved: AssetRecord) {
-    if (!editing || state.status !== "ready") return;
-    const { type } = editing;
+  function handleSaved() {
     setEditing(null);
-    setState({ status: "ready", data: mergeItem(state.data, type, saved) });
-    setUpdatingIds((prev) => new Set(prev).add(saved.id));
-    refresh();
+    refetch();
   }
 
-  function handleDelete(target: Target) {
+  function handleDelete(target: DeleteTarget) {
     setDeleting(null);
-    if (state.status !== "ready") return;
-    const previous = state;
-    // Invalidate any in-flight refresh so a stale list can't reappear.
-    requestId.current++;
-    setState({
-      status: "ready",
-      data: removeItem(state.data, target.type, target.item.id),
-    });
-    apiDelete(`/assets/${target.type}/${target.item.id}`)
+    const restore = removeItem(target.id);
+    apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => notify.success(res))
       .catch((err: unknown) => {
-        setState(previous);
+        restore();
         notify.error(err);
       })
-      .finally(refresh);
+      .finally(refetch);
   }
 
-  if (state.status === "loading") {
-    return (
-      <div className="space-y-3" aria-busy="true" aria-label="Loading…">
-        <Skeleton className="h-48 rounded-xl" />
-        <Skeleton className="h-48 rounded-xl" />
-      </div>
-    );
+  if (q.status === "loading") {
+    return <TableSkeleton />;
   }
 
-  if (state.status === "error") {
+  if (q.status === "error" || !q.data) {
     return (
-      <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
-        <div>
-          <p className="text-sm font-medium text-destructive">{state.message}</p>
-          {state.description && (
-            <p className="text-sm text-muted-foreground">{state.description}</p>
-          )}
+      <>
+        <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
+          <div>
+            <p className="text-sm font-medium text-destructive">
+              {q.error?.message}
+            </p>
+            {q.error?.description ? (
+              <p className="text-sm text-muted-foreground">
+                {q.error.description}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={q.retry}>
+              Retry
+            </Button>
+            {hasActiveFilters(q.filters) ? (
+              <Button variant="ghost" onClick={q.resetFilters}>
+                Reset
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <Button variant="outline" onClick={retry}>
-          Retry
-        </Button>
-      </div>
+      </>
     );
   }
 
-  const groups = state.data.groups.filter((g) => g.items.length > 0);
-  if (groups.length === 0) {
+  const { data, filters } = q;
+
+  if (data.summary.count === 0) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-        <p className="text-lg font-medium">No holdings yet</p>
-        <p className="text-sm text-muted-foreground">
-          Add your first holding to see it here.
-        </p>
-        <Link href="/add" className={buttonVariants()}>
-          Add a holding
-        </Link>
-      </div>
+      <>
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
+          <p className="text-lg font-medium">No {config.noun} yet</p>
+          <Link
+            href={`/add/${config.type}`}
+            className={buttonVariants({ size: "sm" })}
+          >
+            <Plus aria-hidden />
+            {addLabel}
+          </Link>
+        </div>
+      </>
     );
-  }
-
-  function renderGroup(g: PortfolioGroup) {
-    const type = g.type;
-    const onEdit = (item: PortfolioItem) => setEditing({ type, item });
-    const onDelete = (item: PortfolioItem) => setDeleting({ type, item });
-    switch (type) {
-      case "fd":
-        return (
-          <GroupTable
-            key={type}
-            group={g}
-            items={g.items as Row<FixedDeposit>[]}
-            columns={fdColumns}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            updatingIds={updatingIds}
-          />
-        );
-      case "rd":
-        return (
-          <GroupTable
-            key={type}
-            group={g}
-            items={g.items as Row<RecurringDeposit>[]}
-            columns={rdColumns}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            updatingIds={updatingIds}
-          />
-        );
-      case "stock":
-        return (
-          <GroupTable
-            key={type}
-            group={g}
-            items={g.items as Row<Stock>[]}
-            columns={stockColumns}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            updatingIds={updatingIds}
-          />
-        );
-      case "bond":
-        return (
-          <GroupTable
-            key={type}
-            group={g}
-            items={g.items as Row<Bond>[]}
-            columns={bondColumns}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            updatingIds={updatingIds}
-          />
-        );
-      case "mf":
-        return (
-          <GroupTable
-            key={type}
-            group={g}
-            items={g.items as Row<MutualFund>[]}
-            columns={mfColumns}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            updatingIds={updatingIds}
-          />
-        );
-    }
   }
 
   return (
-    <div className="space-y-3">
-      <div
-        role="status"
-        aria-live="polite"
-        className="flex h-4 items-center justify-end gap-1.5 text-xs text-muted-foreground"
-      >
-        {refreshing ? (
-          <>
-            <RefreshCw className="size-3 animate-spin" />
-            Refreshing
-          </>
-        ) : null}
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SummaryStrip summary={data.summary} />
+        <Link
+          href={`/add/${config.type}`}
+          className={buttonVariants({ size: "sm" })}
+        >
+          <Plus aria-hidden />
+          {addLabel}
+        </Link>
       </div>
-      {groups.map(renderGroup)}
 
-      <Dialog
-        open={editing !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditing(null);
-        }}
-      >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              Edit {editing ? ASSET_TYPE_LABELS[editing.type] : ""}
-            </DialogTitle>
-            <DialogDescription>
-              {editing ? itemName(editing.item) : ""}
-            </DialogDescription>
-          </DialogHeader>
-          {editing ? <EditForm target={editing} onSaved={handleSaved} /> : null}
-        </DialogContent>
-      </Dialog>
+      <div className="min-w-0">
+        <HoldingsGrid
+          config={config}
+          data={data}
+          filters={filters}
+          fetching={q.fetching}
+          onFilters={q.setFilters}
+          onReset={q.resetFilters}
+          onSort={q.setSort}
+          onPage={q.setPage}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
 
-      <DeleteDialog
-        target={deleting}
-        onClose={() => setDeleting(null)}
-        onConfirm={handleDelete}
-      />
-    </div>
+        <Dialog
+          open={editing !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditing(null);
+          }}
+        >
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit {title.toLowerCase()}</DialogTitle>
+              <DialogDescription>
+                {editing ? config.rowName(editing) : ""}
+              </DialogDescription>
+            </DialogHeader>
+            {editing ? config.renderEditForm(editing, handleSaved) : null}
+          </DialogContent>
+        </Dialog>
+
+        <DeleteDialog
+          target={deleting}
+          onClose={() => setDeleting(null)}
+          onConfirm={handleDelete}
+        />
+      </div>
+    </>
   );
+}
+
+export function Portfolio({ type }: { type: AssetType }) {
+  switch (type) {
+    case "fd":
+      return <TypedPortfolio config={fdConfig} />;
+    case "rd":
+      return <TypedPortfolio config={rdConfig} />;
+    case "stock":
+      return <TypedPortfolio config={stockConfig} />;
+    case "bond":
+      return <TypedPortfolio config={bondConfig} />;
+    case "mf":
+      return <TypedPortfolio config={mfConfig} />;
+  }
 }

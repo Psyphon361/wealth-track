@@ -63,18 +63,43 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
 - `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct}}]}` — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,invested,current,allocation_pct}]}`.
+- `GET /holdings/{fd|rd|stock|bond|mf}` → server-side grid for one asset type. Values all holdings of that type, then filters, sorts and paginates in Python.
+  - Common params:
+    - `q` (search)
+    - `sort` (default current_value)
+    - `dir` (asc|desc, default desc)
+    - `page` (clamped to the last page)
+    - Page size is fixed at 10; there is no `page_size` param.
+  - Filters per type:
+    - fd: `bank*`, `payout_type`, `compounding`, `status`, `rate_min`/`rate_max`, `maturity_from`/`maturity_to`
+    - rd: `bank*`, `status`, `rate_min`/`rate_max`, `maturity_from`/`maturity_to`
+    - stock: `exchange`, `broker*`
+    - bond: `bond_type`, `issuer*`, `platform*`, `status`, `ytm_min`/`ytm_max`, `maturity_from`/`maturity_to`
+    - mf: `category`, `platform*`
+    - (`*` = free-text values whose options come from the data.)
+  - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, invested, current_value, gain, gain_pct} for the whole type (unfiltered), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
+  - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
 - Auth: if `API_KEY` env is set, every route except `/api/health` and OPTIONS needs header `X-API-Key` (401 otherwise).
 
 ### Message contract (toasts render these verbatim)
 - POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name).
 - PUT 200 → record + `message: "Changes saved"` + description.
 - DELETE **200** → `{message: "<Type> deleted", description}`.
-- Errors always: `{message, description, detail}`. 422 → "Couldn't save — check the highlighted fields" + first field error ("Principal: Must be at most ₹100 crore"), `detail` = list of {loc,msg,type}. 404 → "<Type> not found" / "It may have been deleted already." 401 → "Not authorised" / "Your session may have expired. Log in again." 500 → "Something went wrong on the server" (+ error class only). Other HTTP errors → "Request failed".
+- Errors always: `{message, description, detail}`. 422 → "Couldn't save — check the highlighted fields" + first field error ("Principal: Must be at most ₹100 crore"), `detail` = list of {loc,msg,type}. 422 on `GET /holdings/*` → "Invalid filters" + first error. 404 → "<Type> not found" / "It may have been deleted already." 401 → "Not authorised" / "Your session may have expired. Log in again." 500 → "Something went wrong on the server" (+ error class only). Other HTTP errors → "Request failed".
 - Next.js proxy's own errors use the same shape: 401 "Not logged in", 502 "Couldn't reach the server", 503 "Server not configured", 400 "Bad request".
 
 ## 5. Web app
 
-- Pages: `/` Dashboard (KPI cards, holdings-by-type table with allocation bars), `/portfolio` (card per non-empty type, compact tables, edit dialog reusing forms, optimistic delete with confirm, background refresh indicator), `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio`, cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
+- Pages: `/` Dashboard (KPI cards, holdings-by-type table with allocation bars; asset-type rows link to `/portfolio/{type}`).
+  - `/portfolio` redirects to the first asset type you hold.
+  - `/portfolio/{type}` shows Groww-style fixed-width tabs (FD, RD, Stocks, Bonds, Mutual Funds, with counts) and a sliding underline. The content fades in when the type changes; reduced motion is respected.
+  - Each type has a summary strip (count, invested, current, gain) and an "Add FD"/"Add RD"/"Add stocks"/… button linking to `/add/{type}`.
+  - Its own grid has type-specific columns and filters. Stocks and MF include Current/Gain/Gain %, which equal invested and 0 until live prices exist.
+  - The grid has debounced search, faceted filters, %-range and maturity-date range filters, Reset, and a Columns menu saved per type in localStorage `wt.portfolio.columns.{type}`.
+  - Sortable headers; 10 rows per page; no totals row.
+  - Row actions: eye (disabled, "Details coming soon"; future `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
+  - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
+- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio`, cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.

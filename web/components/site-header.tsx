@@ -12,13 +12,23 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
-import { getAssetEntry } from "@/lib/asset-catalog";
+import { ASSET_SLUGS, getAssetEntry } from "@/lib/asset-catalog";
+import { ASSET_TYPE_LABELS, type AssetType } from "@/lib/types";
 
 type Crumb = { label: string; href?: string };
 
 function getCrumbs(pathname: string): Crumb[] {
   if (pathname === "/") return [{ label: "Dashboard" }];
   if (pathname === "/portfolio") return [{ label: "Portfolio" }];
+  if (pathname.startsWith("/portfolio/")) {
+    const slug = pathname.slice("/portfolio/".length).split("/")[0];
+    return ASSET_SLUGS.includes(slug as AssetType)
+      ? [
+          { label: "Portfolio", href: "/portfolio" },
+          { label: ASSET_TYPE_LABELS[slug as AssetType] },
+        ]
+      : [{ label: "Portfolio", href: "/portfolio" }];
+  }
   if (pathname === "/add") return [{ label: "Add asset" }];
   if (pathname.startsWith("/add/")) {
     const slug = pathname.slice("/add/".length).split("/")[0];

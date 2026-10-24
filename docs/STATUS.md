@@ -11,6 +11,7 @@
 - Payout FD semantics (payout frequency, interest_received) (SPEC §3).
 - Toast/error text sourced from API `message`/`description` (SPEC §4).
 - /add redesign: grouped tile gallery (Groww-style) → per-type form page /add/[type]; legacy ?type= redirects.
+- Portfolio redesign: per-asset tabs and grids (/api/holdings/{type}) with type-specific columns/filters, search, sorting, 10-row paging, column visibility saved per type, tab transition animation.
 - Deployment prep: Vercel-ready API (`api/vercel.json`, region iad1, API key), password gate + same-origin proxy in web, `docs/DEPLOY.md`.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -28,6 +29,9 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Neon `dev` branch holds the user's REAL holdings (e.g. an "axis" FD and a government bond "Tanish"). Never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
+
+- Holdings details page (eye icon) not built yet.
+- Dev DB has 25 seeded [TEST] rows (notes "dummy seed 2026-10-25").
 
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
