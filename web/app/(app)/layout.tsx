@@ -12,7 +12,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       <AppSidebar showLogout={showLogout} />
       <SidebarInset>
         <SiteHeader />
-        <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-6">
+        <div className="mx-auto w-full min-w-0 max-w-7xl flex-1 px-3 py-6 md:px-4">
           {children}
         </div>
       </SidebarInset>
