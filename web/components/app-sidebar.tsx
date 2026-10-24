@@ -1,0 +1,84 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Briefcase, LayoutDashboard, Plus, Wallet } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from "@/components/ui/sidebar";
+import { cn } from "@/lib/utils";
+
+const NAV = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/portfolio", label: "Portfolio", icon: Briefcase },
+];
+
+export function AppSidebar() {
+  const pathname = usePathname();
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" render={<Link href="/" />}>
+              <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+                <Wallet className="size-4" />
+              </div>
+              <span className="truncate font-semibold">Wealth Tracker</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {NAV.map((item) => {
+                const active =
+                  item.href === "/"
+                    ? pathname === "/"
+                    : pathname.startsWith(item.href);
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      isActive={active}
+                      tooltip={item.label}
+                      render={<Link href={item.href} />}
+                    >
+                      <item.icon />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <Link
+          href="/add"
+          aria-label="Add asset"
+          className={cn(
+            buttonVariants({ size: "sm" }),
+            "w-full group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0",
+          )}
+        >
+          <Plus />
+          <span className="group-data-[collapsible=icon]:hidden">Add asset</span>
+        </Link>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
