@@ -30,3 +30,12 @@ Code changes in `api/` and `web/` reload automatically.
 ## Deploy
 
 Web and API deploy to Vercel, using the Neon production branch for the database. See [docs/DEPLOY.md](docs/DEPLOY.md) for the steps.
+
+## Docs
+
+- `AGENTS.md` - agent guide & rules
+- `CLAUDE.md` - Claude Code working mode
+- `docs/SPEC.md` - current behaviour
+- `docs/STATUS.md` - progress & open items
+- `docs/DEPLOY.md` - deployment
+- `docs/PLAN.md` - original plan (historical)

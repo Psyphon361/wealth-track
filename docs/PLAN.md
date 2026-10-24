@@ -1,3 +1,5 @@
+> **Historical document.** This is the original v1 build plan. The data model, validation rules, valuation and API contract have since changed — see `docs/SPEC.md` (current behaviour) and `docs/STATUS.md` (progress, open items). Do not implement from this file.
+
 # Wealth Tracker — Prototype v1 Build Plan
 
 Barebones prototype: build fast, fail fast. No automated testing in v1; each task is verified by build/run/curl/click-through smoke checks.
