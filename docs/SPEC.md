@@ -74,7 +74,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 ## 5. Web app
 
-- Pages: `/` Dashboard (KPI cards, holdings-by-type table with allocation bars), `/portfolio` (card per non-empty type, compact tables, edit dialog reusing forms, optimistic delete with confirm, background refresh indicator), `/add?type=fd|rd|stock|bond|mf` (ToggleGroup type picker + form), `/login`.
+- Pages: `/` Dashboard (KPI cards, holdings-by-type table with allocation bars), `/portfolio` (card per non-empty type, compact tables, edit dialog reusing forms, optimistic delete with confirm, background refresh indicator), `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio`, cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.

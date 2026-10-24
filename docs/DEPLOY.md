@@ -33,7 +33,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic upgrade h
 DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
 ```
 
-`alembic current` should print `0002 (head)`. Repeat this step whenever a new migration is added.
+`alembic current` should print `0003 (head)`. Repeat this step whenever a new migration is added.
 
 ## 4. API project (FastAPI)
 

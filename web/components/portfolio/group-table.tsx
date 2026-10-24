@@ -105,7 +105,7 @@ export function GroupTable<T extends ComputedFields & { id: number }>({
             <GainCell gain={totals.gain} pct={totals.gain_pct} />
           </div>
           <Link
-            href={`/add?type=${type}`}
+            href={`/add/${type}`}
             className={buttonVariants({ variant: "ghost", size: "xs" })}
           >
             <Plus data-icon="inline-start" />

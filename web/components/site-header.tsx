@@ -12,7 +12,9 @@ const TITLES: Record<string, string> = {
 
 export function SiteHeader() {
   const pathname = usePathname();
-  const title = TITLES[pathname] ?? "Wealth Tracker";
+  const title = pathname.startsWith("/add/")
+    ? "Add asset"
+    : (TITLES[pathname] ?? "Wealth Tracker");
   return (
     <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
       <SidebarTrigger className="-ml-1" />

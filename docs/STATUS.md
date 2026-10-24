@@ -10,6 +10,7 @@
 - Full validation rule set in API + forms with identical wording (see SPEC §2).
 - Payout FD semantics (payout frequency, interest_received) (SPEC §3).
 - Toast/error text sourced from API `message`/`description` (SPEC §4).
+- /add redesign: grouped tile gallery (Groww-style) → per-type form page /add/[type]; legacy ?type= redirects.
 - Deployment prep: Vercel-ready API (`api/vercel.json`, region iad1, API key), password gate + same-origin proxy in web, `docs/DEPLOY.md`.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.

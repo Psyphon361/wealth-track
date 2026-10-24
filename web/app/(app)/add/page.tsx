@@ -1,13 +1,14 @@
 import { Suspense } from "react";
-import { AddAssetFlow } from "./add-asset-flow";
-import type { AssetType } from "@/lib/types";
-
-const TYPES: AssetType[] = ["fd", "rd", "stock", "bond", "mf"];
+import { redirect } from "next/navigation";
+import { AssetGallery } from "@/components/add/asset-gallery";
+import { getAssetEntry } from "@/lib/asset-catalog";
 
 async function Content({ searchParams }: PageProps<"/add">) {
   const { type } = await searchParams;
-  const initial = TYPES.find((t) => t === type) ?? "fd";
-  return <AddAssetFlow initialType={initial} />;
+  if (typeof type === "string" && getAssetEntry(type)) {
+    redirect(`/add/${type}`);
+  }
+  return <AssetGallery />;
 }
 
 export default function AddAssetPage(props: PageProps<"/add">) {
