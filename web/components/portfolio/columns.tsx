@@ -149,7 +149,18 @@ export const stockColumns: Column<Row<Stock>>[] = [
 export const bondColumns: Column<Row<Bond>>[] = [
   { header: "Name", cell: (r) => <Main main={r.name} sub={r.issuer} /> },
   { header: "Type", cell: (r) => BOND_TYPE_LABELS[r.bond_type] ?? r.bond_type },
-  { header: "Qty", align: "right", cell: (r) => nowrap(String(r.quantity)) },
+  {
+    header: "Qty",
+    align: "right",
+    cell: (r) => (
+      <div className="leading-tight">
+        {nowrap(String(r.quantity))}
+        <div className="num whitespace-nowrap text-[11px] text-muted-foreground">
+          FV {r.face_value == null ? "—" : formatINR(r.face_value)}
+        </div>
+      </div>
+    ),
+  },
   { header: "YTM", align: "right", cell: (r) => nowrap(formatPct(r.ytm)) },
   { header: "Maturity", cell: (r) => nowrap(formatDate(r.maturity_date)) },
   ...money<Row<Bond>>(),

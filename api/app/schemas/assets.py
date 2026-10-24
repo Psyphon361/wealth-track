@@ -120,6 +120,7 @@ class BondCreate(_Create):
     bond_type: Literal["government", "corporate", "tax_free", "sgb", "other"]
     platform: Optional
     quantity: Quantity
+    face_value: Money
     purchase_price: Money
     purchase_date: date
     ytm: Rate
@@ -133,7 +134,8 @@ class BondCreate(_Create):
 
 
 class BondRead(BondCreate, _Read):
-    pass
+    # Nullable: rows created before face_value existed have no value.
+    face_value: Annotated[Decimal, Number] | None = None
 
 
 class MutualFundCreate(_Create):

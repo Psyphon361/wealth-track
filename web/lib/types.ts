@@ -109,6 +109,7 @@ export interface BondInput {
   bond_type: BondType;
   platform: string | null;
   quantity: number;
+  face_value: number;
   purchase_price: number;
   purchase_date: string;
   ytm: number;
@@ -137,7 +138,8 @@ export interface RecordFields {
 export type FixedDeposit = FixedDepositInput & RecordFields;
 export type RecurringDeposit = RecurringDepositInput & RecordFields;
 export type Stock = StockInput & RecordFields;
-export type Bond = BondInput & RecordFields;
+export type Bond = Omit<BondInput, "face_value"> &
+  RecordFields & { face_value: number | null };
 export type MutualFund = MutualFundInput & RecordFields;
 
 export type AssetRecord =

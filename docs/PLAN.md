@@ -23,7 +23,7 @@ bank, label?, monthly_instalment, rate, start_date, tenure_years, tenure_months,
 name, symbol?, exchange (NSE | BSE; default NSE), broker?, quantity (int), avg_buy_price, buy_date.
 
 ### bonds
-name, isin?, issuer, bond_type (government | corporate | tax_free | sgb | other), platform?, quantity (int), purchase_price (per unit), purchase_date, ytm, maturity_date.
+name, isin?, issuer, bond_type (government | corporate | tax_free | sgb | other), platform?, quantity (int), face_value (per unit), purchase_price (per unit), purchase_date, ytm, maturity_date.
 
 ### mutual_funds
 scheme_name, platform?, category (equity | debt | hybrid | index | elss | liquid | other), units, avg_nav, purchase_date.

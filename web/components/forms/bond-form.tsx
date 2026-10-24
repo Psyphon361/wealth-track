@@ -24,6 +24,7 @@ const schema = z
     bond_type: bondTypeEnum,
     platform: optionalText,
     quantity: positiveInteger,
+    face_value: positiveNumber,
     purchase_price: positiveNumber,
     purchase_date: dateString,
     ytm: positiveNumber,
@@ -54,6 +55,7 @@ function toDefaults(r?: Bond): FormIn {
     bond_type: r?.bond_type ?? "government",
     platform: r?.platform ?? "",
     quantity: r ? String(r.quantity) : "",
+    face_value: r?.face_value != null ? String(r.face_value) : "",
     purchase_price: r ? String(r.purchase_price) : "",
     purchase_date: r?.purchase_date ?? "",
     ytm: r ? String(r.ytm) : "",
@@ -104,6 +106,14 @@ export function BondForm({
         name="quantity"
         label="Quantity"
         inputMode="numeric"
+        required
+      />
+      <TextField
+        control={control}
+        name="face_value"
+        label="Face value per unit"
+        adornment="₹"
+        inputMode="decimal"
         required
       />
       <TextField

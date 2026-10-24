@@ -19,6 +19,7 @@ class Bond(TimestampedMixin, Base):
     )
     platform: Mapped[str | None] = mapped_column(String(200))
     quantity: Mapped[int]
+    face_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     purchase_price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     purchase_date: Mapped[date]
     ytm: Mapped[Decimal] = mapped_column(Numeric(6, 3))
