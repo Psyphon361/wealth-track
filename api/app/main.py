@@ -2,7 +2,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import assets
+from app.routers import assets, portfolio
 
 app = FastAPI(title="Wealth Tracker API")
 
@@ -22,5 +22,6 @@ def health() -> dict[str, str]:
 
 
 api_router.include_router(assets.router)
+api_router.include_router(portfolio.router)
 
 app.include_router(api_router)
