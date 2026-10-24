@@ -1,6 +1,5 @@
-export const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api"
-).replace(/\/+$/, "");
+// Same-origin; the Next.js route handler at app/api/[...path] proxies to FastAPI.
+export const API_URL = "/api";
 
 type ValidationItem = { loc?: (string | number)[]; msg?: string };
 
