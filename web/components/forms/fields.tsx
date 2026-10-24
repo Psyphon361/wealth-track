@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Controller,
   type Control,
@@ -7,6 +8,15 @@ import {
   type Path,
 } from "react-hook-form";
 import { cn } from "cn";
+import { CalendarDays } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { formatDate } from "@/lib/format";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -74,11 +84,9 @@ export function TextField<TIn extends FieldValues, TOut>({
   label,
   required,
   inputMode,
-  type = "text",
   adornment,
 }: FieldProps<TIn, TOut> & {
   inputMode?: "decimal" | "numeric";
-  type?: "text" | "date";
   adornment?: "₹" | "%";
 }) {
   const numeric = inputMode !== undefined;
@@ -92,7 +100,6 @@ export function TextField<TIn extends FieldValues, TOut>({
           <div className="relative">
             <Input
               id={name}
-              type={type}
               inputMode={inputMode}
               name={field.name}
               ref={field.ref}
@@ -191,6 +198,83 @@ export function NotesField<TIn extends FieldValues, TOut>({
           <FormError error={fieldState.error} />
         </Field>
       )}
+    />
+  );
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+function parseISODate(value: string): Date | undefined {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!m) return undefined;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function toISODate(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+const DATE_START_YEAR = 1990;
+
+export function DateField<TIn extends FieldValues, TOut>({
+  control,
+  name,
+  label,
+  required,
+}: FieldProps<TIn, TOut>) {
+  const [open, setOpen] = useState(false);
+  const endYear = new Date().getFullYear() + 40;
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => {
+        const value = String(field.value ?? "");
+        const selected = parseISODate(value);
+        return (
+          <Field data-invalid={fieldState.invalid}>
+            <Label id={name} label={label} required={required} />
+            <Popover open={open} onOpenChange={setOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    id={name}
+                    ref={field.ref}
+                    type="button"
+                    variant="outline"
+                    aria-invalid={fieldState.invalid}
+                    onBlur={field.onBlur}
+                    className="h-8 w-full justify-start rounded-lg px-2.5 font-normal aria-invalid:border-destructive"
+                  />
+                }
+              >
+                <CalendarDays className="size-4 text-muted-foreground" />
+                {selected ? (
+                  <span className="num">{formatDate(value)}</span>
+                ) : (
+                  <span className="text-muted-foreground">Pick a date</span>
+                )}
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-auto p-0">
+                <Calendar
+                  mode="single"
+                  captionLayout="dropdown"
+                  weekStartsOn={1}
+                  startMonth={new Date(DATE_START_YEAR, 0)}
+                  endMonth={new Date(endYear, 11)}
+                  defaultMonth={selected}
+                  selected={selected}
+                  onSelect={(d) => {
+                    if (d) field.onChange(toISODate(d));
+                    setOpen(false);
+                  }}
+                />
+              </PopoverContent>
+            </Popover>
+            <FormError error={fieldState.error} />
+          </Field>
+        );
+      }}
     />
   );
 }

@@ -9,7 +9,13 @@ import {
   type RecurringDepositInput,
 } from "@/lib/types";
 import { FormShell } from "./form-shell";
-import { NotesField, SelectField, TextField, toOptions } from "./fields";
+import {
+  DateField,
+  NotesField,
+  SelectField,
+  TextField,
+  toOptions,
+} from "./fields";
 import {
   TENURE_ERROR,
   compoundingEnum,
@@ -105,11 +111,10 @@ export function RdForm({
         inputMode="decimal"
         required
       />
-      <TextField
+      <DateField
         control={control}
         name="start_date"
         label="Start date"
-        type="date"
         required
       />
       <SelectField

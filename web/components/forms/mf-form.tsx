@@ -9,7 +9,13 @@ import {
   type MutualFundInput,
 } from "@/lib/types";
 import { FormShell } from "./form-shell";
-import { NotesField, SelectField, TextField, toOptions } from "./fields";
+import {
+  DateField,
+  NotesField,
+  SelectField,
+  TextField,
+  toOptions,
+} from "./fields";
 import {
   dateString,
   mfCategoryEnum,
@@ -102,11 +108,10 @@ export function MfForm({
         inputMode="decimal"
         required
       />
-      <TextField
+      <DateField
         control={control}
         name="purchase_date"
         label="Purchase date"
-        type="date"
         required
       />
       <div className="sm:col-span-2">

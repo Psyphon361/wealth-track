@@ -5,7 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { EXCHANGE_LABELS, type Stock, type StockInput } from "@/lib/types";
 import { FormShell } from "./form-shell";
-import { NotesField, SelectField, TextField, toOptions } from "./fields";
+import {
+  DateField,
+  NotesField,
+  SelectField,
+  TextField,
+  toOptions,
+} from "./fields";
 import {
   dateString,
   exchangeEnum,
@@ -96,13 +102,7 @@ export function StockForm({
         inputMode="decimal"
         required
       />
-      <TextField
-        control={control}
-        name="buy_date"
-        label="Buy date"
-        type="date"
-        required
-      />
+      <DateField control={control} name="buy_date" label="Buy date" required />
       <div className="sm:col-span-2">
         <NotesField control={control} name="notes" />
       </div>

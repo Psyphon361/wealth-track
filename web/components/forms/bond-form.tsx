@@ -5,7 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { BOND_TYPE_LABELS, type Bond, type BondInput } from "@/lib/types";
 import { FormShell } from "./form-shell";
-import { NotesField, SelectField, TextField, toOptions } from "./fields";
+import {
+  DateField,
+  NotesField,
+  SelectField,
+  TextField,
+  toOptions,
+} from "./fields";
 import {
   bondTypeEnum,
   dateString,
@@ -124,11 +130,10 @@ export function BondForm({
         inputMode="decimal"
         required
       />
-      <TextField
+      <DateField
         control={control}
         name="purchase_date"
         label="Purchase date"
-        type="date"
         required
       />
       <TextField
@@ -139,11 +144,10 @@ export function BondForm({
         inputMode="decimal"
         required
       />
-      <TextField
+      <DateField
         control={control}
         name="maturity_date"
         label="Maturity date"
-        type="date"
         required
       />
       <div className="sm:col-span-2">
