@@ -20,5 +20,5 @@ class MutualFund(TimestampedMixin, Base):
         )
     )
     units: Mapped[Decimal] = mapped_column(Numeric(14, 3))
-    avg_nav: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    avg_nav: Mapped[Decimal] = mapped_column(Numeric(14, 4))
     purchase_date: Mapped[date]

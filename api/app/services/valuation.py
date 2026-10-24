@@ -41,10 +41,12 @@ def _result(
     current: float | Decimal,
     maturity_date: date | None = None,
     status: str = "active",
+    gain: Decimal | None = None,
 ) -> dict[str, Any]:
     invested_d = _q(invested)
     current_d = _q(current)
-    gain = current_d - invested_d
+    if gain is None:
+        gain = current_d - invested_d
     gain_pct = _q(gain / invested_d * 100) if invested_d else Decimal("0.00")
     out: dict[str, Any] = {
         "invested": invested_d,
@@ -65,9 +67,40 @@ def _status(today: date, maturity: date) -> str:
 def value_fd(fd: Any, today: date | None = None) -> dict[str, Any]:
     today = today or date.today()
     maturity = _maturity(fd)
+    if fd.payout_type == "payout":
+        return _value_payout_fd(fd, today, maturity)
     t = _year_fraction(fd.start_date, min(today, maturity))
     current = _grow(fd.principal, fd.rate, fd.compounding, t)
     return _result(fd.principal, current, maturity, _status(today, maturity))
+
+
+def _value_payout_fd(fd: Any, today: date, maturity: date) -> dict[str, Any]:
+    periods = PERIODS_PER_YEAR[fd.compounding]
+    step = 12 // periods
+    principal = float(fd.principal)
+    annual = principal * float(fd.rate) / 100
+    end = min(today, maturity)
+    completed = 0
+    last_end = fd.start_date
+    while True:
+        period_end = fd.start_date + relativedelta(months=step * (completed + 1))
+        if period_end > end:
+            break
+        completed += 1
+        last_end = period_end
+    interest = annual / periods * completed
+    if today >= maturity:
+        interest += annual * _year_fraction(last_end, maturity)
+    received = _q(interest)
+    out = _result(
+        fd.principal,
+        fd.principal,
+        maturity,
+        _status(today, maturity),
+        gain=received,
+    )
+    out["interest_received"] = received
+    return out
 
 
 def value_rd(rd: Any, today: date | None = None) -> dict[str, Any]:
@@ -114,10 +147,11 @@ def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
     """Sum invested/current_value/gain over computed results; gain_pct derived."""
     invested = Decimal("0.00")
     current = Decimal("0.00")
+    gain = Decimal("0.00")
     for r in results:
         invested += r["invested"]
         current += r["current_value"]
-    gain = current - invested
+        gain += r["gain"]
     gain_pct = _q(gain / invested * 100) if invested else Decimal("0.00")
     return {
         "invested": _q(invested),

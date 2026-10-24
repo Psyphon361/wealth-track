@@ -20,7 +20,7 @@ class PortfolioGroup(BaseModel):
     type: AssetType
     label: str
     # Each item: the asset's Read-schema fields plus computed invested,
-    # current_value, gain, gain_pct, maturity_date (optional), status.
+    # current_value, gain, gain_pct, maturity_date (optional), status, interest_received (payout FDs).
     items: list[dict[str, Any]]
     totals: Totals
 

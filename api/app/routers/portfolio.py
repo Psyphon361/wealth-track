@@ -86,7 +86,7 @@ def load_groups(db: Session, today: date | None = None) -> list[dict[str, Any]]:
 def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
     total_invested = _q(sum((g["totals"]["invested"] for g in groups), Decimal("0")))
     total_current = _q(sum((g["totals"]["current_value"] for g in groups), Decimal("0")))
-    total_gain = total_current - total_invested
+    total_gain = _q(sum((g["totals"]["gain"] for g in groups), Decimal("0")))
     gain_pct = _q(total_gain / total_invested * 100) if total_invested else Decimal("0.00")
     by_type = []
     for g in groups:
