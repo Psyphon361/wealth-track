@@ -6,11 +6,12 @@ import {
   DayPicker,
   getDefaultClassNames,
   type DayButton,
+  type DropdownProps,
   type Locale,
 } from "react-day-picker"
 
 import { Button, buttonVariants } from "@/components/ui/button"
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
+import { CheckIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
 
 function Calendar({
   className,
@@ -161,6 +162,7 @@ function Calendar({
             <ChevronDownIcon className={cn("size-4", className)} {...props} />
           )
         },
+        Dropdown: CalendarDropdown,
         DayButton: ({ ...props }) => (
           <CalendarDayButton locale={locale} {...props} />
         ),
@@ -177,6 +179,112 @@ function Calendar({
       }}
       {...props}
     />
+  )
+}
+
+function CalendarDropdown({
+  options,
+  value,
+  onChange,
+  disabled,
+  "aria-label": ariaLabel,
+}: DropdownProps) {
+  const [open, setOpen] = React.useState(false)
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const listRef = React.useRef<HTMLUListElement>(null)
+  const selected = options?.find((option) => option.value === Number(value))
+
+  // Close on outside press / Escape. Escape is stopped in the capture phase so
+  // it doesn't also dismiss the surrounding popover or dialog.
+  React.useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      event.stopPropagation()
+      setOpen(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown)
+    document.addEventListener("keydown", onKeyDown, true)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown)
+      document.removeEventListener("keydown", onKeyDown, true)
+    }
+  }, [open])
+
+  // Bring the selected option into view when the list opens.
+  React.useEffect(() => {
+    if (!open) return
+    const list = listRef.current
+    const item = list?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (list && item) {
+      list.scrollTop = item.offsetTop - list.clientHeight / 2 + item.offsetHeight / 2
+      item.focus({ preventScroll: true })
+    }
+  }, [open])
+
+  const move = (event: React.KeyboardEvent<HTMLUListElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return
+    event.preventDefault()
+    const items = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>(
+        '[role="option"]:not(:disabled)'
+      )
+    )
+    const index = items.indexOf(document.activeElement as HTMLElement)
+    const next = event.key === "ArrowDown" ? index + 1 : index - 1
+    items[Math.max(0, Math.min(items.length - 1, next))]?.focus()
+  }
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-7 items-center gap-1 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent pr-1.5 pl-2 text-sm font-medium whitespace-nowrap transition-colors outline-none select-none hover:bg-input/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+      >
+        {selected?.label}
+        <ChevronDownIcon className="size-4 text-muted-foreground" />
+      </button>
+      {open && (
+        <ul
+          ref={listRef}
+          role="listbox"
+          aria-label={ariaLabel}
+          onKeyDown={move}
+          className="absolute top-full left-1/2 z-50 mt-1 max-h-64 min-w-full -translate-x-1/2 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-popover p-1 text-popover-foreground opacity-100 shadow-md ring-1 ring-foreground/10"
+        >
+          {options?.map((option) => (
+            <li key={option.value} role="presentation">
+              <button
+                type="button"
+                role="option"
+                aria-selected={option.value === Number(value)}
+                disabled={option.disabled}
+                onClick={() => {
+                  setOpen(false)
+                  onChange?.({
+                    target: { value: String(option.value) },
+                  } as unknown as React.ChangeEvent<HTMLSelectElement>)
+                }}
+                className="relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm whitespace-nowrap outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-selected:font-medium"
+              >
+                {option.label}
+                {option.value === Number(value) && (
+                  <CheckIcon className="pointer-events-none absolute right-2 size-4" />
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

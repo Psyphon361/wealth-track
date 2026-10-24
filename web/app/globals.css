@@ -133,6 +133,7 @@
   }
   html {
     @apply font-sans;
+    font-size: 110%;
   }
 }
 
