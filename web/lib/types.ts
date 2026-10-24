@@ -156,6 +156,7 @@ export interface ComputedFields {
   current_value: number;
   gain: number;
   gain_pct: number;
+  interest_received?: number | null;
   maturity_date?: string;
   status: "active" | "matured";
 }

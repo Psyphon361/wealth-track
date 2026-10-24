@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { BOND_TYPE_LABELS, type Bond, type BondInput } from "@/lib/types";
@@ -13,29 +13,43 @@ import {
   toOptions,
 } from "./fields";
 import {
+  MATURITY_RANGE_ERROR,
+  MAX_BOND_YEARS,
+  MAX_ISIN,
+  PRICE_RANGE_ERROR,
+  YTM_ERROR,
+  addMonthsISO,
   bondTypeEnum,
   dateString,
+  isValidISODate,
+  isinText,
+  maturityWithinLimit,
+  maxFutureDateISO,
+  moneyNumber,
+  notesText,
   optionalText,
   positiveInteger,
-  positiveNumber,
+  priceWithinRange,
+  rateNumber,
   requiredText,
+  startDateString,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
 
 const schema = z
   .object({
     name: requiredText,
-    isin: optionalText,
+    isin: isinText,
     issuer: requiredText,
     bond_type: bondTypeEnum,
     platform: optionalText,
     quantity: positiveInteger,
-    face_value: positiveNumber,
-    purchase_price: positiveNumber,
-    purchase_date: dateString,
-    ytm: positiveNumber,
+    face_value: moneyNumber,
+    purchase_price: moneyNumber,
+    purchase_date: startDateString,
+    ytm: rateNumber(30, YTM_ERROR),
     maturity_date: dateString,
-    notes: optionalText,
+    notes: notesText,
   })
   .refine(
     (v) =>
@@ -46,7 +60,15 @@ const schema = z
       message: "Maturity date must be after the purchase date",
       path: ["maturity_date"],
     },
-  );
+  )
+  .refine((v) => maturityWithinLimit(v.purchase_date, v.maturity_date), {
+    message: MATURITY_RANGE_ERROR,
+    path: ["maturity_date"],
+  })
+  .refine((v) => priceWithinRange(v.purchase_price, v.face_value), {
+    message: PRICE_RANGE_ERROR,
+    path: ["purchase_price"],
+  });
 
 type FormIn = z.input<typeof schema>;
 type FormOut = z.output<typeof schema>;
@@ -84,6 +106,10 @@ export function BondForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const purchaseDate = useWatch({ control, name: "purchase_date" });
+  const maturityLimit = isValidISODate(purchaseDate)
+    ? addMonthsISO(purchaseDate, MAX_BOND_YEARS * 12)
+    : undefined;
   const onSubmit = handleSubmit((values) => {
     const payload: BondInput = values;
     return save(payload);
@@ -97,7 +123,13 @@ export function BondForm({
       onCancel={onCancel}
     >
       <TextField control={control} name="name" label="Bond name" required />
-      <TextField control={control} name="isin" label="ISIN" />
+      <TextField
+        control={control}
+        name="isin"
+        label="ISIN"
+        maxLength={MAX_ISIN}
+        uppercase
+      />
       <TextField control={control} name="issuer" label="Issuer" required />
       <SelectField
         control={control}
@@ -137,6 +169,7 @@ export function BondForm({
         control={control}
         name="purchase_date"
         label="Purchase date"
+        maxDate={maxFutureDateISO()}
         required
       />
       <TextField
@@ -145,12 +178,15 @@ export function BondForm({
         label="Yield to maturity p.a."
         adornment="%"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <DateField
         control={control}
         name="maturity_date"
         label="Maturity date"
+        maxDate={maturityLimit}
+        toYear={maturityLimit ? Number(maturityLimit.slice(0, 4)) : undefined}
         required
       />
       <div className="sm:col-span-2">

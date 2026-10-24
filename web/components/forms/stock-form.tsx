@@ -13,24 +13,28 @@ import {
   toOptions,
 } from "./fields";
 import {
-  dateString,
+  MAX_SYMBOL,
   exchangeEnum,
+  maxFutureDateISO,
+  moneyNumber,
+  notesText,
   optionalText,
   positiveInteger,
-  positiveNumber,
   requiredText,
+  startDateString,
+  symbolText,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
 
 const schema = z.object({
   name: requiredText,
-  symbol: optionalText,
+  symbol: symbolText,
   exchange: exchangeEnum,
   broker: optionalText,
   quantity: positiveInteger,
-  avg_buy_price: positiveNumber,
-  buy_date: dateString,
-  notes: optionalText,
+  avg_buy_price: moneyNumber,
+  buy_date: startDateString,
+  notes: notesText,
 });
 
 type FormIn = z.input<typeof schema>;
@@ -78,7 +82,13 @@ export function StockForm({
       onCancel={onCancel}
     >
       <TextField control={control} name="name" label="Company name" required />
-      <TextField control={control} name="symbol" label="Symbol" />
+      <TextField
+        control={control}
+        name="symbol"
+        label="Symbol"
+        maxLength={MAX_SYMBOL}
+        uppercase
+      />
       <SelectField
         control={control}
         name="exchange"
@@ -104,7 +114,13 @@ export function StockForm({
         decimals={2}
         required
       />
-      <DateField control={control} name="buy_date" label="Buy date" required />
+      <DateField
+        control={control}
+        name="buy_date"
+        label="Buy date"
+        maxDate={maxFutureDateISO()}
+        required
+      />
       <div className="sm:col-span-2">
         <NotesField control={control} name="notes" />
       </div>

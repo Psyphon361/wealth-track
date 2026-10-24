@@ -17,12 +17,14 @@ import {
   toOptions,
 } from "./fields";
 import {
-  dateString,
+  maxFutureDateISO,
   mfCategoryEnum,
+  moneyNumber,
+  notesText,
   optionalText,
-  positiveNumber,
   positiveUnits,
   requiredText,
+  startDateString,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
 
@@ -31,9 +33,9 @@ const schema = z.object({
   platform: optionalText,
   category: mfCategoryEnum,
   units: positiveUnits,
-  avg_nav: positiveNumber,
-  purchase_date: dateString,
-  notes: optionalText,
+  avg_nav: moneyNumber,
+  purchase_date: startDateString,
+  notes: notesText,
 });
 
 type FormIn = z.input<typeof schema>;
@@ -107,13 +109,14 @@ export function MfForm({
         label="Average NAV"
         adornment="₹"
         inputMode="decimal"
-        decimals={2}
+        decimals={4}
         required
       />
       <DateField
         control={control}
         name="purchase_date"
         label="Purchase date"
+        maxDate={maxFutureDateISO()}
         required
       />
       <div className="sm:col-span-2">

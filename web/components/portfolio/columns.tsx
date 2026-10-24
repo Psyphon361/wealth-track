@@ -5,6 +5,7 @@ import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   BOND_TYPE_LABELS,
+  COMPOUNDING_LABELS,
   MF_CATEGORY_LABELS,
   type Bond,
   type ComputedFields,
@@ -78,13 +79,23 @@ const nowrap = (s: string) => (
   <span className="num whitespace-nowrap">{s}</span>
 );
 
-function money<T extends ComputedFields>(): Column<T>[] {
+function money<T extends ComputedFields>(
+  currentSub?: (r: T) => ReactNode,
+): Column<T>[] {
   return [
     { header: "Invested", align: "right", cell: (r) => nowrap(formatINR(r.invested)) },
     {
       header: "Current",
       align: "right",
-      cell: (r) => nowrap(formatINR(r.current_value)),
+      cell: (r) =>
+        currentSub ? (
+          <div className="leading-tight">
+            {nowrap(formatINR(r.current_value))}
+            {currentSub(r)}
+          </div>
+        ) : (
+          nowrap(formatINR(r.current_value))
+        ),
     },
     {
       header: "Gain",
@@ -98,15 +109,37 @@ function status<T extends ComputedFields>(): Column<T> {
   return { header: "Status", cell: (r) => <StatusBadge status={r.status} /> };
 }
 
+function fdBankCell(r: Row<FixedDeposit>) {
+  return (
+    <div className="min-w-32 leading-tight">
+      <div className="font-medium">{r.bank}</div>
+      {r.label ? (
+        <div className="text-[11px] text-muted-foreground">{r.label}</div>
+      ) : null}
+      {r.payout_type === "payout" ? (
+        <div className="text-[11px] text-muted-foreground">
+          Payout · {COMPOUNDING_LABELS[r.compounding]}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export const fdColumns: Column<Row<FixedDeposit>>[] = [
-  { header: "Bank", cell: (r) => <Main main={r.bank} sub={r.label} /> },
+  { header: "Bank", cell: fdBankCell },
   { header: "Rate", align: "right", cell: (r) => nowrap(formatPct(r.rate)) },
   { header: "Start", cell: (r) => nowrap(formatDate(r.start_date)) },
   {
     header: "Maturity",
     cell: (r) => (r.maturity_date ? nowrap(formatDate(r.maturity_date)) : "—"),
   },
-  ...money<Row<FixedDeposit>>(),
+  ...money<Row<FixedDeposit>>((r) =>
+    r.payout_type === "payout" && r.interest_received != null ? (
+      <div className="num whitespace-nowrap text-[11px] text-muted-foreground">
+        Interest received {formatINR(r.interest_received)}
+      </div>
+    ) : null,
+  ),
   status<Row<FixedDeposit>>(),
 ];
 

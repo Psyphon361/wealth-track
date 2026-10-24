@@ -17,13 +17,19 @@ import {
   toOptions,
 } from "./fields";
 import {
+  FD_RATE_ERROR,
+  RD_TENURE_ERROR,
   TENURE_ERROR,
   compoundingEnum,
-  dateString,
+  maxFutureDateISO,
+  moneyNumber,
+  notesText,
   optionalText,
-  positiveNumber,
+  rateNumber,
   requiredText,
+  startDateString,
   tenureIsPositive,
+  tenureOk,
   tenurePart,
 } from "./schema";
 import { TenurePicker } from "./tenure-picker";
@@ -33,17 +39,21 @@ const schema = z
   .object({
     bank: requiredText,
     label: optionalText,
-    monthly_instalment: positiveNumber,
-    rate: positiveNumber,
-    start_date: dateString,
+    monthly_instalment: moneyNumber,
+    rate: rateNumber(15, FD_RATE_ERROR),
+    start_date: startDateString,
     tenure_years: tenurePart,
     tenure_months: tenurePart,
     tenure_days: tenurePart,
     compounding: compoundingEnum,
-    notes: optionalText,
+    notes: notesText,
   })
   .refine(tenureIsPositive, {
     message: TENURE_ERROR,
+    path: ["tenure_years"],
+  })
+  .refine((v) => tenureOk("rd", v), {
+    message: RD_TENURE_ERROR,
     path: ["tenure_years"],
   });
 
@@ -110,12 +120,14 @@ export function RdForm({
         label="Interest rate p.a."
         adornment="%"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <DateField
         control={control}
         name="start_date"
         label="Start date"
+        maxDate={maxFutureDateISO()}
         required
       />
       <SelectField

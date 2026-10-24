@@ -25,6 +25,7 @@ import { formatDate } from "@/lib/format";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MAX_NOTES, MAX_TEXT, MIN_DATE } from "./schema";
 import {
   Select,
   SelectContent,
@@ -155,11 +156,17 @@ export function TextField<TIn extends FieldValues, TOut>({
   inputMode,
   adornment,
   decimals,
+  maxLength,
+  uppercase,
 }: FieldProps<TIn, TOut> & {
   inputMode?: "decimal" | "numeric";
   adornment?: "₹" | "%";
   /** When set, groups digits Indian-style, allowing this many decimal places. */
   decimals?: number;
+  /** Max characters for text inputs (defaults to 200). */
+  maxLength?: number;
+  /** Force uppercase as the user types. */
+  uppercase?: boolean;
 }) {
   const numeric = inputMode !== undefined;
   return (
@@ -194,8 +201,13 @@ export function TextField<TIn extends FieldValues, TOut>({
                 name={field.name}
                 ref={field.ref}
                 onBlur={field.onBlur}
-                onChange={field.onChange}
+                onChange={(e) =>
+                  field.onChange(
+                    uppercase ? e.target.value.toUpperCase() : e.target.value,
+                  )
+                }
                 value={String(field.value ?? "")}
+                maxLength={maxLength ?? MAX_TEXT}
                 aria-invalid={fieldState.invalid}
                 className={cn(
                   numeric && "num text-right",
@@ -285,6 +297,7 @@ export function NotesField<TIn extends FieldValues, TOut>({
             value={String(field.value ?? "")}
             aria-invalid={fieldState.invalid}
             rows={2}
+            maxLength={MAX_NOTES}
           />
           <FormError error={fieldState.error} />
         </Field>
@@ -312,9 +325,22 @@ export function DateField<TIn extends FieldValues, TOut>({
   name,
   label,
   required,
-}: FieldProps<TIn, TOut>) {
+  maxDate,
+  toYear,
+}: FieldProps<TIn, TOut> & {
+  /** Latest selectable date (ISO); later days are disabled. */
+  maxDate?: string;
+  /** Last year offered in the year dropdown (default: current year + 40). */
+  toYear?: number;
+}) {
   const [open, setOpen] = useState(false);
-  const endYear = new Date().getFullYear() + 40;
+  const endYear = Math.max(toYear ?? 0, new Date().getFullYear() + 40);
+  const minParsed = parseISODate(MIN_DATE);
+  const maxParsed = maxDate ? parseISODate(maxDate) : undefined;
+  const disabled = [
+    ...(minParsed ? [{ before: minParsed }] : []),
+    ...(maxParsed ? [{ after: maxParsed }] : []),
+  ];
   return (
     <Controller
       control={control}
@@ -354,6 +380,7 @@ export function DateField<TIn extends FieldValues, TOut>({
                   startMonth={new Date(DATE_START_YEAR, 0)}
                   endMonth={new Date(endYear, 11)}
                   defaultMonth={selected}
+                  disabled={disabled}
                   selected={selected}
                   onSelect={(d) => {
                     if (d) field.onChange(toISODate(d));

@@ -30,7 +30,7 @@ function range(max: number) {
 }
 
 const UNITS = [
-  { key: "years", label: "Years", max: 30 },
+  { key: "years", label: "Years", max: 10 },
   { key: "months", label: "Months", max: 11 },
   { key: "days", label: "Days", max: 30 },
 ] as const;
