@@ -14,7 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AssetForm } from "@/components/forms/asset-form";
-import { apiDelete, apiGet } from "@/lib/api";
+import { apiDelete, apiGet, toApiMessage } from "@/lib/api";
 import {
   ASSET_TYPE_LABELS,
   type AssetRecord,
@@ -42,7 +42,7 @@ import { GroupTable } from "./group-table";
 
 type State =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; description: string }
   | { status: "ready"; data: PortfolioResponse };
 
 type Target = DeleteTarget;
@@ -176,12 +176,11 @@ export function Portfolio() {
       })
       .catch((err: unknown) => {
         if (id !== requestId.current) return;
-        const message =
-          err instanceof Error ? err.message : "Failed to load portfolio";
+        const { message, description } = toApiMessage(err);
         setRefreshing(false);
         setUpdatingIds(new Set<number>());
-        if (hasData.current) notify.refreshFailed(err);
-        else setState({ status: "error", message });
+        if (hasData.current) notify.error(err);
+        else setState({ status: "error", message, description });
       });
   }, []);
 
@@ -216,7 +215,6 @@ export function Portfolio() {
     setDeleting(null);
     if (state.status !== "ready") return;
     const previous = state;
-    const name = itemName(target.item);
     // Invalidate any in-flight refresh so a stale list can't reappear.
     requestId.current++;
     setState({
@@ -224,10 +222,10 @@ export function Portfolio() {
       data: removeItem(state.data, target.type, target.item.id),
     });
     apiDelete(`/assets/${target.type}/${target.item.id}`)
-      .then(() => notify.deleted(name))
+      .then((res) => notify.success(res))
       .catch((err: unknown) => {
         setState(previous);
-        notify.deleteFailed(err);
+        notify.error(err);
       })
       .finally(refresh);
   }
@@ -244,7 +242,12 @@ export function Portfolio() {
   if (state.status === "error") {
     return (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
-        <p className="text-sm text-destructive">{state.message}</p>
+        <div>
+          <p className="text-sm font-medium text-destructive">{state.message}</p>
+          {state.description && (
+            <p className="text-sm text-muted-foreground">{state.description}</p>
+          )}
+        </div>
         <Button variant="outline" onClick={retry}>
           Retry
         </Button>

@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import create_model
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import schemas
 from app.db import Base, get_db
 from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock
+from app.schemas.messages import Outcome
 
 router = APIRouter(prefix="/assets")
 
@@ -18,6 +20,15 @@ REGISTRY = {
 }
 
 
+ASSET_LABELS = {
+    "fd": "Fixed deposit",
+    "rd": "Recurring deposit",
+    "stock": "Stock",
+    "bond": "Bond",
+    "mf": "Mutual fund",
+}
+
+
 def _get_or_404(db: Session, model: type[Base], item_id: int):
     obj = db.get(model, item_id)
     if obj is None:
@@ -25,39 +36,56 @@ def _get_or_404(db: Session, model: type[Base], item_id: int):
     return obj
 
 
+def _holding_name(obj) -> str:
+    """Display name of a holding for user-facing messages."""
+    if hasattr(obj, "bank"):
+        return f"{obj.bank} · {obj.label}" if obj.label else obj.bank
+    if hasattr(obj, "scheme_name"):
+        return obj.scheme_name
+    return obj.name
+
+
 def _build_router(slug: str, model, create, read) -> APIRouter:
     sub = APIRouter(prefix=f"/{slug}", tags=[slug])
+    label = ASSET_LABELS[slug]
+    result = create_model(f"{read.__name__}Result", __base__=(read, Outcome))
+
+    def _with_message(obj, message: str):
+        data = read.model_validate(obj).model_dump()
+        return result(**data, message=message, description=_holding_name(obj))
 
     @sub.get("", response_model=list[read])
     def list_items(db: Session = Depends(get_db)):
         return db.scalars(select(model).order_by(model.id)).all()
 
-    @sub.post("", response_model=read, status_code=201)
+    @sub.post("", response_model=result, status_code=201)
     def create_item(body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
         obj = model(**body.model_dump())
         db.add(obj)
         db.commit()
         db.refresh(obj)
-        return obj
+        return _with_message(obj, f"{label} added")
 
     @sub.get("/{item_id}", response_model=read)
     def get_item(item_id: int, db: Session = Depends(get_db)):
         return _get_or_404(db, model, item_id)
 
-    @sub.put("/{item_id}", response_model=read)
+    @sub.put("/{item_id}", response_model=result)
     def replace_item(item_id: int, body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
         obj = _get_or_404(db, model, item_id)
         for key, value in body.model_dump().items():
             setattr(obj, key, value)
         db.commit()
         db.refresh(obj)
-        return obj
+        return _with_message(obj, "Changes saved")
 
-    @sub.delete("/{item_id}", status_code=204)
-    def delete_item(item_id: int, db: Session = Depends(get_db)) -> Response:
-        db.delete(_get_or_404(db, model, item_id))
+    @sub.delete("/{item_id}", response_model=Outcome)
+    def delete_item(item_id: int, db: Session = Depends(get_db)):
+        obj = _get_or_404(db, model, item_id)
+        name = _holding_name(obj)
+        db.delete(obj)
         db.commit()
-        return Response(status_code=204)
+        return Outcome(message=f"{label} deleted", description=name)
 
     return sub
 

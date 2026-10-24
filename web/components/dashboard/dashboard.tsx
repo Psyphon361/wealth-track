@@ -4,14 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet } from "@/lib/api";
+import { apiGet, toApiMessage } from "@/lib/api";
 import type { DashboardResponse } from "@/lib/types";
 import { SummaryCards } from "./summary-cards";
 import { HoldingsByType } from "./holdings-by-type";
 
 type State =
   | { status: "loading" }
-  | { status: "error"; message: string }
+  | { status: "error"; message: string; description: string }
   | { status: "ready"; data: DashboardResponse };
 
 export function Dashboard() {
@@ -28,8 +28,7 @@ export function Dashboard() {
         if (!cancelled)
           setState({
             status: "error",
-            message:
-              err instanceof Error ? err.message : "Failed to load dashboard",
+            ...toApiMessage(err),
           });
       });
     return () => {
@@ -58,7 +57,12 @@ export function Dashboard() {
   if (state.status === "error") {
     return (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
-        <p className="text-sm text-destructive">{state.message}</p>
+        <div>
+          <p className="text-sm font-medium text-destructive">{state.message}</p>
+          {state.description && (
+            <p className="text-sm text-muted-foreground">{state.description}</p>
+          )}
+        </div>
         <Button variant="outline" onClick={retry}>
           Retry
         </Button>

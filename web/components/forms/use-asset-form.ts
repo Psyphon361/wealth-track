@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { notify, recordName } from "@/lib/notify";
-import { apiPost, apiPut } from "@/lib/api";
+import { notify } from "@/lib/notify";
+import { apiPost, apiPut, type ApiMessage } from "@/lib/api";
 import type { AssetType, RecordFields } from "@/lib/types";
 
 export function useAssetSave<R extends RecordFields>(
@@ -19,12 +19,10 @@ export function useAssetSave<R extends RecordFields>(
       const saved = record
         ? await apiPut<R>(`/assets/${type}/${record.id}`, payload)
         : await apiPost<R>(`/assets/${type}`, payload);
-      const name = recordName(saved);
-      if (record) notify.saved(name, toastId);
-      else notify.added(name, toastId);
+      notify.success(saved as Partial<ApiMessage>, toastId);
       onSaved?.(saved);
     } catch (e) {
-      notify.saveFailed(e, toastId);
+      notify.error(e, toastId);
     } finally {
       setSaving(false);
     }

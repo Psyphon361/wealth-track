@@ -1,4 +1,7 @@
+import logging
 import secrets
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
@@ -8,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import assets, portfolio
+from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
 
@@ -24,13 +28,81 @@ _MESSAGES = {
 }
 
 
+_FIELD_LABELS = {
+    "avg_nav": "Average NAV",
+    "ytm": "YTM",
+    "tenure_years": "Tenure",
+    "tenure_months": "Tenure",
+    "tenure_days": "Tenure",
+}
+
+logger = logging.getLogger("app")
+
+
+def _field_label(loc) -> str | None:
+    fields = [part for part in loc if isinstance(part, str) and part != "body"]
+    if not fields:
+        return None
+    field = fields[-1]
+    return _FIELD_LABELS.get(field) or field.replace("_", " ").capitalize()
+
+
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError):
     errors = []
     for error in exc.errors():
         message = _MESSAGES.get(error["type"])
         errors.append({**error, "msg": message} if message else error)
-    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+    description = "Some values are invalid."
+    if errors:
+        first = errors[0]
+        label = _field_label(first.get("loc", ()))
+        description = f"{label}: {first['msg']}" if label else str(first["msg"])
+    return JSONResponse(
+        status_code=422,
+        content={
+            "message": "Couldn't save — check the highlighted fields",
+            "description": description,
+            "detail": jsonable_encoder(errors),
+        },
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_error_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 401:
+        message = "Not authorised"
+        description = "Your session may have expired. Log in again."
+    elif exc.status_code == 404:
+        parts = request.url.path.strip("/").split("/")
+        slug = parts[2] if len(parts) == 4 and parts[:2] == ["api", "assets"] else None
+        if slug in ASSET_LABELS:
+            message = f"{ASSET_LABELS[slug]} not found"
+            description = "It may have been deleted already."
+        else:
+            message = "Not found"
+            description = "The requested resource doesn't exist."
+    else:
+        message = "Request failed"
+        description = str(exc.detail)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"message": message, "description": description, "detail": jsonable_encoder(exc.detail)},
+        headers=getattr(exc, "headers", None),
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception):
+    logger.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "message": "Something went wrong on the server",
+            "description": type(exc).__name__,
+            "detail": "Internal Server Error",
+        },
+    )
 
 
 def require_api_key(request: Request) -> None:

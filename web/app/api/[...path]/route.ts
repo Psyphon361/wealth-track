@@ -6,19 +6,27 @@ type Ctx = { params: Promise<{ path: string[] }> };
 async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
   const mode = gateMode();
   if (mode === "misconfigured") {
-    return Response.json({ detail: "Server auth is not configured" }, { status: 503 });
+    return Response.json({
+        message: "Server not configured",
+        description: "Login is not set up on this deployment.",
+        detail: "Server auth is not configured",
+      }, { status: 503 });
   }
   if (mode === "enabled") {
     const ok = await verifySessionToken(
       req.cookies.get(SESSION_COOKIE)?.value,
       process.env.SESSION_SECRET,
     );
-    if (!ok) return Response.json({ detail: "Unauthorized" }, { status: 401 });
+    if (!ok) return Response.json({
+        message: "Not logged in",
+        description: "Log in to continue.",
+        detail: "Unauthorized",
+      }, { status: 401 });
   }
 
   const { path } = await ctx.params;
   if (path.some((seg) => seg === "" || seg === "." || seg === ".." || /^(\.|%2e){1,2}$/i.test(seg))) {
-    return Response.json({ detail: "Invalid path" }, { status: 400 });
+    return Response.json({ message: "Bad request", description: "Invalid API path.", detail: "Bad path" }, { status: 400 });
   }
   const base = (process.env.API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
   const target = `${base}/api/${path.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
@@ -43,7 +51,11 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
       redirect: "manual",
     });
   } catch {
-    return Response.json({ detail: "Upstream API unreachable" }, { status: 502 });
+    return Response.json({
+        message: "Couldn't reach the server",
+        description: "The API is unavailable. Try again shortly.",
+        detail: "Upstream API unreachable",
+      }, { status: 502 });
   }
 
   const out = new Headers({ "cache-control": "no-store" });

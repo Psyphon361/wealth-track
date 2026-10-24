@@ -11,7 +11,11 @@ export async function proxy(request: NextRequest) {
 
   if (mode === "misconfigured") {
     if (isApi) {
-      return NextResponse.json({ detail: "Server auth is not configured" }, { status: 503 });
+      return NextResponse.json({
+          message: "Server not configured",
+          description: "Login is not set up on this deployment.",
+          detail: "Server auth is not configured",
+        }, { status: 503 });
     }
     if (pathname === "/login") return NextResponse.next();
     return NextResponse.redirect(new URL("/login", request.url));
@@ -24,7 +28,11 @@ export async function proxy(request: NextRequest) {
   if (ok) return NextResponse.next();
 
   if (isApi) {
-    return NextResponse.json({ detail: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({
+      message: "Not logged in",
+      description: "Log in to continue.",
+      detail: "Unauthorized",
+    }, { status: 401 });
   }
   const url = new URL("/login", request.url);
   url.searchParams.set("next", pathname + search);

@@ -1,19 +1,45 @@
 // Same-origin; the Next.js route handler at app/api/[...path] proxies to FastAPI.
 export const API_URL = "/api";
 
-type ValidationItem = { loc?: (string | number)[]; msg?: string };
+export interface ApiMessage {
+  message: string;
+  description: string;
+}
 
-function detailMessage(detail: unknown, fallback: string): string {
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    const parts = (detail as ValidationItem[]).map((d) => {
-      const field = (d.loc ?? []).filter((p) => p !== "body").join(".");
-      const msg = d.msg ?? "Invalid value";
-      return field ? `${field}: ${msg}` : msg;
-    });
-    if (parts.length) return parts.join("; ");
+const NETWORK_ERROR: ApiMessage = {
+  message: "Couldn't reach the server",
+  description: "Check your connection and try again.",
+};
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly description: string;
+  readonly detail: unknown;
+
+  constructor(
+    status: number,
+    message: string,
+    description: string,
+    detail?: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.description = description;
+    this.detail = detail;
   }
-  return fallback;
+}
+
+/** Normalise any thrown value to API-provided text (network text if no response). */
+export function toApiMessage(err: unknown): ApiMessage {
+  if (err instanceof ApiError) {
+    return { message: err.message, description: err.description };
+  }
+  return NETWORK_ERROR;
+}
+
+function str(v: unknown): string {
+  return typeof v === "string" ? v : "";
 }
 
 async function request<T>(
@@ -21,21 +47,38 @@ async function request<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      method,
+      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      NETWORK_ERROR.message,
+      NETWORK_ERROR.description,
+      "Network error",
+    );
+  }
   if (!res.ok) {
-    let message = `Request failed (${res.status})`;
+    let data: Record<string, unknown> = {};
     try {
-      const data = await res.json();
-      message = detailMessage(data?.detail, message);
+      const parsed: unknown = await res.json();
+      if (parsed && typeof parsed === "object") {
+        data = parsed as Record<string, unknown>;
+      }
     } catch {
-      // non-JSON error body; keep fallback message
+      // non-JSON error body
     }
-    throw new Error(message);
+    throw new ApiError(
+      res.status,
+      str(data.message) || res.statusText || `HTTP ${res.status}`,
+      str(data.description),
+      data.detail,
+    );
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();
@@ -54,6 +97,6 @@ export function apiPut<T>(path: string, body: unknown): Promise<T> {
   return request<T>("PUT", path, body);
 }
 
-export function apiDelete(path: string): Promise<void> {
-  return request<void>("DELETE", path);
+export function apiDelete(path: string): Promise<ApiMessage | undefined> {
+  return request<ApiMessage | undefined>("DELETE", path);
 }
