@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -12,9 +14,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AssetForm } from "@/components/forms/asset-form";
-import { apiGet } from "@/lib/api";
+import { apiDelete, apiGet } from "@/lib/api";
 import {
   ASSET_TYPE_LABELS,
+  type AssetRecord,
+  type AssetType,
   type Bond,
   type FixedDeposit,
   type MutualFund,
@@ -48,7 +52,7 @@ function EditForm({
   onSaved,
 }: {
   target: Target;
-  onSaved: () => void;
+  onSaved: (record: AssetRecord) => void;
 }) {
   const key = `${target.type}-${target.item.id}`;
   switch (target.type) {
@@ -100,46 +104,132 @@ function EditForm({
   }
 }
 
+function removeItem(
+  data: PortfolioResponse,
+  type: AssetType,
+  id: number,
+): PortfolioResponse {
+  return {
+    groups: data.groups
+      .map((g) => {
+        if (g.type !== type) return g;
+        const removed = g.items.find((i) => i.id === id);
+        if (!removed) return g;
+        const items = g.items.filter((i) => i.id !== id);
+        const invested = g.totals.invested - removed.invested;
+        const current = g.totals.current_value - removed.current_value;
+        const gain = current - invested;
+        return {
+          ...g,
+          items,
+          totals: {
+            invested,
+            current_value: current,
+            gain,
+            gain_pct: invested > 0 ? (gain / invested) * 100 : 0,
+          },
+        };
+      })
+      .filter((g) => g.items.length > 0),
+  };
+}
+
+function mergeItem(
+  data: PortfolioResponse,
+  type: AssetType,
+  saved: AssetRecord,
+): PortfolioResponse {
+  return {
+    groups: data.groups.map((g) =>
+      g.type !== type
+        ? g
+        : {
+            ...g,
+            items: g.items.map((i) =>
+              i.id === saved.id ? ({ ...i, ...saved } as PortfolioItem) : i,
+            ),
+          },
+    ),
+  };
+}
+
 export function Portfolio() {
   const [state, setState] = useState<State>({ status: "loading" });
-  const [attempt, setAttempt] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingIds, setUpdatingIds] = useState<ReadonlySet<number>>(
+    () => new Set<number>(),
+  );
   const [editing, setEditing] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
+  const requestId = useRef(0);
+  const hasData = useRef(false);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = useCallback(() => {
+    const id = ++requestId.current;
     apiGet<PortfolioResponse>("/portfolio")
       .then((data) => {
-        if (!cancelled) setState({ status: "ready", data });
+        if (id !== requestId.current) return;
+        hasData.current = true;
+        setState({ status: "ready", data });
+        setRefreshing(false);
+        setUpdatingIds(new Set<number>());
       })
       .catch((err: unknown) => {
-        if (!cancelled)
-          setState({
-            status: "error",
-            message:
-              err instanceof Error ? err.message : "Failed to load portfolio",
-          });
+        if (id !== requestId.current) return;
+        const message =
+          err instanceof Error ? err.message : "Failed to load portfolio";
+        setRefreshing(false);
+        setUpdatingIds(new Set<number>());
+        if (hasData.current) toast.error(message);
+        else setState({ status: "error", message });
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [attempt]);
+  }, []);
 
-  const refetch = useCallback(() => setAttempt((a) => a + 1), []);
+  useEffect(() => {
+    const counter = requestId;
+    load();
+    return () => {
+      counter.current++;
+    };
+  }, [load]);
+
+  function refresh() {
+    setRefreshing(true);
+    load();
+  }
 
   function retry() {
     setState({ status: "loading" });
-    refetch();
+    load();
   }
 
-  function handleSaved() {
+  function handleSaved(saved: AssetRecord) {
+    if (!editing || state.status !== "ready") return;
+    const { type } = editing;
     setEditing(null);
-    refetch();
+    setState({ status: "ready", data: mergeItem(state.data, type, saved) });
+    setUpdatingIds((prev) => new Set(prev).add(saved.id));
+    refresh();
   }
 
-  function handleDeleted() {
+  function handleDelete(target: Target) {
     setDeleting(null);
-    refetch();
+    if (state.status !== "ready") return;
+    const previous = state;
+    const name = itemName(target.item);
+    // Invalidate any in-flight refresh so a stale list can't reappear.
+    requestId.current++;
+    setState({
+      status: "ready",
+      data: removeItem(state.data, target.type, target.item.id),
+    });
+    apiDelete(`/assets/${target.type}/${target.item.id}`)
+      .then(() => toast.success(`Deleted ${name}`))
+      .catch((err: unknown) => {
+        setState(previous);
+        toast.error(err instanceof Error ? err.message : "Failed to delete");
+      })
+      .finally(refresh);
   }
 
   if (state.status === "loading") {
@@ -191,6 +281,7 @@ export function Portfolio() {
             columns={fdColumns}
             onEdit={onEdit}
             onDelete={onDelete}
+            updatingIds={updatingIds}
           />
         );
       case "rd":
@@ -202,6 +293,7 @@ export function Portfolio() {
             columns={rdColumns}
             onEdit={onEdit}
             onDelete={onDelete}
+            updatingIds={updatingIds}
           />
         );
       case "stock":
@@ -213,6 +305,7 @@ export function Portfolio() {
             columns={stockColumns}
             onEdit={onEdit}
             onDelete={onDelete}
+            updatingIds={updatingIds}
           />
         );
       case "bond":
@@ -224,6 +317,7 @@ export function Portfolio() {
             columns={bondColumns}
             onEdit={onEdit}
             onDelete={onDelete}
+            updatingIds={updatingIds}
           />
         );
       case "mf":
@@ -235,6 +329,7 @@ export function Portfolio() {
             columns={mfColumns}
             onEdit={onEdit}
             onDelete={onDelete}
+            updatingIds={updatingIds}
           />
         );
     }
@@ -242,6 +337,18 @@ export function Portfolio() {
 
   return (
     <div className="space-y-3">
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex h-4 items-center justify-end gap-1.5 text-xs text-muted-foreground"
+      >
+        {refreshing ? (
+          <>
+            <RefreshCw className="size-3 animate-spin" />
+            Refreshing
+          </>
+        ) : null}
+      </div>
       {groups.map(renderGroup)}
 
       <Dialog
@@ -266,7 +373,7 @@ export function Portfolio() {
       <DeleteDialog
         target={deleting}
         onClose={() => setDeleting(null)}
-        onDeleted={handleDeleted}
+        onConfirm={handleDelete}
       />
     </div>
   );

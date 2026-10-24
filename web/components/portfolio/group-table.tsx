@@ -37,6 +37,7 @@ interface Props<T extends ComputedFields & { id: number }> {
   columns: Column<T>[];
   onEdit: (item: T) => void;
   onDelete: (item: T) => void;
+  updatingIds?: ReadonlySet<number>;
 }
 
 const head =
@@ -80,6 +81,7 @@ export function GroupTable<T extends ComputedFields & { id: number }>({
   columns,
   onEdit,
   onDelete,
+  updatingIds,
 }: Props<T>) {
   const type: AssetType = group.type;
   const investedIdx = columns.findIndex((c) => c.header === "Invested");
@@ -136,7 +138,11 @@ export function GroupTable<T extends ComputedFields & { id: number }>({
             {items.map((item) => (
               <TableRow
                 key={item.id}
-                className="h-9 border-border/40 hover:bg-muted/30"
+                aria-busy={updatingIds?.has(item.id) || undefined}
+                className={cn(
+                  "h-9 border-border/40 transition-opacity hover:bg-muted/30",
+                  updatingIds?.has(item.id) && "animate-pulse opacity-50",
+                )}
               >
                 {columns.map((c, i) => (
                   <TableCell

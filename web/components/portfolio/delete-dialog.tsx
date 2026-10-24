@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -12,7 +10,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { apiDelete } from "@/lib/api";
 import type { AssetType, PortfolioItem } from "@/lib/types";
 import { itemName } from "./columns";
 
@@ -22,40 +19,23 @@ export interface DeleteTarget {
 }
 
 /**
- * Controlled confirm dialog. The confirm button is a plain button (not a
- * dialog "close" part), so the dialog stays mounted and pending while the
- * request is awaited; only afterwards do we close, toast and refetch.
+ * Controlled confirm dialog. Confirming closes immediately; the parent
+ * performs the (optimistic) delete.
  */
 export function DeleteDialog({
   target,
   onClose,
-  onDeleted,
+  onConfirm,
 }: {
   target: DeleteTarget | null;
   onClose: () => void;
-  onDeleted: () => void;
+  onConfirm: (target: DeleteTarget) => void;
 }) {
-  const [pending, setPending] = useState(false);
-
-  async function confirm() {
-    if (!target || pending) return;
-    setPending(true);
-    try {
-      await apiDelete(`/assets/${target.type}/${target.item.id}`);
-      toast.success(`Deleted ${itemName(target.item)}`);
-      onDeleted();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete");
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
     <AlertDialog
       open={target !== null}
       onOpenChange={(open) => {
-        if (!open && !pending) onClose();
+        if (!open) onClose();
       }}
     >
       <AlertDialogContent>
@@ -68,18 +48,17 @@ export function DeleteDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
           <Button
             type="button"
             variant="destructive"
-            disabled={pending}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              void confirm();
+              if (target) onConfirm(target);
             }}
           >
-            {pending ? "Deleting…" : "Delete"}
+            Delete
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
