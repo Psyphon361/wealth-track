@@ -1,0 +1,8 @@
+.venv
+.env
+.env.*
+!.env.example
+__pycache__
+alembic
+alembic.ini
+README.md

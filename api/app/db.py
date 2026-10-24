@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterator
 
 from sqlalchemy import Engine, create_engine
@@ -23,11 +24,16 @@ def get_engine() -> Engine:
             raise RuntimeError(
                 "DATABASE_URL is not set. Copy .env.example to .env and fill it in."
             )
+        # Vercel (Fluid compute) reuses instances across concurrent requests, so keep a
+        # modest pool: 5 for the concurrent portfolio queries plus a little headroom.
+        on_vercel = bool(os.environ.get("VERCEL"))
         _engine = create_engine(
             settings.database_url,
-            pool_size=10,
-            max_overflow=5,
+            pool_size=5 if on_vercel else 10,
+            max_overflow=3 if on_vercel else 5,
             pool_recycle=240,  # Neon drops idle connections; recycle instead of pre-ping round trips
+            # Neon's PgBouncer (transaction pooling) breaks psycopg 3 server-side prepared statements.
+            connect_args={"prepare_threshold": None},
         )
         SessionLocal.configure(bind=_engine)
     return _engine
