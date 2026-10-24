@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, portfolio
+from app.routers import assets, holdings, portfolio
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -58,10 +58,13 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         first = errors[0]
         label = _field_label(first.get("loc", ()))
         description = f"{label}: {first['msg']}" if label else str(first["msg"])
+    is_filter_query = request.method == "GET" and request.url.path == "/api/holdings"
     return JSONResponse(
         status_code=422,
         content={
-            "message": "Couldn't save — check the highlighted fields",
+            "message": "Invalid filters"
+            if is_filter_query
+            else "Couldn't save — check the highlighted fields",
             "description": description,
             "detail": jsonable_encoder(errors),
         },
@@ -133,5 +136,6 @@ def health() -> dict[str, str]:
 
 api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
+api_router.include_router(holdings.router)
 
 app.include_router(api_router)
