@@ -48,9 +48,11 @@ function toDefaults(r?: Stock): FormIn {
 export function StockForm({
   record,
   onSaved,
+  onCancel,
 }: {
   record?: Stock;
   onSaved?: (record: Stock) => void;
+  onCancel?: () => void;
 }) {
   const { saving, save } = useAssetSave("stock", record, onSaved);
   const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
@@ -63,7 +65,12 @@ export function StockForm({
   });
 
   return (
-    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+    <FormShell
+      onSubmit={onSubmit}
+      saving={saving}
+      editing={!!record}
+      onCancel={onCancel}
+    >
       <TextField control={control} name="name" label="Company name" required />
       <TextField control={control} name="symbol" label="Symbol" />
       <SelectField
@@ -84,7 +91,8 @@ export function StockForm({
       <TextField
         control={control}
         name="avg_buy_price"
-        label="Average buy price (₹)"
+        label="Average buy price"
+        adornment="₹"
         inputMode="decimal"
         required
       />

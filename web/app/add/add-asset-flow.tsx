@@ -2,56 +2,73 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { AssetForm } from "@/components/forms/asset-form";
-import { Field, FieldLabel } from "@/components/ui/field";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { ASSET_TYPE_LABELS, type AssetType } from "@/lib/types";
+  Landmark,
+  LineChart,
+  PieChart,
+  Repeat,
+  ScrollText,
+  type LucideIcon,
+} from "lucide-react";
+import { AssetForm } from "@/components/forms/asset-form";
+import { Card, CardContent } from "@/components/ui/card";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { AssetType } from "@/lib/types";
 
-const OPTIONS = (Object.keys(ASSET_TYPE_LABELS) as AssetType[]).map((value) => ({
-  value,
-  label: ASSET_TYPE_LABELS[value],
-}));
+const OPTIONS: { value: AssetType; label: string; icon: LucideIcon }[] = [
+  { value: "fd", label: "FD", icon: Landmark },
+  { value: "rd", label: "RD", icon: Repeat },
+  { value: "stock", label: "Stock", icon: LineChart },
+  { value: "bond", label: "Bond", icon: ScrollText },
+  { value: "mf", label: "MF", icon: PieChart },
+];
 
 export function AddAssetFlow({ initialType }: { initialType: AssetType }) {
   const router = useRouter();
   const [type, setType] = useState<AssetType>(initialType);
   const onSaved = () => router.push("/portfolio");
+  const onCancel = () => router.back();
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-6">
-      <h1 className="text-2xl font-semibold">Add asset</h1>
-      <Field>
-        <FieldLabel htmlFor="asset-type">Asset type</FieldLabel>
-        <Select
-          items={OPTIONS}
-          value={type}
-          onValueChange={(v) => {
-            if (v) setType(v as AssetType);
-          }}
-        >
-          <SelectTrigger id="asset-type" className="w-full sm:w-64">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Field>
-      {type === "fd" && <AssetForm type="fd" onSaved={onSaved} />}
-      {type === "rd" && <AssetForm type="rd" onSaved={onSaved} />}
-      {type === "stock" && <AssetForm type="stock" onSaved={onSaved} />}
-      {type === "bond" && <AssetForm type="bond" onSaved={onSaved} />}
-      {type === "mf" && <AssetForm type="mf" onSaved={onSaved} />}
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+      <ToggleGroup
+        aria-label="Asset type"
+        variant="outline"
+        size="sm"
+        spacing={1}
+        value={[type]}
+        onValueChange={(v) => {
+          const next = OPTIONS.find((o) => o.value === v[0]);
+          if (next) setType(next.value);
+        }}
+        className="flex-wrap"
+      >
+        {OPTIONS.map((o) => (
+          <ToggleGroupItem key={o.value} value={o.value} aria-label={o.label}>
+            <o.icon />
+            {o.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+      <Card size="sm">
+        <CardContent>
+          {type === "fd" && (
+            <AssetForm type="fd" onSaved={onSaved} onCancel={onCancel} />
+          )}
+          {type === "rd" && (
+            <AssetForm type="rd" onSaved={onSaved} onCancel={onCancel} />
+          )}
+          {type === "stock" && (
+            <AssetForm type="stock" onSaved={onSaved} onCancel={onCancel} />
+          )}
+          {type === "bond" && (
+            <AssetForm type="bond" onSaved={onSaved} onCancel={onCancel} />
+          )}
+          {type === "mf" && (
+            <AssetForm type="mf" onSaved={onSaved} onCancel={onCancel} />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

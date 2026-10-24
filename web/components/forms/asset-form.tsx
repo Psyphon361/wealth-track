@@ -14,16 +14,18 @@ import { MfForm } from "./mf-form";
 import { RdForm } from "./rd-form";
 import { StockForm } from "./stock-form";
 
+type Common<R> = {
+  record?: R;
+  onSaved?: (r: R) => void;
+  onCancel?: () => void;
+};
+
 export type AssetFormProps =
-  | { type: "fd"; record?: FixedDeposit; onSaved?: (r: FixedDeposit) => void }
-  | {
-      type: "rd";
-      record?: RecurringDeposit;
-      onSaved?: (r: RecurringDeposit) => void;
-    }
-  | { type: "stock"; record?: Stock; onSaved?: (r: Stock) => void }
-  | { type: "bond"; record?: Bond; onSaved?: (r: Bond) => void }
-  | { type: "mf"; record?: MutualFund; onSaved?: (r: MutualFund) => void };
+  | ({ type: "fd" } & Common<FixedDeposit>)
+  | ({ type: "rd" } & Common<RecurringDeposit>)
+  | ({ type: "stock" } & Common<Stock>)
+  | ({ type: "bond" } & Common<Bond>)
+  | ({ type: "mf" } & Common<MutualFund>);
 
 export type { AssetType };
 
@@ -34,14 +36,44 @@ export type { AssetType };
 export function AssetForm(props: AssetFormProps) {
   switch (props.type) {
     case "fd":
-      return <FdForm record={props.record} onSaved={props.onSaved} />;
+      return (
+        <FdForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
     case "rd":
-      return <RdForm record={props.record} onSaved={props.onSaved} />;
+      return (
+        <RdForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
     case "stock":
-      return <StockForm record={props.record} onSaved={props.onSaved} />;
+      return (
+        <StockForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
     case "bond":
-      return <BondForm record={props.record} onSaved={props.onSaved} />;
+      return (
+        <BondForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
     case "mf":
-      return <MfForm record={props.record} onSaved={props.onSaved} />;
+      return (
+        <MfForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
   }
 }

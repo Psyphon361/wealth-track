@@ -6,6 +6,7 @@ import {
   type FieldValues,
   type Path,
 } from "react-hook-form";
+import { cn } from "cn";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,13 +46,26 @@ function Label({
   required?: boolean;
 }) {
   return (
-    <FieldLabel htmlFor={id}>
+    <FieldLabel
+      htmlFor={id}
+      className="text-xs font-normal text-muted-foreground"
+    >
       {label}
       {required ? null : (
-        <span className="font-normal text-muted-foreground">(optional)</span>
+        <span className="text-[10px] tracking-wide text-muted-foreground/60 uppercase">
+          optional
+        </span>
       )}
     </FieldLabel>
   );
+}
+
+export function FormError({
+  error,
+}: {
+  error: { message?: string } | undefined;
+}) {
+  return <FieldError errors={[error]} className="text-xs text-destructive" />;
 }
 
 export function TextField<TIn extends FieldValues, TOut>({
@@ -61,10 +75,13 @@ export function TextField<TIn extends FieldValues, TOut>({
   required,
   inputMode,
   type = "text",
+  adornment,
 }: FieldProps<TIn, TOut> & {
   inputMode?: "decimal" | "numeric";
   type?: "text" | "date";
+  adornment?: "₹" | "%";
 }) {
+  const numeric = inputMode !== undefined;
   return (
     <Controller
       control={control}
@@ -72,18 +89,36 @@ export function TextField<TIn extends FieldValues, TOut>({
       render={({ field, fieldState }) => (
         <Field data-invalid={fieldState.invalid}>
           <Label id={name} label={label} required={required} />
-          <Input
-            id={name}
-            type={type}
-            inputMode={inputMode}
-            name={field.name}
-            ref={field.ref}
-            onBlur={field.onBlur}
-            onChange={field.onChange}
-            value={String(field.value ?? "")}
-            aria-invalid={fieldState.invalid}
-          />
-          <FieldError errors={[fieldState.error]} />
+          <div className="relative">
+            <Input
+              id={name}
+              type={type}
+              inputMode={inputMode}
+              name={field.name}
+              ref={field.ref}
+              onBlur={field.onBlur}
+              onChange={field.onChange}
+              value={String(field.value ?? "")}
+              aria-invalid={fieldState.invalid}
+              className={cn(
+                numeric && "num text-right",
+                adornment === "₹" && "pl-6",
+                adornment === "%" && "pr-6",
+              )}
+            />
+            {adornment ? (
+              <span
+                aria-hidden
+                className={cn(
+                  "pointer-events-none absolute top-1/2 -translate-y-1/2 text-xs text-muted-foreground",
+                  adornment === "₹" ? "left-2.5" : "right-2.5",
+                )}
+              >
+                {adornment}
+              </span>
+            ) : null}
+          </div>
+          <FormError error={fieldState.error} />
         </Field>
       )}
     />
@@ -125,7 +160,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
               ))}
             </SelectContent>
           </Select>
-          <FieldError errors={[fieldState.error]} />
+          <FormError error={fieldState.error} />
         </Field>
       )}
     />
@@ -151,8 +186,9 @@ export function NotesField<TIn extends FieldValues, TOut>({
             onChange={field.onChange}
             value={String(field.value ?? "")}
             aria-invalid={fieldState.invalid}
+            rows={2}
           />
-          <FieldError errors={[fieldState.error]} />
+          <FormError error={fieldState.error} />
         </Field>
       )}
     />

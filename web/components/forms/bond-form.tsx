@@ -65,9 +65,11 @@ function toDefaults(r?: Bond): FormIn {
 export function BondForm({
   record,
   onSaved,
+  onCancel,
 }: {
   record?: Bond;
   onSaved?: (record: Bond) => void;
+  onCancel?: () => void;
 }) {
   const { saving, save } = useAssetSave("bond", record, onSaved);
   const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
@@ -80,7 +82,12 @@ export function BondForm({
   });
 
   return (
-    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+    <FormShell
+      onSubmit={onSubmit}
+      saving={saving}
+      editing={!!record}
+      onCancel={onCancel}
+    >
       <TextField control={control} name="name" label="Bond name" required />
       <TextField control={control} name="isin" label="ISIN" />
       <TextField control={control} name="issuer" label="Issuer" required />
@@ -102,7 +109,8 @@ export function BondForm({
       <TextField
         control={control}
         name="purchase_price"
-        label="Purchase price per unit (₹)"
+        label="Purchase price per unit"
+        adornment="₹"
         inputMode="decimal"
         required
       />
@@ -116,7 +124,8 @@ export function BondForm({
       <TextField
         control={control}
         name="ytm"
-        label="Yield to maturity (% p.a.)"
+        label="Yield to maturity p.a."
+        adornment="%"
         inputMode="decimal"
         required
       />

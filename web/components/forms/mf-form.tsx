@@ -50,9 +50,11 @@ function toDefaults(r?: MutualFund): FormIn {
 export function MfForm({
   record,
   onSaved,
+  onCancel,
 }: {
   record?: MutualFund;
   onSaved?: (record: MutualFund) => void;
+  onCancel?: () => void;
 }) {
   const { saving, save } = useAssetSave("mf", record, onSaved);
   const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
@@ -65,7 +67,12 @@ export function MfForm({
   });
 
   return (
-    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+    <FormShell
+      onSubmit={onSubmit}
+      saving={saving}
+      editing={!!record}
+      onCancel={onCancel}
+    >
       <TextField
         control={control}
         name="scheme_name"
@@ -90,7 +97,8 @@ export function MfForm({
       <TextField
         control={control}
         name="avg_nav"
-        label="Average NAV (₹)"
+        label="Average NAV"
+        adornment="₹"
         inputMode="decimal"
         required
       />

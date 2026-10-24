@@ -64,9 +64,11 @@ function toDefaults(r?: RecurringDeposit): FormIn {
 export function RdForm({
   record,
   onSaved,
+  onCancel,
 }: {
   record?: RecurringDeposit;
   onSaved?: (record: RecurringDeposit) => void;
+  onCancel?: () => void;
 }) {
   const { saving, save } = useAssetSave("rd", record, onSaved);
   const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
@@ -79,20 +81,27 @@ export function RdForm({
   });
 
   return (
-    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+    <FormShell
+      onSubmit={onSubmit}
+      saving={saving}
+      editing={!!record}
+      onCancel={onCancel}
+    >
       <TextField control={control} name="bank" label="Bank" required />
       <TextField control={control} name="label" label="Label" />
       <TextField
         control={control}
         name="monthly_instalment"
-        label="Monthly instalment (₹)"
+        label="Monthly instalment"
+        adornment="₹"
         inputMode="decimal"
         required
       />
       <TextField
         control={control}
         name="rate"
-        label="Interest rate (% p.a.)"
+        label="Interest rate p.a."
+        adornment="%"
         inputMode="decimal"
         required
       />

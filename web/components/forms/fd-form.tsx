@@ -69,9 +69,11 @@ function toDefaults(r?: FixedDeposit): FormIn {
 export function FdForm({
   record,
   onSaved,
+  onCancel,
 }: {
   record?: FixedDeposit;
   onSaved?: (record: FixedDeposit) => void;
+  onCancel?: () => void;
 }) {
   const { saving, save } = useAssetSave("fd", record, onSaved);
   const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
@@ -84,20 +86,27 @@ export function FdForm({
   });
 
   return (
-    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+    <FormShell
+      onSubmit={onSubmit}
+      saving={saving}
+      editing={!!record}
+      onCancel={onCancel}
+    >
       <TextField control={control} name="bank" label="Bank" required />
       <TextField control={control} name="label" label="Label" />
       <TextField
         control={control}
         name="principal"
-        label="Principal (₹)"
+        label="Principal"
+        adornment="₹"
         inputMode="decimal"
         required
       />
       <TextField
         control={control}
         name="rate"
-        label="Interest rate (% p.a.)"
+        label="Interest rate p.a."
+        adornment="%"
         inputMode="decimal"
         required
       />

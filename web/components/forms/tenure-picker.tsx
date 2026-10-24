@@ -50,7 +50,9 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
 
   return (
     <Field data-invalid={messages.some(Boolean)}>
-      <FieldLabel>Tenure</FieldLabel>
+      <FieldLabel className="text-xs font-normal text-muted-foreground">
+        Tenure
+      </FieldLabel>
       <div className="grid grid-cols-3 gap-3">
         {UNITS.map((u) => {
           const name = names[u.key];
@@ -61,14 +63,14 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
               control={control}
               name={name}
               render={({ field }) => (
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1">
                   <Select
                     items={options}
                     value={String(field.value ?? "0")}
                     onValueChange={(v) => field.onChange(v ?? "0")}
                   >
                     <SelectTrigger
-                      className="w-full"
+                      className="num w-full"
                       aria-label={u.label}
                       onBlur={field.onBlur}
                     >
@@ -82,7 +84,7 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
                       ))}
                     </SelectContent>
                   </Select>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[11px] text-muted-foreground/70">
                     {u.label}
                   </span>
                 </div>
@@ -91,7 +93,7 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
           );
         })}
       </div>
-      <FieldError errors={messages} />
+      <FieldError errors={messages} className="text-xs text-destructive" />
     </Field>
   );
 }
