@@ -1,0 +1,159 @@
+import type { ReactNode } from "react";
+import { Badge } from "@/components/ui/badge";
+import { formatDate, formatINR, formatPct } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import {
+  BOND_TYPE_LABELS,
+  MF_CATEGORY_LABELS,
+  type Bond,
+  type ComputedFields,
+  type FixedDeposit,
+  type MutualFund,
+  type PortfolioItem,
+  type RecurringDeposit,
+  type Stock,
+} from "@/lib/types";
+
+export interface Column<T> {
+  header: string;
+  align?: "right";
+  cell: (r: T) => ReactNode;
+}
+
+export type Row<T> = T & ComputedFields;
+
+export function gainTone(gain: number): string {
+  return gain > 0
+    ? "text-green-600 dark:text-green-500"
+    : gain < 0
+      ? "text-red-600 dark:text-red-500"
+      : "text-foreground";
+}
+
+export function GainCell({ gain, pct }: { gain: number; pct: number }) {
+  const sign = gain > 0 ? "+" : "";
+  return (
+    <span className={cn("whitespace-nowrap", gainTone(gain))}>
+      {sign}
+      {formatINR(gain)}
+      <span className="block text-xs">
+        {sign}
+        {formatPct(pct)}
+      </span>
+    </span>
+  );
+}
+
+function Main({ main, sub }: { main: string; sub?: string | null }) {
+  return (
+    <div className="min-w-32">
+      <div className="font-medium">{main}</div>
+      {sub ? <div className="text-xs text-muted-foreground">{sub}</div> : null}
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: ComputedFields["status"] }) {
+  return (
+    <Badge variant={status === "active" ? "secondary" : "outline"}>
+      {status === "active" ? "Active" : "Matured"}
+    </Badge>
+  );
+}
+
+const nowrap = (s: string) => <span className="whitespace-nowrap">{s}</span>;
+
+function money<T extends ComputedFields>(): Column<T>[] {
+  return [
+    { header: "Invested", align: "right", cell: (r) => nowrap(formatINR(r.invested)) },
+    {
+      header: "Current",
+      align: "right",
+      cell: (r) => nowrap(formatINR(r.current_value)),
+    },
+    {
+      header: "Gain",
+      align: "right",
+      cell: (r) => <GainCell gain={r.gain} pct={r.gain_pct} />,
+    },
+  ];
+}
+
+function status<T extends ComputedFields>(): Column<T> {
+  return { header: "Status", cell: (r) => <StatusBadge status={r.status} /> };
+}
+
+export const fdColumns: Column<Row<FixedDeposit>>[] = [
+  { header: "Bank", cell: (r) => <Main main={r.bank} sub={r.label} /> },
+  { header: "Rate", align: "right", cell: (r) => formatPct(r.rate) },
+  { header: "Start", cell: (r) => nowrap(formatDate(r.start_date)) },
+  {
+    header: "Maturity",
+    cell: (r) => (r.maturity_date ? nowrap(formatDate(r.maturity_date)) : "—"),
+  },
+  ...money<Row<FixedDeposit>>(),
+  status<Row<FixedDeposit>>(),
+];
+
+export const rdColumns: Column<Row<RecurringDeposit>>[] = [
+  { header: "Bank", cell: (r) => <Main main={r.bank} sub={r.label} /> },
+  {
+    header: "Monthly instalment",
+    align: "right",
+    cell: (r) => nowrap(formatINR(r.monthly_instalment)),
+  },
+  { header: "Rate", align: "right", cell: (r) => formatPct(r.rate) },
+  {
+    header: "Maturity",
+    cell: (r) => (r.maturity_date ? nowrap(formatDate(r.maturity_date)) : "—"),
+  },
+  ...money<Row<RecurringDeposit>>(),
+  status<Row<RecurringDeposit>>(),
+];
+
+export const stockColumns: Column<Row<Stock>>[] = [
+  {
+    header: "Name",
+    cell: (r) => (
+      <Main
+        main={r.name}
+        sub={[r.symbol, r.exchange].filter(Boolean).join(" · ")}
+      />
+    ),
+  },
+  { header: "Qty", align: "right", cell: (r) => r.quantity },
+  {
+    header: "Avg price",
+    align: "right",
+    cell: (r) => nowrap(formatINR(r.avg_buy_price)),
+  },
+  { header: "Buy date", cell: (r) => nowrap(formatDate(r.buy_date)) },
+  ...money<Row<Stock>>(),
+];
+
+export const bondColumns: Column<Row<Bond>>[] = [
+  { header: "Name", cell: (r) => <Main main={r.name} sub={r.issuer} /> },
+  { header: "Type", cell: (r) => BOND_TYPE_LABELS[r.bond_type] ?? r.bond_type },
+  { header: "Qty", align: "right", cell: (r) => r.quantity },
+  { header: "YTM", align: "right", cell: (r) => formatPct(r.ytm) },
+  { header: "Maturity", cell: (r) => nowrap(formatDate(r.maturity_date)) },
+  ...money<Row<Bond>>(),
+  status<Row<Bond>>(),
+];
+
+export const mfColumns: Column<Row<MutualFund>>[] = [
+  { header: "Scheme", cell: (r) => <Main main={r.scheme_name} sub={r.platform} /> },
+  {
+    header: "Category",
+    cell: (r) => MF_CATEGORY_LABELS[r.category] ?? r.category,
+  },
+  { header: "Units", align: "right", cell: (r) => r.units },
+  { header: "Avg NAV", align: "right", cell: (r) => nowrap(formatINR(r.avg_nav)) },
+  ...money<Row<MutualFund>>(),
+];
+
+export function itemName(item: PortfolioItem): string {
+  if ("scheme_name" in item) return item.scheme_name;
+  if ("bank" in item) return item.label ? `${item.bank} (${item.label})` : item.bank;
+  return item.name;
+}
