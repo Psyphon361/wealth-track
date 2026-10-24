@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet } from "@/lib/api";
 import type { DashboardResponse } from "@/lib/types";
 import { SummaryCards } from "./summary-cards";
@@ -12,10 +13,6 @@ type State =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; data: DashboardResponse };
-
-function Skeleton({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />;
-}
 
 export function Dashboard() {
   const [state, setState] = useState<State>({ status: "loading" });
@@ -47,13 +44,13 @@ export function Dashboard() {
 
   if (state.status === "loading") {
     return (
-      <div className="space-y-6" aria-busy="true" aria-label="Loading…">
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+      <div className="space-y-3" aria-busy="true" aria-label="Loading…">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Skeleton className="h-[74px] rounded-xl" />
+          <Skeleton className="h-[74px] rounded-xl" />
+          <Skeleton className="h-[74px] rounded-xl" />
         </div>
-        <Skeleton className="h-64" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -85,7 +82,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       <SummaryCards data={data} />
       <HoldingsByType data={data} />
     </div>

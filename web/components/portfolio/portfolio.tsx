@@ -2,18 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -22,10 +12,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AssetForm } from "@/components/forms/asset-form";
-import { apiDelete, apiGet } from "@/lib/api";
+import { apiGet } from "@/lib/api";
 import {
   ASSET_TYPE_LABELS,
-  type AssetType,
   type Bond,
   type FixedDeposit,
   type MutualFund,
@@ -44,6 +33,7 @@ import {
   stockColumns,
   type Row,
 } from "./columns";
+import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
 import { GroupTable } from "./group-table";
 
 type State =
@@ -51,14 +41,7 @@ type State =
   | { status: "error"; message: string }
   | { status: "ready"; data: PortfolioResponse };
 
-interface Target {
-  type: AssetType;
-  item: PortfolioItem;
-}
-
-function Skeleton({ className }: { className: string }) {
-  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />;
-}
+type Target = DeleteTarget;
 
 function EditForm({
   target,
@@ -122,7 +105,6 @@ export function Portfolio() {
   const [attempt, setAttempt] = useState(0);
   const [editing, setEditing] = useState<Target | null>(null);
   const [deleting, setDeleting] = useState<Target | null>(null);
-  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,27 +137,16 @@ export function Portfolio() {
     refetch();
   }
 
-  async function confirmDelete() {
-    if (!deleting) return;
-    const target = deleting;
-    setBusy(true);
-    try {
-      await apiDelete(`/assets/${target.type}/${target.item.id}`);
-      toast.success(`Deleted ${itemName(target.item)}`);
-      setDeleting(null);
-      refetch();
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Failed to delete");
-    } finally {
-      setBusy(false);
-    }
+  function handleDeleted() {
+    setDeleting(null);
+    refetch();
   }
 
   if (state.status === "loading") {
     return (
-      <div className="space-y-6" aria-busy="true" aria-label="Loading…">
-        <Skeleton className="h-48" />
-        <Skeleton className="h-48" />
+      <div className="space-y-3" aria-busy="true" aria-label="Loading…">
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
       </div>
     );
   }
@@ -270,7 +241,7 @@ export function Portfolio() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-3">
       {groups.map(renderGroup)}
 
       <Dialog
@@ -292,33 +263,11 @@ export function Portfolio() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={deleting !== null}
-        onOpenChange={(open) => {
-          if (!open && !busy) setDeleting(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleting ? itemName(deleting.item) : ""}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This can&apos;t be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={confirmDelete}
-            >
-              {busy ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteDialog
+        target={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={handleDeleted}
+      />
     </div>
   );
 }

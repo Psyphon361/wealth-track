@@ -1,54 +1,51 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TrendingDown, TrendingUp } from "lucide-react";
+import { Card } from "@/components/ui/card";
 import { formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { DashboardResponse } from "@/lib/types";
+import { gainTone } from "@/components/portfolio/columns";
+
+function Label({ children }: { children: string }) {
+  return (
+    <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
+      {children}
+    </p>
+  );
+}
 
 export function SummaryCards({ data }: { data: DashboardResponse }) {
   const gain = data.total_gain;
-  const tone =
-    gain > 0
-      ? "text-green-600 dark:text-green-500"
-      : gain < 0
-        ? "text-red-600 dark:text-red-500"
-        : "text-foreground";
+  const tone = gainTone(gain);
   const sign = gain > 0 ? "+" : "";
+  const Icon = gain < 0 ? TrendingDown : TrendingUp;
 
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">Total invested</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-semibold">
-            {formatINR(data.total_invested)}
-          </p>
-        </CardContent>
+    <div className="grid gap-3 sm:grid-cols-3">
+      <Card size="sm" className="px-4">
+        <Label>Total invested</Label>
+        <p className="num text-xl font-semibold">
+          {formatINR(data.total_invested)}
+        </p>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">Current value</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-2xl font-semibold">
-            {formatINR(data.total_current)}
-          </p>
-        </CardContent>
+      <Card size="sm" className="px-4">
+        <Label>Current value</Label>
+        <p className="num text-xl font-semibold">
+          {formatINR(data.total_current)}
+        </p>
       </Card>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-muted-foreground">Gain / loss</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className={cn("text-2xl font-semibold", tone)}>
+      <Card size="sm" className="px-4">
+        <Label>Gain / loss</Label>
+        <div className="flex flex-wrap items-baseline gap-x-2">
+          <p className={cn("num text-xl font-semibold", tone)}>
             {sign}
             {formatINR(gain)}
           </p>
-          <p className={cn("text-sm", tone)}>
+          <p className={cn("num flex items-center gap-1 text-xs", tone)}>
+            {gain !== 0 ? <Icon className="size-3" aria-hidden /> : null}
             {sign}
             {formatPct(data.gain_pct)}
           </p>
-        </CardContent>
+        </div>
       </Card>
     </div>
   );
