@@ -58,7 +58,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         first = errors[0]
         label = _field_label(first.get("loc", ()))
         description = f"{label}: {first['msg']}" if label else str(first["msg"])
-    is_filter_query = request.method == "GET" and request.url.path == "/api/holdings"
+    is_filter_query = request.method == "GET" and request.url.path.startswith("/api/holdings/")
     return JSONResponse(
         status_code=422,
         content={

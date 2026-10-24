@@ -1,59 +1,29 @@
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel
 
 from app.schemas.summary import Amount
 
-AssetType = Literal["fd", "rd", "stock", "bond", "mf"]
-HoldingStatus = Literal["active", "matured"]
 
-
-class HoldingRow(BaseModel):
-    id: int
-    type: AssetType
-    name: str
-    detail: str | None = None
-    start_date: str | None = None
-    maturity_date: str | None = None
-    invested: Amount
-    current_value: Amount
-    gain: Amount
-    gain_pct: Amount
-    status: str | None = None
-    interest_received: Amount | None = None
-    record: dict[str, Any]
-
-
-class HoldingsTotals(BaseModel):
+class HoldingsSummary(BaseModel):
+    count: int
     invested: Amount
     current_value: Amount
     gain: Amount
     gain_pct: Amount
 
 
-class TypeFacet(BaseModel):
-    fd: int = 0
-    rd: int = 0
-    stock: int = 0
-    bond: int = 0
-    mf: int = 0
-
-
-class StatusFacet(BaseModel):
-    active: int = 0
-    matured: int = 0
-
-
-class HoldingsFacets(BaseModel):
-    type: TypeFacet
-    status: StatusFacet
+class FacetValue(BaseModel):
+    value: str
+    count: int
 
 
 class HoldingsResponse(BaseModel):
-    items: list[HoldingRow]
+    # Each item: the asset's Read-schema fields plus computed fields (as in /api/portfolio).
+    items: list[dict[str, Any]]
     total: int
     page: int
     page_size: int
     page_count: int
-    totals: HoldingsTotals
-    facets: HoldingsFacets
+    summary: HoldingsSummary
+    facets: dict[str, list[FacetValue]]

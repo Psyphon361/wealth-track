@@ -83,6 +83,14 @@ def load_groups(db: Session, today: date | None = None) -> list[dict[str, Any]]:
     return build_groups(records, today or date.today())
 
 
+def load_group(db: Session, slug: str, today: date | None = None) -> dict[str, Any]:
+    """Fetch and value a single asset type (one table query)."""
+    model = REGISTRY[slug][0]
+    records = list(db.scalars(select(model).order_by(model.id)).all())
+    groups = build_groups({slug: records}, today or date.today())
+    return next(g for g in groups if g["type"] == slug)
+
+
 def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
     total_invested = _q(sum((g["totals"]["invested"] for g in groups), Decimal("0")))
     total_current = _q(sum((g["totals"]["current_value"] for g in groups), Decimal("0")))
