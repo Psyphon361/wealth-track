@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -180,7 +180,7 @@ export function Portfolio() {
           err instanceof Error ? err.message : "Failed to load portfolio";
         setRefreshing(false);
         setUpdatingIds(new Set<number>());
-        if (hasData.current) toast.error(message);
+        if (hasData.current) notify.refreshFailed(err);
         else setState({ status: "error", message });
       });
   }, []);
@@ -224,10 +224,10 @@ export function Portfolio() {
       data: removeItem(state.data, target.type, target.item.id),
     });
     apiDelete(`/assets/${target.type}/${target.item.id}`)
-      .then(() => toast.success(`Deleted ${name}`))
+      .then(() => notify.deleted(name))
       .catch((err: unknown) => {
         setState(previous);
-        toast.error(err instanceof Error ? err.message : "Failed to delete");
+        notify.deleteFailed(err);
       })
       .finally(refresh);
   }

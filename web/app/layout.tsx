@@ -26,7 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full font-sans text-sm">
         {children}
-        <Toaster theme="dark" position="bottom-right" />
+        <Toaster />
       </body>
     </html>
   );

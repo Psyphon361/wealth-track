@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { notify, recordName } from "@/lib/notify";
 import { apiPost, apiPut } from "@/lib/api";
 import type { AssetType, RecordFields } from "@/lib/types";
 
@@ -14,14 +14,17 @@ export function useAssetSave<R extends RecordFields>(
 
   async function save(payload: unknown): Promise<void> {
     setSaving(true);
+    const toastId = notify.saving();
     try {
       const saved = record
         ? await apiPut<R>(`/assets/${type}/${record.id}`, payload)
         : await apiPost<R>(`/assets/${type}`, payload);
-      toast.success(record ? "Asset updated" : "Asset added");
+      const name = recordName(saved);
+      if (record) notify.saved(name, toastId);
+      else notify.added(name, toastId);
       onSaved?.(saved);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Something went wrong");
+      notify.saveFailed(e, toastId);
     } finally {
       setSaving(false);
     }
