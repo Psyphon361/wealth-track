@@ -1,8 +1,9 @@
+import math
 import re
 from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated, Literal, NoReturn
 
 from dateutil.relativedelta import relativedelta
 from pydantic import (
@@ -13,6 +14,7 @@ from pydantic import (
     Field,
     PlainSerializer,
     StringConstraints,
+    ValidationError,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
@@ -29,6 +31,12 @@ def _error(message: str) -> PydanticCustomError:
     return PydanticCustomError("value_error", message)
 
 
+def _positive(value):
+    if value <= 0:
+        raise _error("Must be greater than 0")
+    return value
+
+
 def _max_money(value: Decimal) -> Decimal:
     if value > MAX_MONEY:
         raise _error("Must be at most ₹100 crore")
@@ -38,6 +46,54 @@ def _max_money(value: Decimal) -> Decimal:
 def _max_quantity(value):
     if value > MAX_QUANTITY:
         raise _error("Must be at most 1 crore")
+    return value
+
+
+def _decimals(places: int) -> Callable[[Decimal], Decimal]:
+    def check(value: Decimal) -> Decimal:
+        if value.is_finite() and value.normalize().as_tuple().exponent < -places:
+            raise _error(f"Up to {places} decimal places allowed")
+        return value
+
+    return check
+
+
+def _whole_number(value: object) -> object:
+    fractional = False
+    if isinstance(value, float):
+        fractional = math.isfinite(value) and not value.is_integer()
+    elif isinstance(value, (str, Decimal)):
+        try:
+            number = Decimal(value)
+            fractional = number.is_finite() and number != number.to_integral_value()
+        except ArithmeticError:
+            pass
+    if fractional:
+        raise _error("Must be a whole number")
+    return value
+
+
+def _tenure_part(label: str, maximum: int) -> Callable[[int], int]:
+    def check(value: int) -> int:
+        if not 0 <= value <= maximum:
+            raise _error(f"{label} must be between 0 and {maximum}")
+        return value
+
+    return check
+
+
+def _max_length(maximum: int) -> Callable[[str | None], str | None]:
+    def check(value: str | None) -> str | None:
+        if value is not None and len(value) > maximum:
+            raise _error(f"Must be at most {maximum} characters")
+        return value
+
+    return check
+
+
+def _required(value: str) -> str:
+    if not value:
+        raise _error("Required")
     return value
 
 
@@ -56,14 +112,9 @@ def _not_far_future(value: date) -> date:
 
 def _percent(maximum: int, message: str) -> Callable[[Decimal], Decimal]:
     def check(value: Decimal) -> Decimal:
-        if (
-            not value.is_finite()
-            or value <= 0
-            or value > maximum
-            or value.normalize().as_tuple().exponent < -2
-        ):
+        if not value.is_finite() or value <= 0 or value > maximum:
             raise _error(message)
-        return value
+        return _decimals(2)(value)
 
     return check
 
@@ -74,23 +125,31 @@ Dec = Annotated[Decimal, Number]
 # Strict types (Create models).
 Money = Annotated[
     Decimal,
-    Field(gt=0, max_digits=14, decimal_places=2),
+    AfterValidator(_positive),
+    AfterValidator(_decimals(2)),
     AfterValidator(_max_money),
     Number,
 ]
 Nav = Annotated[
     Decimal,
-    Field(gt=0, max_digits=14, decimal_places=4),
+    AfterValidator(_positive),
+    AfterValidator(_decimals(4)),
     AfterValidator(_max_money),
     Number,
 ]
 Units = Annotated[
     Decimal,
-    Field(gt=0, max_digits=14, decimal_places=3),
+    AfterValidator(_positive),
+    AfterValidator(_decimals(3)),
     AfterValidator(_max_quantity),
     Number,
 ]
-Quantity = Annotated[int, Field(gt=0), AfterValidator(_max_quantity)]
+Quantity = Annotated[
+    int,
+    BeforeValidator(_whole_number),
+    AfterValidator(_positive),
+    AfterValidator(_max_quantity),
+]
 FdRate = Annotated[
     Decimal, AfterValidator(_percent(15, "Interest rate must be between 0 and 15%")), Number
 ]
@@ -122,15 +181,22 @@ def _pattern_check(pattern: str, message: str) -> Callable[[str | None], str | N
     return check
 
 
-Required = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+Required = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True),
+    AfterValidator(_required),
+    AfterValidator(_max_length(200)),
+]
 Optional = Annotated[
-    Annotated[str, StringConstraints(max_length=200)] | None,
+    str | None,
     BeforeValidator(_blank_to_none),
+    AfterValidator(_max_length(200)),
     Field(default=None),
 ]
 Notes = Annotated[
-    Annotated[str, StringConstraints(max_length=1000)] | None,
+    str | None,
     BeforeValidator(_blank_to_none),
+    AfterValidator(_max_length(1000)),
     Field(default=None),
 ]
 Symbol = Annotated[
@@ -172,21 +238,35 @@ class _Read(BaseModel):
     notes: str | None = None
 
 
+def _field_error(model: BaseModel, field: str, message: str) -> NoReturn:
+    """Raise a validation error whose `loc` points at `field`."""
+    raise ValidationError.from_exception_data(
+        type(model).__name__,
+        [
+            {
+                "type": _error(message),
+                "loc": (field,),
+                "input": getattr(model, field, None),
+            }
+        ],
+    )
+
+
 def _maturity(start: date, years: int, months: int, days: int) -> date:
     return start + relativedelta(years=years, months=months) + timedelta(days=days)
 
 
 class _Tenure(BaseModel):
-    tenure_years: Annotated[int, Field(ge=0, le=10)] = 0
-    tenure_months: Annotated[int, Field(ge=0, le=11)] = 0
-    tenure_days: Annotated[int, Field(ge=0, le=30)] = 0
+    tenure_years: Annotated[int, AfterValidator(_tenure_part("Years", 10))] = 0
+    tenure_months: Annotated[int, AfterValidator(_tenure_part("Months", 11))] = 0
+    tenure_days: Annotated[int, AfterValidator(_tenure_part("Days", 30))] = 0
 
     def _check_tenure(self, start: date, low: date, high: date, message: str) -> None:
         if self.tenure_years + self.tenure_months + self.tenure_days <= 0:
-            raise ValueError("total tenure must be greater than 0")
+            _field_error(self, "tenure_years", "Tenure must be greater than zero")
         maturity = _maturity(start, self.tenure_years, self.tenure_months, self.tenure_days)
         if not low <= maturity <= high:
-            raise _error(message)
+            _field_error(self, "tenure_years", message)
 
 
 # --- Fixed deposits ---------------------------------------------------------
@@ -213,7 +293,7 @@ class FixedDepositCreate(_Create, _Tenure, FixedDepositBase):
     @model_validator(mode="after")
     def _tenure_range(self):
         if self.payout_type == "payout" and self.compounding == "simple":
-            raise _error("Choose a payout frequency")
+            _field_error(self, "compounding", "Choose a payout frequency")
         start = self.start_date
         self._check_tenure(
             start,
@@ -318,11 +398,15 @@ class BondCreate(_Create, BondBase):
     @model_validator(mode="after")
     def _cross_field(self):
         if self.maturity_date <= self.purchase_date:
-            raise ValueError("maturity_date must be after purchase_date")
+            _field_error(self, "maturity_date", "Maturity date must be after the purchase date")
         if self.maturity_date > self.purchase_date + relativedelta(years=50):
-            raise _error("Maturity must be within 50 years of purchase")
+            _field_error(self, "maturity_date", "Maturity must be within 50 years of purchase")
         if not self.face_value * Decimal("0.5") <= self.purchase_price <= self.face_value * Decimal("1.5"):
-            raise _error("Purchase price should be between 50% and 150% of face value")
+            _field_error(
+                self,
+                "purchase_price",
+                "Purchase price should be between 50% and 150% of face value",
+            )
         return self
 
 

@@ -1,12 +1,36 @@
 import secrets
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import assets, portfolio
 
 app = FastAPI(title="Wealth Tracker API")
+
+# Pydantic default messages rewritten to match the web forms.
+_MESSAGES = {
+    "missing": "Required",
+    "int_parsing": "Enter a valid number",
+    "int_type": "Enter a valid number",
+    "int_from_float": "Enter a valid number",
+    "float_parsing": "Enter a valid number",
+    "float_type": "Enter a valid number",
+    "decimal_parsing": "Enter a valid number",
+    "decimal_type": "Enter a valid number",
+}
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for error in exc.errors():
+        message = _MESSAGES.get(error["type"])
+        errors.append({**error, "msg": message} if message else error)
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
 
 
 def require_api_key(request: Request) -> None:
