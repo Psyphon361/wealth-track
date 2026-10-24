@@ -4,3 +4,4 @@ sqlalchemy>=2.0
 alembic>=1.13
 psycopg[binary]>=3.2
 pydantic-settings>=2.4
+python-dateutil>=2.9
