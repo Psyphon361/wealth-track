@@ -1,0 +1,25 @@
+from datetime import date
+from decimal import Decimal
+
+from sqlalchemy import Numeric, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+from app.models.base import TimestampedMixin, str_enum
+
+
+class Bond(TimestampedMixin, Base):
+    __tablename__ = "bonds"
+
+    name: Mapped[str] = mapped_column(String(200))
+    isin: Mapped[str | None] = mapped_column(String(20))
+    issuer: Mapped[str] = mapped_column(String(200))
+    bond_type: Mapped[str] = mapped_column(
+        str_enum("government", "corporate", "tax_free", "sgb", "other", name="bond_type")
+    )
+    platform: Mapped[str | None] = mapped_column(String(200))
+    quantity: Mapped[int]
+    purchase_price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    purchase_date: Mapped[date]
+    ytm: Mapped[Decimal] = mapped_column(Numeric(6, 3))
+    maturity_date: Mapped[date]

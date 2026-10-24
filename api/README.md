@@ -11,6 +11,16 @@ uv pip install --python .venv/bin/python -r requirements.txt
 cp .env.example .env   # then fill in DATABASE_URL
 ```
 
+## Database migrations
+
+Run from `api/` once `.env` exists with `DATABASE_URL`:
+
+```sh
+.venv/bin/alembic upgrade head
+```
+
+Without a database, `.venv/bin/alembic upgrade head --sql` prints the DDL.
+
 ## Run
 
 ```sh
