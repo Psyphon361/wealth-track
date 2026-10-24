@@ -98,6 +98,7 @@ export function MfForm({
         name="units"
         label="Units"
         inputMode="decimal"
+        decimals={3}
         required
       />
       <TextField
@@ -106,6 +107,7 @@ export function MfForm({
         label="Average NAV"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <DateField

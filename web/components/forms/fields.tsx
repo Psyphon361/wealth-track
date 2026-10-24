@@ -1,6 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import {
+  caretAfterChars,
+  formatIndianNumber,
+  sanitizeNumber,
+} from "./number-format";
 import {
   Controller,
   type Control,
@@ -78,6 +83,70 @@ export function FormError({
   return <FieldError errors={[error]} className="text-xs text-destructive" />;
 }
 
+interface GroupedInputProps extends Omit<
+  React.ComponentProps<typeof Input>,
+  "value" | "onChange" | "type"
+> {
+  value: string;
+  onValueChange: (raw: string) => void;
+  decimals: number;
+}
+
+/** Text input showing Indian digit grouping; reports the plain number string. */
+function GroupedInput({
+  value,
+  onValueChange,
+  decimals,
+  onKeyDown,
+  ref,
+  ...props
+}: GroupedInputProps) {
+  const innerRef = useRef<HTMLInputElement | null>(null);
+  const caret = useRef<number | null>(null);
+  const display = formatIndianNumber(sanitizeNumber(value, decimals));
+
+  useLayoutEffect(() => {
+    const el = innerRef.current;
+    if (el && caret.current !== null && document.activeElement === el) {
+      el.setSelectionRange(caret.current, caret.current);
+    }
+    caret.current = null;
+  });
+
+  useImperativeHandle(ref, () => innerRef.current as HTMLInputElement);
+
+  return (
+    <Input
+      {...props}
+      ref={innerRef}
+      value={display}
+      onKeyDown={(e) => {
+        onKeyDown?.(e);
+        const el = e.currentTarget;
+        const pos = el.selectionStart;
+        if (pos === null || pos !== el.selectionEnd) return;
+        // Skip over a comma so Backspace/Delete removes the adjacent digit.
+        if (e.key === "Backspace" && el.value[pos - 1] === ",") {
+          el.setSelectionRange(pos - 1, pos - 1);
+        } else if (e.key === "Delete" && el.value[pos] === ",") {
+          el.setSelectionRange(pos + 1, pos + 1);
+        }
+      }}
+      onChange={(e) => {
+        const typed = e.target.value;
+        const pos = e.target.selectionStart ?? typed.length;
+        const kept = sanitizeNumber(typed.slice(0, pos), decimals).length;
+        const raw = sanitizeNumber(typed, decimals);
+        caret.current = caretAfterChars(
+          formatIndianNumber(raw),
+          Math.min(kept, raw.length),
+        );
+        onValueChange(raw);
+      }}
+    />
+  );
+}
+
 export function TextField<TIn extends FieldValues, TOut>({
   control,
   name,
@@ -85,9 +154,12 @@ export function TextField<TIn extends FieldValues, TOut>({
   required,
   inputMode,
   adornment,
+  decimals,
 }: FieldProps<TIn, TOut> & {
   inputMode?: "decimal" | "numeric";
   adornment?: "₹" | "%";
+  /** When set, groups digits Indian-style, allowing this many decimal places. */
+  decimals?: number;
 }) {
   const numeric = inputMode !== undefined;
   return (
@@ -98,21 +170,40 @@ export function TextField<TIn extends FieldValues, TOut>({
         <Field data-invalid={fieldState.invalid}>
           <Label id={name} label={label} required={required} />
           <div className="relative">
-            <Input
-              id={name}
-              inputMode={inputMode}
-              name={field.name}
-              ref={field.ref}
-              onBlur={field.onBlur}
-              onChange={field.onChange}
-              value={String(field.value ?? "")}
-              aria-invalid={fieldState.invalid}
-              className={cn(
-                numeric && "num text-right",
-                adornment === "₹" && "pl-6",
-                adornment === "%" && "pr-6",
-              )}
-            />
+            {decimals !== undefined ? (
+              <GroupedInput
+                id={name}
+                inputMode={inputMode}
+                name={field.name}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                onValueChange={field.onChange}
+                value={String(field.value ?? "")}
+                decimals={decimals}
+                aria-invalid={fieldState.invalid}
+                className={cn(
+                  "num text-right",
+                  adornment === "₹" && "pl-6",
+                  adornment === "%" && "pr-6",
+                )}
+              />
+            ) : (
+              <Input
+                id={name}
+                inputMode={inputMode}
+                name={field.name}
+                ref={field.ref}
+                onBlur={field.onBlur}
+                onChange={field.onChange}
+                value={String(field.value ?? "")}
+                aria-invalid={fieldState.invalid}
+                className={cn(
+                  numeric && "num text-right",
+                  adornment === "₹" && "pl-6",
+                  adornment === "%" && "pr-6",
+                )}
+              />
+            )}
             {adornment ? (
               <span
                 aria-hidden

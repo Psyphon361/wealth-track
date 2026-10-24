@@ -112,6 +112,7 @@ export function BondForm({
         name="quantity"
         label="Quantity"
         inputMode="numeric"
+        decimals={0}
         required
       />
       <TextField
@@ -120,6 +121,7 @@ export function BondForm({
         label="Face value per unit"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <TextField
@@ -128,6 +130,7 @@ export function BondForm({
         label="Purchase price per unit"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <DateField

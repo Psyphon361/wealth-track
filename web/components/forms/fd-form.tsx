@@ -106,6 +106,7 @@ export function FdForm({
         label="Principal"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <TextField

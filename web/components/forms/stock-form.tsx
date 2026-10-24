@@ -92,6 +92,7 @@ export function StockForm({
         name="quantity"
         label="Quantity"
         inputMode="numeric"
+        decimals={0}
         required
       />
       <TextField
@@ -100,6 +101,7 @@ export function StockForm({
         label="Average buy price"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <DateField control={control} name="buy_date" label="Buy date" required />

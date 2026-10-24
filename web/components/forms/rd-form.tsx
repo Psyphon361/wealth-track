@@ -101,6 +101,7 @@ export function RdForm({
         label="Monthly instalment"
         adornment="₹"
         inputMode="decimal"
+        decimals={2}
         required
       />
       <TextField
