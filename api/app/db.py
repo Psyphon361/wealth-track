@@ -23,7 +23,12 @@ def get_engine() -> Engine:
             raise RuntimeError(
                 "DATABASE_URL is not set. Copy .env.example to .env and fill it in."
             )
-        _engine = create_engine(settings.database_url, pool_pre_ping=True)
+        _engine = create_engine(
+            settings.database_url,
+            pool_size=10,
+            max_overflow=5,
+            pool_recycle=240,  # Neon drops idle connections; recycle instead of pre-ping round trips
+        )
         SessionLocal.configure(bind=_engine)
     return _engine
 

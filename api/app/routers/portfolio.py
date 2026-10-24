@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -67,10 +68,18 @@ def build_groups(records_by_type: dict[str, list[Any]], today: date) -> list[dic
 
 
 def load_groups(db: Session, today: date | None = None) -> list[dict[str, Any]]:
-    records = {
-        slug: list(db.scalars(select(model).order_by(model.id)).all())
-        for slug, (model, _c, _r) in REGISTRY.items()
-    }
+    bind = db.get_bind()
+
+    def fetch(model: Any) -> list[Any]:
+        # Own session per table so the 5 queries share one network round trip.
+        with Session(bind, autoflush=False, expire_on_commit=False) as session:
+            return list(session.scalars(select(model).order_by(model.id)).all())
+
+    with ThreadPoolExecutor(max_workers=len(REGISTRY)) as pool:
+        futures = {
+            slug: pool.submit(fetch, model) for slug, (model, _c, _r) in REGISTRY.items()
+        }
+        records = {slug: future.result() for slug, future in futures.items()}
     return build_groups(records, today or date.today())
 
 
