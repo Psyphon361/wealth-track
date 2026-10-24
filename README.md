@@ -26,3 +26,7 @@ Prerequisites: Node.js (with npm) and [uv](https://docs.astral.sh/uv/).
    - API: http://localhost:8000/api (docs at http://localhost:8000/docs)
 
 Code changes in `api/` and `web/` reload automatically.
+
+## Deploy
+
+Web and API deploy to Vercel, using the Neon production branch for the database. See [docs/DEPLOY.md](docs/DEPLOY.md) for the steps.
