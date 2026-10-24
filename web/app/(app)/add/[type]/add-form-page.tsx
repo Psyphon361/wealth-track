@@ -17,7 +17,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
   const onCancel = () => router.push("/add");
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4">
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
       <div className="flex flex-col items-start gap-3">
         <Link
           href="/add"
@@ -33,8 +33,8 @@ export function AddFormPage({ type }: { type: AssetType }) {
           <h2 className="text-base font-medium">{entry.title}</h2>
         </div>
       </div>
-      <Card size="sm">
-        <CardContent>
+      <Card className="p-5 md:p-8">
+        <CardContent className="px-0">
           {type === "fd" && (
             <AssetForm type="fd" onSaved={onSaved} onCancel={onCancel} />
           )}
