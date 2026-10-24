@@ -15,9 +15,9 @@ export function FormShell({
   children: React.ReactNode;
 }) {
   return (
-    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-8">
-      <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2">{children}</div>
-      <div className="flex items-center justify-end gap-2 border-t pt-5">
+    <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+      <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">{children}</div>
+      <div className="flex items-center justify-end gap-2 border-t pt-4">
         {onCancel ? (
           <Button
             type="button"

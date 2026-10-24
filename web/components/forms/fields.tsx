@@ -174,7 +174,7 @@ export function TextField<TIn extends FieldValues, TOut>({
       control={control}
       name={name}
       render={({ field, fieldState }) => (
-        <Field data-invalid={fieldState.invalid}>
+        <Field data-invalid={fieldState.invalid} className="gap-1.5">
           <Label id={name} label={label} required={required} />
           <div className="relative">
             {decimals !== undefined ? (
@@ -247,7 +247,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
       control={control}
       name={name}
       render={({ field, fieldState }) => (
-        <Field data-invalid={fieldState.invalid}>
+        <Field data-invalid={fieldState.invalid} className="gap-1.5">
           <Label id={name} label={label} required={required} />
           <Select
             items={options}
@@ -286,7 +286,7 @@ export function NotesField<TIn extends FieldValues, TOut>({
       control={control}
       name={name}
       render={({ field, fieldState }) => (
-        <Field data-invalid={fieldState.invalid}>
+        <Field data-invalid={fieldState.invalid} className="gap-1.5">
           <Label id={name} label="Notes" />
           <Textarea
             id={name}
@@ -349,7 +349,7 @@ export function DateField<TIn extends FieldValues, TOut>({
         const value = String(field.value ?? "");
         const selected = parseISODate(value);
         return (
-          <Field data-invalid={fieldState.invalid}>
+          <Field data-invalid={fieldState.invalid} className="gap-1.5">
             <Label id={name} label={label} required={required} />
             <Popover open={open} onOpenChange={setOpen}>
               <PopoverTrigger
