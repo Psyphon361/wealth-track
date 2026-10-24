@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -36,6 +37,12 @@ export function Nav() {
             );
           })}
         </div>
+        <Link
+          href="/add"
+          className={cn(buttonVariants({ size: "sm" }), "ml-auto")}
+        >
+          Add asset
+        </Link>
       </nav>
     </header>
   );

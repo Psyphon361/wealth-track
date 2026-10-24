@@ -1,0 +1,135 @@
+"use client";
+
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { BOND_TYPE_LABELS, type Bond, type BondInput } from "@/lib/types";
+import { FormShell } from "./form-shell";
+import { NotesField, SelectField, TextField, toOptions } from "./fields";
+import {
+  bondTypeEnum,
+  dateString,
+  optionalText,
+  positiveInteger,
+  positiveNumber,
+  requiredText,
+} from "./schema";
+import { useAssetSave } from "./use-asset-form";
+
+const schema = z
+  .object({
+    name: requiredText,
+    isin: optionalText,
+    issuer: requiredText,
+    bond_type: bondTypeEnum,
+    platform: optionalText,
+    quantity: positiveInteger,
+    purchase_price: positiveNumber,
+    purchase_date: dateString,
+    ytm: positiveNumber,
+    maturity_date: dateString,
+    notes: optionalText,
+  })
+  .refine(
+    (v) =>
+      v.purchase_date === "" ||
+      v.maturity_date === "" ||
+      v.maturity_date > v.purchase_date,
+    {
+      message: "Maturity date must be after the purchase date",
+      path: ["maturity_date"],
+    },
+  );
+
+type FormIn = z.input<typeof schema>;
+type FormOut = z.output<typeof schema>;
+
+const BOND_TYPE_OPTIONS = toOptions(BOND_TYPE_LABELS);
+
+function toDefaults(r?: Bond): FormIn {
+  return {
+    name: r?.name ?? "",
+    isin: r?.isin ?? "",
+    issuer: r?.issuer ?? "",
+    bond_type: r?.bond_type ?? "government",
+    platform: r?.platform ?? "",
+    quantity: r ? String(r.quantity) : "",
+    purchase_price: r ? String(r.purchase_price) : "",
+    purchase_date: r?.purchase_date ?? "",
+    ytm: r ? String(r.ytm) : "",
+    maturity_date: r?.maturity_date ?? "",
+    notes: r?.notes ?? "",
+  };
+}
+
+export function BondForm({
+  record,
+  onSaved,
+}: {
+  record?: Bond;
+  onSaved?: (record: Bond) => void;
+}) {
+  const { saving, save } = useAssetSave("bond", record, onSaved);
+  const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
+    resolver: zodResolver(schema),
+    defaultValues: toDefaults(record),
+  });
+  const onSubmit = handleSubmit((values) => {
+    const payload: BondInput = values;
+    return save(payload);
+  });
+
+  return (
+    <FormShell onSubmit={onSubmit} saving={saving} editing={!!record}>
+      <TextField control={control} name="name" label="Bond name" required />
+      <TextField control={control} name="isin" label="ISIN" />
+      <TextField control={control} name="issuer" label="Issuer" required />
+      <SelectField
+        control={control}
+        name="bond_type"
+        label="Bond type"
+        options={BOND_TYPE_OPTIONS}
+        required
+      />
+      <TextField control={control} name="platform" label="Platform" />
+      <TextField
+        control={control}
+        name="quantity"
+        label="Quantity"
+        inputMode="numeric"
+        required
+      />
+      <TextField
+        control={control}
+        name="purchase_price"
+        label="Purchase price per unit (₹)"
+        inputMode="decimal"
+        required
+      />
+      <TextField
+        control={control}
+        name="purchase_date"
+        label="Purchase date"
+        type="date"
+        required
+      />
+      <TextField
+        control={control}
+        name="ytm"
+        label="Yield to maturity (% p.a.)"
+        inputMode="decimal"
+        required
+      />
+      <TextField
+        control={control}
+        name="maturity_date"
+        label="Maturity date"
+        type="date"
+        required
+      />
+      <div className="sm:col-span-2">
+        <NotesField control={control} name="notes" />
+      </div>
+    </FormShell>
+  );
+}
