@@ -31,7 +31,10 @@ Removed by user decision: FD maturity amount & status inputs, stock current pric
   - Hybrid → hybrid
   - Index Funds/Other ETFs → index
   - else → other
-- **Planned next phase (not built), `mf_nav_history`:** global market data with no user_id. Daily NAVs only for schemes held by at least one holding; backfill from mfapi.in when a scheme is first held, from its purchase date; retention from the earliest purchase date of that scheme, capped at 10 years; prune schemes nobody has held for 90 days.
+- **`mf_nav_history`** (scheme_code FK, nav_date, nav; PK scheme_code + nav_date) and **`mf_nav_history_sync`** (scheme_code PK, first_date, last_date, fetched_at). Global market data with no user_id.
+- **Filled on demand:** the first lookup for a scheme fetches its full history from mfapi.in (`https://api.mfapi.in/mf/{code}`), stores the last 10 years, and records the sync. It refetches at most once per 24 h.
+- **Daily cron:** also appends today's NAV for schemes referenced by any holding's `scheme_code`.
+- **Not built yet:** pruning of schemes nobody holds, and NAV-based valuation.
 
 ## 2. Validation rules (API and forms, identical wording)
 
@@ -81,6 +84,11 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET /health` → `{"status":"ok"}` (no API key needed).
 - `GET /master/mf?q=&limit=20` → active schemes from `mf_schemes` with nav and nav_date. `q` ≥ 2 characters; every token must match; ranked by trigram similarity.
 - `GET /master/mf/{scheme_code}` → one scheme (with nav and nav_date); 404 "Scheme not found".
+- `GET /master/mf/{scheme_code}/nav?date=YYYY-MM-DD` → `{scheme_code, requested_date, nav_date, nav, source: latest|history}`. Returns the last NAV on or before the date (weekends and holidays resolve to the previous trading day).
+  - 404 "Scheme not found"
+  - 404 "NAV not available" / "No NAV published on or before this date." (also for dates older than 10 years)
+  - 422 "Invalid date" ("Date: Date cannot be in the future")
+  - 502 "Couldn't fetch NAV history"
 - `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
 - `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
@@ -125,6 +133,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
+- MF Average NAV auto-fill (`components/forms/use-nav-autofill.ts`): once a scheme and purchase date are set, Average NAV fills from `/api/master/mf/{scheme_code}/nav` with the hint "NAV on {date} · AMFI". It stays editable and never overwrites a value the user typed. Errors show the API message as a muted hint.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.
 - Toasts (sonner, themed): title = API `message`, description = API `description`.
 - Theme: dark only, zinc palette, emerald primary, Geist Sans/Mono, root font-size 110%, sidebar 13.5rem.

@@ -14,6 +14,7 @@
 - Portfolio redesign: per-asset tabs and grids (/api/holdings/{type}) with type-specific columns/filters, search, sorting, 10-row paging, column visibility saved per type, tab transition animation.
 - Deployment prep: Vercel-ready API (`api/vercel.json`, region iad1, API key), password gate + same-origin proxy in web, `docs/DEPLOY.md`.
 - MF master data from AMFI (mf_schemes + mf_nav_latest, daily cron, scheme picker in MF form).
+- Historical NAV lookup (mf_nav_history via mfapi.in, cached) and Average NAV auto-fill in the MF form.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -23,7 +24,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - GitHub: https://github.com/Psyphon361/wealth-track (`origin`, branch `main`). Check `git log origin/main..main` for unpushed commits.
 - Vercel: user created two projects (root `api/` and root `web/`). Web is live at https://wealth-track-nu.vercel.app — login gate works (unauthenticated `/api/dashboard` → 401, `/` → redirect to /login).
 - **OPEN BUG (prod)**: after login, `GET /api/dashboard` on the web app returns **404**. Since the proxy forwarded it, the upstream (`API_URL`) answered 404. Most likely `API_URL` in the web project is wrong (ends with `/api`, points to a deployment-specific/old URL, or the API project failed to deploy). Next step: get the API project's production URL from the user, `curl <api>/api/health` (expect ok) and `<api>/api/dashboard` (expect 401 without key), then fix `API_URL` (no `/api`, no trailing slash) and redeploy web.
-- **Production DB**: Neon `production` branch. Migrations must be at head `0004` — ask the user to run `cd api && DATABASE_URL='<prod direct url>' .venv/bin/alembic upgrade head` and confirm `alembic current` = `0004 (head)`. Not confirmed yet.
+- **Production DB**: Neon `production` branch. Migrations must be at head `0005` — ask the user to run `cd api && DATABASE_URL='<prod direct url>' .venv/bin/alembic upgrade head` and confirm `alembic current` = `0005 (head)`. Not confirmed yet.
 
 ## Data
 
@@ -32,7 +33,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Known gaps / small follow-ups
 
 - Holdings details page (eye icon) not built yet.
-- Production: set CRON_SECRET, run migration 0004 and the first AMFI import.
+- Production: set CRON_SECRET and GitHub secrets, then run migrations 0004–0005 (via the API deploy workflow) and the first AMFI import.
 - After saving, the add form returns to /portfolio (first asset type), not to the saved type's tab.
 - Dev DB has 25 seeded [TEST] rows (notes "dummy seed 2026-10-25").
 
@@ -44,7 +45,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Deferred (not started)
 
 - Live prices/NAV for stocks, MF, bonds (current value = invested until then).
-- NAV-based MF valuation + mf_nav_history (see SPEC §1).
+- NAV-based MF valuation; pruning of unheld schemes' history (see SPEC §1).
 - SIP support for MF; transaction history (each holding is one record).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only), multi-user auth.
 - Matured holdings view (pinned for later): matured items are currently listed in grids but excluded from totals.
