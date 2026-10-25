@@ -1,7 +1,8 @@
 from app.models.bond import Bond
 from app.models.fixed_deposit import FixedDeposit
+from app.models.mf_scheme import MFNavLatest, MFScheme
 from app.models.mutual_fund import MutualFund
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.stock import Stock
 
-__all__ = ["Bond", "FixedDeposit", "MutualFund", "RecurringDeposit", "Stock"]
+__all__ = ["Bond", "FixedDeposit", "MFNavLatest", "MFScheme", "MutualFund", "RecurringDeposit", "Stock"]

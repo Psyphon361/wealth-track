@@ -8,8 +8,9 @@ class Settings(BaseSettings):
     database_url: str | None = None
     cors_origins: list[str] = ["http://localhost:3000"]
     api_key: str | None = None
+    cron_secret: str | None = None
 
-    @field_validator("api_key")
+    @field_validator("api_key", "cron_secret")
     @classmethod
     def empty_api_key_is_none(cls, value: str | None) -> str | None:
         return value or None

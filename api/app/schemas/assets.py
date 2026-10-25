@@ -419,6 +419,7 @@ class BondRead(BondBase, _Read):
 
 class MutualFundBase(BaseModel):
     scheme_name: Required
+    scheme_code: int | None = None
     platform: Optional
     category: Literal["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
     units: Dec

@@ -1,0 +1,62 @@
+Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date
+
+Open Ended Schemes(Debt Scheme - Liquid Fund)
+
+Bajaj Finserv Mutual Fund
+
+151835;-;INF0QA701029;Bajaj Finserv Liquid Fund;Direct Plan;Daily - IDCW;1034.6939;25-Oct-2026
+151838;INF0QA701078;INF0QA701045;Bajaj Finserv Liquid Fund;Direct Plan;Fortnightly - IDCW;1035.2842;25-Oct-2026
+151833;INF0QA701011;-;Bajaj Finserv Liquid Fund;Direct Plan;Growth;1247.9343;25-Oct-2026
+
+Open Ended Schemes(Debt Scheme - Overnight Fund)
+
+Axis Mutual Fund
+
+120001;INF846K01AA1;-;Axis Overnight Fund;Regular Plan;Growth Option;1301.5521;23-Oct-2026
+
+Open Ended Schemes(Equity Scheme - ELSS)
+
+Aditya Birla Sun Life Mutual Fund
+
+119544;INF209K01UN8;-;Aditya Birla Sun Life ELSS Tax Saver Fund;Direct Plan;GROWTH;63.77;23-Oct-2026
+119543;INF209K01P23;INF209K01UM0;Aditya Birla Sun Life ELSS Tax Saver Fund;Direct Plan;IDCW;400.80;23-Oct-2026
+
+Open Ended Schemes(Equity Schemes - Flexi Cap Fund)
+
+Parag Parikh Mutual Fund
+
+122639;INF879O01027;-;Parag Parikh Flexi Cap Fund;Direct Plan;Growth;88.9695;23-Oct-2026
+153964;-;INF879O01308;Parag Parikh Flexi Cap Fund;Direct Plan;Monthly IDCW Payout;88.9699;23-Oct-2026
+122640;INF879O01019;-;Parag Parikh Flexi Cap Fund;Regular Plan;Growth;80.9965;23-Oct-2026
+
+Open Ended Schemes(Other Scheme - Index Funds)
+
+HDFC Mutual Fund
+
+140001;INF179KC1AA1;-;HDFC Nifty 50 Index Fund;Direct Plan;GROWTH;210.1234;23-Oct-2026
+140002;INF179KC1AB9;INF179KC1AC7;HDFC Nifty 50 Index Fund;Regular Plan;IDCW (Income Distribution CUM Capital Withdrawal);150.5;23-Oct-2026
+
+Open Ended Schemes(Debt Scheme - Corporate Bond Fund)
+
+ICICI Prudential Mutual Fund
+
+130947;INF109KA1I84;-;ICICI Prudential Corporate Bond Fund;;;14.9782;24-Apr-2020
+138334;INF223J01WF3;-;PGIM India Corporate Bond Fund - Direct Plan - Growth;;;13.5688;24-May-2019
+120697;INF109K017B9;INF109K018B7;ICICI Prudential Corporate Bond Fund;Direct Plan;Monthly IDCW;10.1512;23-Oct-2026
+120698;INF109K017C7;-;ICICI Prudential Corporate Bond Fund;Regular Plan;QUARTERLY IDCW Option;10.2512;23-Oct-2026
+120699;INF109K017D5;-;ICICI Prudential Corporate Bond Fund;Regular Plan;Half Yearly IDCW;10.3512;23-Oct-2026
+120700;INF109K017E3;-;ICICI Prudential Corporate Bond Fund;Regular Plan;Annual IDCW Option;10.4512;23-Oct-2026
+120701;INF109K017F0;-;ICICI Prudential Corporate Bond Fund;Regular Plan;Weekly IDCW;10.5512;23-Oct-2026
+
+Close Ended Schemes(ELSS)
+
+Bank of India Mutual Fund
+
+141950;INF761K01DS3;-;BANK OF INDIA MID CAP TAX FUND SERIES 1;Direct Plan;Growth;28.59;23-Oct-2026
+141951;INF761K01DT1;-;BANK OF INDIA MID CAP TAX FUND SERIES 1;Direct Plan;Bonus;28.59;23-Oct-2026
+
+Interval Fund Schemes(Income)
+
+ICICI Prudential Mutual Fund
+
+106290;INF109K01KM3;-;ICICI Prudential Interval Fund - Annual Interval Plan - I;;;10.7894;26-Sep-2017

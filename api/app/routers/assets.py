@@ -7,6 +7,7 @@ from app import schemas
 from app.db import Base, get_db
 from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock
 from app.schemas.messages import Outcome
+from app.services import amfi
 
 router = APIRouter(prefix="/assets")
 
@@ -54,13 +55,20 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         data = read.model_validate(obj).model_dump()
         return result(**data, message=message, description=_holding_name(obj))
 
+    def _values(db: Session, body) -> dict:
+        """Body as column values; a linked AMFI scheme overwrites scheme_name (snapshot)."""
+        data = body.model_dump()
+        if data.get("scheme_code") is not None:
+            data["scheme_name"] = amfi.require_scheme(db, data["scheme_code"]).name[:200]
+        return data
+
     @sub.get("", response_model=list[read])
     def list_items(db: Session = Depends(get_db)):
         return db.scalars(select(model).order_by(model.id)).all()
 
     @sub.post("", response_model=result, status_code=201)
     def create_item(body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
-        obj = model(**body.model_dump())
+        obj = model(**_values(db, body))
         db.add(obj)
         db.commit()
         db.refresh(obj)
@@ -73,7 +81,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     @sub.put("/{item_id}", response_model=result)
     def replace_item(item_id: int, body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
         obj = _get_or_404(db, model, item_id)
-        for key, value in body.model_dump().items():
+        for key, value in _values(db, body).items():
             setattr(obj, key, value)
         db.commit()
         db.refresh(obj)

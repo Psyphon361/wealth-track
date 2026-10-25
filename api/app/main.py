@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, holdings, portfolio
+from app.routers import assets, cron, holdings, master, portfolio
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -82,6 +82,9 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException):
         if slug in ASSET_LABELS:
             message = f"{ASSET_LABELS[slug]} not found"
             description = "It may have been deleted already."
+        elif parts[:3] == ["api", "master", "mf"] and len(parts) == 4:
+            message = "Scheme not found"
+            description = "It isn't in the AMFI scheme list."
         else:
             message = "Not found"
             description = "The requested resource doesn't exist."
@@ -137,5 +140,8 @@ def health() -> dict[str, str]:
 api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
 api_router.include_router(holdings.router)
+api_router.include_router(master.router)
 
 app.include_router(api_router)
+# Not behind X-API-Key: authenticated by CRON_SECRET instead.
+app.include_router(cron.router, prefix="/api")

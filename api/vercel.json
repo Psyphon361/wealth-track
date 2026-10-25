@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["iad1"],
+  "crons": [{ "path": "/api/cron/amfi", "schedule": "30 16 * * *" }],
   "functions": {
     "app/main.py": {
       "excludeFiles": "{.venv/**,alembic/**,alembic.ini,.env,.env.example,README.md,tests/**,requirements-dev.txt,pyproject.toml,.pytest_cache/**,**/__pycache__/**}"
