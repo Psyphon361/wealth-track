@@ -39,3 +39,40 @@ def test_bond_one_year():
     bond = make_bond()
     r = valuation.value_bond(bond, date(2026, 10, 24))
     assert r["current_value"] == Decimal("10800.00")
+
+
+def _mf(**kw):
+    from types import SimpleNamespace
+
+    fields = dict(units=Decimal("10"), avg_nav=Decimal("50"), scheme_code=123)
+    fields.update(kw)
+    return SimpleNamespace(**fields)
+
+
+def test_mf_valued_at_latest_nav():
+    r = valuation.value_mf(
+        _mf(), date(2026, 10, 25), nav=Decimal("62.3456"), nav_date=date(2026, 10, 24)
+    )
+    assert r["invested"] == Decimal("500.00")
+    assert r["current_value"] == Decimal("623.46")
+    assert r["gain"] == Decimal("123.46")
+    assert r["gain_pct"] == Decimal("24.69")
+    assert r["nav"] == Decimal("62.3456")
+    assert r["nav_date"] == date(2026, 10, 24)
+    assert r["status"] == "active"
+
+
+def test_mf_without_nav_falls_back_to_invested():
+    r = valuation.value_mf(_mf(), date(2026, 10, 25))
+    assert r["current_value"] == Decimal("500.00")
+    assert r["gain"] == Decimal("0.00")
+    assert r["nav"] is None and r["nav_date"] is None
+
+
+def test_mf_without_scheme_code_ignores_nav():
+    r = valuation.value_mf(
+        _mf(scheme_code=None), date(2026, 10, 25),
+        nav=Decimal("62.3456"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert r["current_value"] == Decimal("500.00")
+    assert r["nav"] is None

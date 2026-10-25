@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.models.mf_scheme import MFNavLatest
+from app.models.mutual_fund import MutualFund
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
 from app.services import valuation
@@ -46,11 +48,31 @@ def _item(record: Any, read_schema: type, computed: dict[str, Any]) -> dict[str,
     return item
 
 
-def build_groups(records_by_type: dict[str, list[Any]], today: date) -> list[dict[str, Any]]:
+def _fetch_navs(bind: Any) -> dict[int, tuple[Decimal, date]]:
+    """Latest NAV for only the schemes held, in a single query."""
+    held = select(MutualFund.scheme_code).where(MutualFund.scheme_code.is_not(None))
+    stmt = select(MFNavLatest).where(MFNavLatest.scheme_code.in_(held))
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return {r.scheme_code: (r.nav, r.nav_date) for r in session.scalars(stmt).all()}
+
+
+def _value(slug: str, record: Any, today: date, navs: dict[int, tuple[Decimal, date]]):
+    if slug == "mf":
+        nav, nav_date = navs.get(record.scheme_code, (None, None))
+        return valuation.value_mf(record, today, nav=nav, nav_date=nav_date)
+    return _VALUERS[slug](record, today)
+
+
+def build_groups(
+    records_by_type: dict[str, list[Any]],
+    today: date,
+    navs: dict[int, tuple[Decimal, date]] | None = None,
+) -> list[dict[str, Any]]:
     """Value every holding; returns the 5 groups in fixed order."""
+    navs = navs or {}
     groups = []
     for slug, (_model, _create, read_schema) in REGISTRY.items():
-        computed = [_VALUERS[slug](r, today) for r in records_by_type.get(slug, [])]
+        computed = [_value(slug, r, today, navs) for r in records_by_type.get(slug, [])]
         items = [
             _item(r, read_schema, c)
             for r, c in zip(records_by_type.get(slug, []), computed, strict=True)
@@ -77,19 +99,28 @@ def load_groups(db: Session, today: date | None = None) -> list[dict[str, Any]]:
         with Session(bind, autoflush=False, expire_on_commit=False) as session:
             return list(session.scalars(select(model).order_by(model.id)).all())
 
-    with ThreadPoolExecutor(max_workers=len(REGISTRY)) as pool:
+    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 1) as pool:
         futures = {
             slug: pool.submit(fetch, model) for slug, (model, _c, _r) in REGISTRY.items()
         }
+        nav_future = pool.submit(_fetch_navs, bind)
         records = {slug: future.result() for slug, future in futures.items()}
-    return build_groups(records, today or date.today())
+        navs = nav_future.result()
+    return build_groups(records, today or date.today(), navs)
 
 
 def load_group(db: Session, slug: str, today: date | None = None) -> dict[str, Any]:
-    """Fetch and value a single asset type (one table query)."""
+    """Fetch and value a single asset type (MF adds one NAV query, run concurrently)."""
     model = REGISTRY[slug][0]
-    records = list(db.scalars(select(model).order_by(model.id)).all())
-    groups = build_groups({slug: records}, today or date.today())
+    if slug == "mf":
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            nav_future = pool.submit(_fetch_navs, db.get_bind())
+            records = list(db.scalars(select(model).order_by(model.id)).all())
+            navs = nav_future.result()
+    else:
+        records = list(db.scalars(select(model).order_by(model.id)).all())
+        navs = {}
+    groups = build_groups({slug: records}, today or date.today(), navs)
     return next(g for g in groups if g["type"] == slug)
 
 

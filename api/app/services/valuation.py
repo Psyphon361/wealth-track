@@ -138,9 +138,24 @@ def value_stock(stock: Any, today: date | None = None) -> dict[str, Any]:
     return _result(invested, invested)
 
 
-def value_mf(mf: Any, today: date | None = None) -> dict[str, Any]:
+def value_mf(
+    mf: Any,
+    today: date | None = None,
+    *,
+    nav: Decimal | None = None,
+    nav_date: date | None = None,
+) -> dict[str, Any]:
+    """Value at the latest NAV when the holding has a scheme and a NAV is known."""
     invested = Decimal(mf.units) * Decimal(mf.avg_nav)
-    return _result(invested, invested)
+    if mf.scheme_code is not None and nav is not None:
+        out = _result(invested, Decimal(mf.units) * Decimal(nav))
+        out["nav"] = Decimal(nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        out["nav_date"] = nav_date
+        return out
+    out = _result(invested, invested)
+    out["nav"] = None
+    out["nav_date"] = None
+    return out
 
 
 def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
