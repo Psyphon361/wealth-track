@@ -7,6 +7,7 @@ from app.schemas.summary import Amount
 
 class HoldingsSummary(BaseModel):
     count: int
+    matured_count: int
     invested: Amount
     current_value: Amount
     gain: Amount

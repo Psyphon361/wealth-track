@@ -54,6 +54,7 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **Bond**: invested = quantity × purchase_price; current = invested × (1 + ytm/100)^t, t from purchase to min(today, maturity). face_value is display-only.
 - **Stock / MF**: invested = qty × avg_buy_price / units × avg_nav; current = invested (no price API yet).
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested). Outputs rounded to 2 dp.
+- **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
 
 Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 → 107185.90. Payout FD 100000 @ 7.2% quarterly 1y → 3600.00 after 2 quarters, 7200.00 at maturity. Bond 10 × 1000, ytm 8, 1 year → 10800.00.
 
@@ -61,8 +62,8 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 - `GET /health` → `{"status":"ok"}` (no API key needed).
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
-- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct}}]}` — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
-- `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,invested,current,allocation_pct}]}`.
+- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
+- `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
 - `GET /holdings/{fd|rd|stock|bond|mf}` → server-side grid for one asset type. Values all holdings of that type, then filters, sorts and paginates in Python.
   - Common params:
     - `q` (search)
@@ -77,7 +78,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - bond: `bond_type`, `issuer*`, `platform*`, `status`, `ytm_min`/`ytm_max`, `maturity_from`/`maturity_to`
     - mf: `category`, `platform*`
     - (`*` = free-text values whose options come from the data.)
-  - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, invested, current_value, gain, gain_pct} for the whole type (unfiltered), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
+  - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
 - Auth: if `API_KEY` env is set, every route except `/api/health` and OPTIONS needs header `X-API-Key` (401 otherwise).
 

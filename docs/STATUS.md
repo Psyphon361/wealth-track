@@ -42,5 +42,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 - Live prices/NAV for stocks, MF, bonds (current value = invested until then).
 - SIP support for MF; transaction history (each holding is one record).
-- Automated tests, multi-user auth.
+- Full automated test suite (pytest exists in `api/tests`, per-bug tests only), multi-user auth.
+- Matured holdings view (pinned for later): matured items are currently listed in grids but excluded from totals.
 - Duplicate-holding warnings.

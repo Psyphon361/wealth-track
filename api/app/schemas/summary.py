@@ -23,6 +23,8 @@ class PortfolioGroup(BaseModel):
     # current_value, gain, gain_pct, maturity_date (optional), status, interest_received (payout FDs).
     items: list[dict[str, Any]]
     totals: Totals
+    count: int
+    matured_count: int
 
 
 class PortfolioResponse(BaseModel):
@@ -33,6 +35,7 @@ class DashboardByType(BaseModel):
     type: AssetType
     label: str
     count: int
+    matured_count: int
     invested: Amount
     current: Amount
     allocation_pct: Amount

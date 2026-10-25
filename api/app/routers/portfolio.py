@@ -55,13 +55,15 @@ def build_groups(records_by_type: dict[str, list[Any]], today: date) -> list[dic
             _item(r, read_schema, c)
             for r, c in zip(records_by_type.get(slug, []), computed, strict=True)
         ]
+        active = [c for c in computed if c["status"] == "active"]
         groups.append(
             {
                 "type": slug,
                 "label": LABELS[slug],
                 "items": items,
-                "totals": valuation.aggregate(computed),
-                "count": len(items),
+                "totals": valuation.aggregate(active),
+                "count": len(active),
+                "matured_count": len(computed) - len(active),
             }
         )
     return groups
@@ -104,6 +106,7 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
                 "type": g["type"],
                 "label": g["label"],
                 "count": g["count"],
+                "matured_count": g["matured_count"],
                 "invested": g["totals"]["invested"],
                 "current": current,
                 "allocation_pct": _q(current / total_current * 100)

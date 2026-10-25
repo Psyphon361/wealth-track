@@ -170,11 +170,14 @@ def _run(
             ordered = sorted(present, key=lambda v: (-counts.get(v, 0), v))
             facets[key] = [{"value": v, "count": counts.get(v, 0)} for v in ordered]
 
-    invested = sum((_dec(r.get("invested")) for r in rows), _ZERO)
-    current = sum((_dec(r.get("current_value")) for r in rows), _ZERO)
-    gain = sum((_dec(r.get("gain")) for r in rows), _ZERO)
+    # Totals cover active holdings only; matured rows are listed but excluded.
+    active_rows = [r for r in rows if r.get("status", "active") == "active"]
+    invested = sum((_dec(r.get("invested")) for r in active_rows), _ZERO)
+    current = sum((_dec(r.get("current_value")) for r in active_rows), _ZERO)
+    gain = sum((_dec(r.get("gain")) for r in active_rows), _ZERO)
     summary = {
-        "count": len(rows),
+        "count": len(active_rows),
+        "matured_count": len(rows) - len(active_rows),
         "invested": _q(invested),
         "current_value": _q(current),
         "gain": _q(gain),

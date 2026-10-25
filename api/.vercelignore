@@ -6,3 +6,7 @@ __pycache__
 alembic
 alembic.ini
 README.md
+tests
+requirements-dev.txt
+pyproject.toml
+.pytest_cache

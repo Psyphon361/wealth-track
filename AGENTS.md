@@ -6,7 +6,7 @@ Guide for any AI coding agent working in this repo. Read this first, then `docs/
 
 Personal wealth tracker for one user in India (INR only). Manual entry of five asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). No live prices yet: stock/MF current value = invested amount.
 
-Philosophy: build fast, small steps, no automated tests in v1 (verify by build/lint, curl, and browser click-through).
+Philosophy: build fast, small steps, verify by build/lint, curl, and browser click-through. API has pytest in `api/tests` (run `cd api && .venv/bin/python -m pytest -q`); tests are added per bug fix, there is no full suite.
 
 ## Repo layout (monorepo)
 
@@ -61,8 +61,9 @@ npm run dev        # web http://localhost:3000, API http://localhost:8000/api (d
 
 Locally the login gate is OFF (no APP_PASSWORD) and no API key is required (no API_KEY).
 
-## Checks (no test suite in v1)
+## Checks
 
+- API tests: `cd api && .venv/bin/python -m pytest -q` (dev deps: `uv pip install --python .venv/bin/python -r requirements-dev.txt`; no DB needed).
 - Web: `cd web && npm run lint && npm run build`
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
 - Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0003`).

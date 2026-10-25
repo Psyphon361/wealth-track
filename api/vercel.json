@@ -3,7 +3,7 @@
   "regions": ["iad1"],
   "functions": {
     "app/main.py": {
-      "excludeFiles": "{.venv/**,alembic/**,alembic.ini,.env,.env.example,README.md,**/__pycache__/**}"
+      "excludeFiles": "{.venv/**,alembic/**,alembic.ini,.env,.env.example,README.md,tests/**,requirements-dev.txt,pyproject.toml,.pytest_cache/**,**/__pycache__/**}"
     }
   }
 }
