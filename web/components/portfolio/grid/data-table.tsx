@@ -57,6 +57,11 @@ function readVisibility(
   }
 }
 
+function sameVisibility(a: ColumnVisibilityState, b: ColumnVisibilityState) {
+  const ka = Object.keys(a);
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k]);
+}
+
 function writeVisibility(type: string, v: ColumnVisibilityState) {
   try {
     window.localStorage.setItem(storageKey(type), JSON.stringify(v));
@@ -122,17 +127,24 @@ export function HoldingsGrid<TRow extends HoldingRow>({
       const id = col.id;
       if (id && col.enableHiding !== false) hideable.add(id);
     }
+    const saved = readVisibility(config.type, hideable);
+    // Never replace state with a new-but-equal object.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setVisibility(readVisibility(config.type, hideable));
+    setVisibility((prev) => (sameVisibility(prev, saved) ? prev : saved));
   }, [config.type, columns]);
 
-  const sorting: SortingState = [
-    { id: filters.sort, desc: filters.dir === "desc" },
-  ];
-  const pagination: PaginationState = {
-    pageIndex: filters.page - 1,
-    pageSize: data.page_size,
-  };
+  const sorting = useMemo<SortingState>(
+    () => [{ id: filters.sort, desc: filters.dir === "desc" }],
+    [filters.sort, filters.dir],
+  );
+  const pagination = useMemo<PaginationState>(
+    () => ({ pageIndex: filters.page - 1, pageSize: data.page_size }),
+    [filters.page, data.page_size],
+  );
+  const state = useMemo(
+    () => ({ sorting, pagination, columnVisibility: visibility }),
+    [sorting, pagination, visibility],
+  );
 
   const table = useTable({
     features: gridFeatures,
@@ -143,7 +155,7 @@ export function HoldingsGrid<TRow extends HoldingRow>({
     manualFiltering: true,
     manualPagination: true,
     rowCount: data.total,
-    state: { sorting, pagination, columnVisibility: visibility },
+    state,
     onSortingChange: (updater) => {
       const next = functionalUpdate(updater, sorting)[0];
       if (next) onSort(next.id, next.desc ? "desc" : "asc");
