@@ -34,6 +34,7 @@ import {
 } from "./schema";
 import { SchemePicker } from "./scheme-picker";
 import { useAssetSave } from "./use-asset-form";
+import { useNavAutofill } from "./use-nav-autofill";
 
 const schema = z
   .object({
@@ -116,6 +117,16 @@ export function MfForm({
   });
   const mode = useWatch({ control, name: "scheme_mode" });
   const schemeName = useWatch({ control, name: "scheme_name" });
+  const schemeCode = useWatch({ control, name: "scheme_code" });
+  const purchaseDate = useWatch({ control, name: "purchase_date" });
+  const avgNav = useWatch({ control, name: "avg_nav" });
+  const navHint = useNavAutofill({
+    enabled: mode === "picker",
+    schemeCode,
+    purchaseDate: String(purchaseDate ?? ""),
+    avgNav: String(avgNav ?? ""),
+    setValue,
+  });
   // Master details for the summary line (selected, or fetched when editing).
   const [meta, setMeta] = useState<MfScheme | null>(null);
 
@@ -239,6 +250,7 @@ export function MfForm({
         adornment="₹"
         inputMode="decimal"
         decimals={4}
+        hint={navHint}
         required
       />
       <DateField

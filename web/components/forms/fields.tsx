@@ -158,7 +158,10 @@ export function TextField<TIn extends FieldValues, TOut>({
   decimals,
   maxLength,
   uppercase,
+  hint,
 }: FieldProps<TIn, TOut> & {
+  /** Muted helper text under the input. */
+  hint?: string | null;
   inputMode?: "decimal" | "numeric";
   adornment?: "₹" | "%";
   /** When set, groups digits Indian-style, allowing this many decimal places. */
@@ -228,6 +231,9 @@ export function TextField<TIn extends FieldValues, TOut>({
               </span>
             ) : null}
           </div>
+          {hint ? (
+            <p className="text-[11px] text-muted-foreground">{hint}</p>
+          ) : null}
           <FormError error={fieldState.error} />
         </Field>
       )}

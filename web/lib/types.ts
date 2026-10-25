@@ -135,6 +135,14 @@ export interface MfScheme {
   isin_reinvest: string | null;
 }
 
+export interface MfNavResponse {
+  scheme_code: number;
+  requested_date: string;
+  nav_date: string;
+  nav: number;
+  source: "latest" | "history";
+}
+
 export interface MutualFundInput {
   scheme_code: number | null;
   scheme_name: string;
