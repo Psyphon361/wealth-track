@@ -89,6 +89,7 @@ Locally the login gate is OFF (no APP_PASSWORD) and no API key is required (no A
 - **Decimals**: API serialises Decimal as JSON numbers. Money 2 dp, rates 2 dp (column 3), MF units 3 dp, MF avg_nav 4 dp.
 - **Neon latency** from local dev is ~0.28 s per round trip; `/api/portfolio` ≈ 0.8 s locally. On Vercel (iad1, next to Neon us-east) it's fast.
 - **Dev server stale state**: after moving files between route groups, Turbopack can serve stale output (e.g. duplicated sidebar) — restart `npm run dev`. Running `npm run build` while dev runs can also confuse it.
+- **Stale dev output fix**: if `npm run dev` serves stale output, stop it, run `npm run clean`, then start `npm run dev` again.
 - Root font size is 110% (`globals.css`), so all rem sizes are scaled.
 - Holdings tables live inside `SidebarInset` with `min-w-0`; keep it, or wide tables overflow the page.
 - Grid config modules (`components/portfolio/grid/configs/*`) must be imported directly, not via a barrel file: a barrel resolved them to undefined during SSR and broke fresh page loads.
