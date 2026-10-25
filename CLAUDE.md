@@ -2,7 +2,7 @@
 
 @AGENTS.md
 
-Then read `docs/STATUS.md` and `docs/SPEC.md` before planning anything.
+Then read `docs/STATUS.md`, `docs/SPEC.md` and `docs/HANDOFF.md` before planning anything.
 
 ## Claude Code working mode in this repo
 

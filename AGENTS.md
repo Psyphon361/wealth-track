@@ -44,7 +44,7 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/asset-catalog.ts  asset-type registry (title, hint, icon, group) for the /add gallery — add new asset classes here
   lib/notify.ts         toast helpers — render API message/description only
   lib/session.ts        gate mode, HMAC session tokens (Web Crypto)
-docs/           SPEC.md (behaviour), STATUS.md (progress/open items), DEPLOY.md (Vercel+Neon), PLAN.md (original plan, historical)
+docs/           SPEC.md (behaviour), STATUS.md (progress/open items), HANDOFF.md (session resume notes), DEPLOY.md (Vercel+Neon), PLAN.md (original plan, historical)
 .github/workflows/api-deploy.yml   on push to main touching api/: alembic upgrade head on prod, then Vercel API deploy hook
 .claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md)
 package.json    root: `npm run dev` runs api + web together (concurrently)
