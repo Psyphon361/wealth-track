@@ -2,6 +2,7 @@
 
 import { Fragment } from "react";
 import { usePathname } from "next/navigation";
+import { AddMenu } from "@/components/add-menu";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -44,11 +45,11 @@ export function SiteHeader() {
   const pathname = usePathname();
   const crumbs = getCrumbs(pathname);
   return (
-    <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
+    <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur md:rounded-t-xl">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
-      <Breadcrumb>
-        <BreadcrumbList>
+      <Breadcrumb className="min-w-0">
+        <BreadcrumbList className="flex-nowrap">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             return (
@@ -66,6 +67,9 @@ export function SiteHeader() {
           })}
         </BreadcrumbList>
       </Breadcrumb>
+      <div className="ml-auto shrink-0">
+        <AddMenu />
+      </div>
     </header>
   );
 }

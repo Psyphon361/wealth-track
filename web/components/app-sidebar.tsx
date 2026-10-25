@@ -2,9 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, LayoutDashboard, LogOut, Plus, Wallet } from "lucide-react";
+import { Briefcase, LayoutDashboard, LogOut, Wallet } from "lucide-react";
 import { logout } from "@/app/actions/auth";
-import { buttonVariants } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -17,7 +16,6 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar";
-import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -27,7 +25,7 @@ const NAV = [
 export function AppSidebar({ showLogout }: { showLogout: boolean }) {
   const pathname = usePathname();
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" variant="inset">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -67,17 +65,6 @@ export function AppSidebar({ showLogout }: { showLogout: boolean }) {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter>
-        <Link
-          href="/add"
-          aria-label="Add asset"
-          className={cn(
-            buttonVariants({ size: "sm" }),
-            "w-full group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:p-0",
-          )}
-        >
-          <Plus />
-          <span className="group-data-[collapsible=icon]:hidden">Add asset</span>
-        </Link>
         {showLogout ? (
           <form action={logout}>
             <SidebarMenu>

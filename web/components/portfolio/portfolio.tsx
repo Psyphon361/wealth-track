@@ -154,7 +154,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
         <SummaryStrip summary={data.summary} />
         <Link
           href={`/add/${config.type}`}
-          className={buttonVariants({ size: "sm" })}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
         >
           <Plus aria-hidden />
           {addLabel}

@@ -89,11 +89,11 @@
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.141 0.004 286);
+  --background: oklch(0.15 0.005 286);
   --foreground: oklch(0.97 0 0);
-  --card: oklch(0.175 0.005 286);
+  --card: oklch(0.18 0.005 286);
   --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.195 0.005 286);
+  --popover: oklch(0.2 0.005 286);
   --popover-foreground: oklch(0.97 0 0);
   --primary: oklch(0.696 0.15 163);
   --primary-foreground: oklch(0.16 0.02 163);
@@ -114,7 +114,7 @@
   --chart-3: oklch(0.75 0.14 80);
   --chart-4: oklch(0.65 0.18 310);
   --chart-5: oklch(0.7 0.15 30);
-  --sidebar: oklch(0.165 0.005 286);
+  --sidebar: oklch(0.125 0.005 286);
   --sidebar-foreground: oklch(0.92 0.003 286);
   --sidebar-primary: oklch(0.696 0.15 163);
   --sidebar-primary-foreground: oklch(0.16 0.02 163);
@@ -129,7 +129,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground text-sm antialiased;
+    @apply bg-sidebar text-foreground text-sm antialiased;
   }
   html {
     @apply font-sans;
