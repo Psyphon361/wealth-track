@@ -53,7 +53,14 @@ export function HoldingsByType({ data }: { data: DashboardResponse }) {
                   {ASSET_TYPE_LABELS[r.type] ?? r.label}
                 </Link>
               </TableCell>
-              <TableCell className="num py-1.5 text-right">{r.count}</TableCell>
+              <TableCell className="num py-1.5 text-right">
+                {r.count}
+                {r.matured_count > 0 ? (
+                  <span className="ml-1 text-[11px] text-muted-foreground">
+                    +{r.matured_count} matured
+                  </span>
+                ) : null}
+              </TableCell>
               <TableCell className="num py-1.5 text-right">
                 {formatINR(r.invested)}
               </TableCell>

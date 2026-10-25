@@ -71,7 +71,7 @@ export function Dashboard() {
   }
 
   const { data } = state;
-  if (data.by_type.every((r) => r.count === 0)) {
+  if (data.by_type.every((r) => r.count + r.matured_count === 0)) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
         <p className="text-lg font-medium">No holdings yet</p>

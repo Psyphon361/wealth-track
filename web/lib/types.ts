@@ -185,6 +185,7 @@ export interface DashboardByType {
   type: AssetType;
   label: string;
   count: number;
+  matured_count: number;
   invested: number;
   current: number;
   allocation_pct: number;
@@ -223,6 +224,7 @@ export interface FacetValue {
 
 export interface HoldingsSummary {
   count: number;
+  matured_count: number;
   invested: number;
   current_value: number;
   gain: number;

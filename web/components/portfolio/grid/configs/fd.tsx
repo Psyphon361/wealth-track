@@ -1,11 +1,19 @@
 import { AssetForm } from "@/components/forms/asset-form";
-import { formatPct } from "@/lib/format";
+import { Info } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { formatINR, formatPct } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   COMPOUNDING_LABELS,
   PAYOUT_TYPE_LABELS,
   type FixedDepositItem,
 } from "@/lib/types";
 import type { GridConfig } from "../types";
+import { GainCell, gainTone } from "../gain-cell";
 import { createColumnKit, STATUS_LABELS } from "./shared";
 
 const labels = {
@@ -88,9 +96,64 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
     ),
     kit.date("start_date", (r) => r.start_date),
     kit.date("maturity_date", (r) => r.maturity_date),
-    kit.money("current_value", (r) => r.current_value),
-    kit.gain(),
-    kit.gainPct(),
+    {
+      ...kit.money("current_value", (r) => r.current_value),
+      cell: ({ row }) => {
+        const r = row.original;
+        return (
+          <span className="num inline-flex items-center gap-1 whitespace-nowrap">
+            {formatINR(r.current_value)}
+            {r.payout_type === "payout" ? (
+              <Tooltip>
+                <TooltipTrigger
+                  render={<span className="text-muted-foreground" />}
+                >
+                  <Info className="size-3" aria-label="Principal only" />
+                </TooltipTrigger>
+                <TooltipContent>
+                  Principal only. Interest is paid out to your bank.
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+          </span>
+        );
+      },
+    },
+    {
+      ...kit.gain(),
+      cell: ({ row }) => {
+        const r = row.original;
+        const cell = <GainCell gain={r.gain} pct={r.gain_pct} showPct={false} />;
+        if (r.payout_type !== "payout") return cell;
+        return (
+          <div className="flex flex-col items-start leading-tight">
+            {cell}
+            <span className="text-[11px] text-muted-foreground">
+              interest paid
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      ...kit.gainPct(),
+      cell: ({ row }) => {
+        const r = row.original;
+        return (
+          <div className="flex flex-col items-start leading-tight">
+            <span className={cn("num whitespace-nowrap", gainTone(r.gain))}>
+              {r.gain > 0 ? "+" : ""}
+              {formatPct(r.gain_pct)}
+            </span>
+            {r.payout_type === "payout" ? (
+              <span className="text-[11px] text-muted-foreground">
+                over tenure
+              </span>
+            ) : null}
+          </div>
+        );
+      },
+    },
     kit.status(),
     kit.actions(handlers),
   ],

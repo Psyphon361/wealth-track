@@ -34,7 +34,13 @@ function SummaryStrip({ summary }: { summary: HoldingsSummary }) {
   return (
     <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
       <div className="num font-medium">
-        {summary.count} {summary.count === 1 ? "holding" : "holdings"}
+        {summary.count} active
+        {summary.matured_count > 0 ? (
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            · {summary.matured_count} matured
+          </span>
+        ) : null}
       </div>
       <div className="flex items-baseline gap-1.5">
         <dt className={LABEL}>Invested</dt>
@@ -66,7 +72,9 @@ function TypedPortfolio<TRow extends HoldingRow>({
   const entry = getAssetEntry(config.type);
   const title = entry?.title ?? config.noun;
   const addLabel = addLabelFor(config.type);
-  const count = q.data?.summary.count;
+  const count = q.data
+    ? q.data.summary.count + q.data.summary.matured_count
+    : undefined;
 
   useEffect(() => {
     if (count !== undefined) refreshAssetTabCounts();
@@ -131,7 +139,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
 
   const { data, filters } = q;
 
-  if (data.summary.count === 0) {
+  if (data.summary.count + data.summary.matured_count === 0) {
     return (
       <>
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
