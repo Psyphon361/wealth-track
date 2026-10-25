@@ -117,7 +117,26 @@ export interface BondInput {
   notes: string | null;
 }
 
+export type MfPlan = "direct" | "regular";
+export type MfOption = "growth" | "idcw" | "bonus" | "other";
+
+export interface MfScheme {
+  scheme_code: number;
+  name: string;
+  amc: string;
+  plan: MfPlan | null;
+  option: MfOption | null;
+  idcw_frequency: string | null;
+  amfi_category: string | null;
+  category: MFCategory;
+  nav: number | null;
+  nav_date: string | null;
+  isin_growth_payout: string | null;
+  isin_reinvest: string | null;
+}
+
 export interface MutualFundInput {
+  scheme_code: number | null;
   scheme_name: string;
   platform: string | null;
   category: MFCategory;

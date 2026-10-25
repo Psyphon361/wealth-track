@@ -27,6 +27,7 @@ export const ISIN_ERROR = "ISIN must be 12 characters, e.g. INE002A01018";
 export const SYMBOL_ERROR =
   "Symbol: letters, digits, & or -, up to 20 characters";
 export const PAYOUT_FREQUENCY_ERROR = "Choose a payout frequency";
+export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const MAX_TENURE_YEARS = 10;
 export const MAX_BOND_YEARS = 50;
 
