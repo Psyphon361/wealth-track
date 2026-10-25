@@ -10,7 +10,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
   const router = useRouter();
   const entry = getAssetEntry(type);
   if (!entry) return null;
-  const onSaved = () => router.push("/portfolio");
+  const onSaved = () => router.push(`/portfolio/${type}`);
   const onCancel = () => router.push("/add");
 
   return (
