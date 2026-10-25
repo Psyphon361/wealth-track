@@ -89,9 +89,27 @@ The import takes about 15–20 s.
 
 The production database starts empty; your `dev` branch data stays in dev.
 
+## Automatic migrations (GitHub Actions)
+
+`.github/workflows/api-deploy.yml` runs `alembic upgrade head` against the Neon production branch, then triggers the API project's Vercel deploy hook. It runs on pushes to `main` that touch `api/**` (or the workflow file), and manually via **Actions → API migrate and deploy → Run workflow**. `api/vercel.json` sets `git.deploymentEnabled.main = false`, so Vercel no longer auto-deploys the API on push; the hook is the only production deploy path (preview deploys on other branches are unaffected). The web project still auto-deploys.
+
+One-time setup (you):
+
+1. Vercel → API project → **Settings → Git → Deploy Hooks** → create a hook for branch `main`; copy the URL.
+2. GitHub repo → **Settings → Secrets and variables → Actions** → add:
+   - `PROD_DATABASE_URL` = Neon production **direct** (non-pooled) connection string.
+   - `VERCEL_API_DEPLOY_HOOK` = the hook URL from step 1.
+   (If you use an environment, add them as environment secrets of `production` instead.)
+3. Optional: **Settings → Environments → New environment** named `production`, with required reviewers, so each migration waits for your approval.
+4. Only if `deploymentEnabled` in `vercel.json` does not stop auto-deploys: Vercel API project → **Settings → Git → Ignored Build Step** → "Don't build anything" (or disconnect auto-deploy). Check afterwards that the deploy hook still produces a production deployment.
+
+Write migrations backward compatible (expand, then contract): the web project deploys independently and the old API code keeps running until the new deploy lands.
+
+Fallback: the manual `alembic upgrade head` in step 3 still works.
+
 ## Day-to-day
 
-- Every push to `main` redeploys both projects automatically.
+- Every push to `main` redeploys the web project automatically. Pushes touching `api/` first run migrations, then deploy the API via the GitHub Actions workflow (see above).
 - Change the password: update `APP_PASSWORD` in the web project and redeploy.
 - Log everyone out: rotate `SESSION_SECRET` and redeploy.
 - Rotate the API key: update `API_KEY` in **both** projects, then redeploy both.

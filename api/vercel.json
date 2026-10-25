@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "regions": ["iad1"],
+  "git": { "deploymentEnabled": { "main": false } },
   "crons": [{ "path": "/api/cron/amfi", "schedule": "30 16 * * *" }],
   "functions": {
     "app/main.py": {
