@@ -34,7 +34,7 @@ Removed by user decision: FD maturity amount & status inputs, stock current pric
 - **`mf_nav_history`** (scheme_code FK, nav_date, nav; PK scheme_code + nav_date) and **`mf_nav_history_sync`** (scheme_code PK, first_date, last_date, fetched_at). Global market data with no user_id.
 - **Filled on demand:** the first lookup for a scheme fetches its full history from mfapi.in (`https://api.mfapi.in/mf/{code}`), stores the last 10 years, and records the sync. It refetches at most once per 24 h.
 - **Daily cron:** also appends today's NAV for schemes referenced by any holding's `scheme_code`.
-- **Not built yet:** pruning of schemes nobody holds, and NAV-based valuation.
+- **Not built yet:** pruning of NAV history for schemes nobody holds (proposed: daily cron, 7-day grace on `fetched_at`; deferred by user).
 
 ## 2. Validation rules (API and forms, identical wording)
 
@@ -73,7 +73,8 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **FD payout** (`payout_type = payout`; `compounding` holds the payout frequency): invested = current = principal; `interest_received` = P × r/n × completed payout periods (period ends every 12/n months after start, ≤ min(today, maturity)); if matured, plus the final partial period up to maturity (total = simple interest over the tenure). gain = interest_received.
 - **RD**: instalments on start + k months while date < maturity and ≤ today (assumed paid on time); invested = count × instalment; current = Σ each instalment compounded (same rule) to min(today, maturity).
 - **Bond**: invested = quantity × purchase_price; current = invested × (1 + ytm/100)^t, t from purchase to min(today, maturity). face_value is display-only.
-- **Stock / MF**: invested = qty × avg_buy_price / units × avg_nav; current = invested (no price API yet).
+- **Stock**: invested = qty × avg_buy_price; current = invested (no price API yet).
+- **MF**: invested = units × avg_nav. If `scheme_code` is set and the scheme has a row in `mf_nav_latest`, current = units × latest NAV (used even if stale); otherwise (manual entry, or no NAV) current = invested.
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested). Outputs rounded to 2 dp.
 - **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
 
@@ -91,7 +92,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - 502 "Couldn't fetch NAV history"
 - `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
-- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
+- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf: latest NAV, 4 dp, and its date; null when no NAV). The NAV lookup is one extra query over held schemes only.
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
 - `GET /holdings/{fd|rd|stock|bond|mf}` → server-side grid for one asset type. Values all holdings of that type, then filters, sorts and paginates in Python.
   - Common params:
@@ -108,7 +109,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - mf: `category`, `platform*`
     - (`*` = free-text values whose options come from the data.)
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
-  - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
+  - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf).
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 
 ### Message contract (toasts render these verbatim)
@@ -124,12 +125,12 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - `/portfolio` redirects to the first asset type you hold.
   - `/portfolio/{type}` shows Groww-style fixed-width tabs (FD, RD, Stocks, Bonds, Mutual Funds, with counts) and a sliding underline. The content fades in when the type changes; reduced motion is respected.
   - Each type has a summary strip (count, invested, current, gain) and an "Add FD"/"Add RD"/"Add stocks"/… button linking to `/add/{type}`.
-  - Its own grid has type-specific columns and filters. Stocks and MF include Current/Gain/Gain %, which equal invested and 0 until live prices exist.
+  - Its own grid has type-specific columns and filters. Stocks include Current/Gain/Gain %, which equal invested and 0 until live prices exist. MF Current/Gain use the latest NAV where available (see §3). The MF grid has a visible-by-default, non-sortable "NAV" column after Avg NAV: latest NAV with a muted "as of {date}" line, "—" when null.
   - The grid has debounced search, faceted filters, %-range and maturity-date range filters, Reset, and a Columns menu saved per type in localStorage `wt.portfolio.columns.{type}`.
   - Sortable headers; 10 rows per page; no totals row.
   - Row actions: eye (disabled, "Details coming soon"; future `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
   - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
-- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio`, cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
+- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.

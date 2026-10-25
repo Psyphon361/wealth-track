@@ -15,6 +15,9 @@
 - Deployment prep: Vercel-ready API (`api/vercel.json`, region iad1, API key), password gate + same-origin proxy in web, `docs/DEPLOY.md`.
 - MF master data from AMFI (mf_schemes + mf_nav_latest, daily cron, scheme picker in MF form).
 - Historical NAV lookup (mf_nav_history via mfapi.in, cached) and Average NAV auto-fill in the MF form.
+- MF valuation at the latest AMFI NAV (units × NAV for scheme-linked holdings; `nav`/`nav_date` in API items) (SPEC §3).
+- After saving an asset, the add form opens that type's portfolio tab (`/portfolio/{type}`).
+- MF grid "NAV" column (latest NAV, "as of" date).
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -32,7 +35,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Known gaps / small follow-ups
 
 - Holdings details page (eye icon) not built yet.
-- After saving, the add form returns to /portfolio (first asset type), not to the saved type's tab.
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
 - Generic HTTP error wording ("Request failed") and the routing 404 description were not specified by the user — confirm if they matter.
@@ -40,8 +42,8 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Deferred (not started)
 
-- Live prices/NAV for stocks, MF, bonds (current value = invested until then).
-- NAV-based MF valuation; pruning of unheld schemes' history (see SPEC §1).
+- Live prices for stocks and bonds (current value = invested until then). MF uses the latest AMFI NAV (daily, not live).
+- Pruning of unheld schemes' NAV history (see SPEC §1).
 - SIP support for MF; transaction history (each holding is one record).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only), multi-user auth.
 - Matured holdings view (pinned for later): matured items are currently listed in grids but excluded from totals.

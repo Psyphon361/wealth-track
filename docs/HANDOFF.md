@@ -3,9 +3,14 @@
 Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers what those don't: how the last session worked, what it learned the hard way, and what's next. Verify against the code before acting; update this file when you finish a chunk of work.
 
 ## Where things stand
-- `main` == `origin/main` (last commit `d14470f`), clean tree. Production (Vercel web + api, Neon `production` branch) is on migration `0005`, `CRON_SECRET` set, AMFI master loaded (14,412 schemes / 8,821 active), daily cron 22:00 IST live.
+- `main` is ahead of `origin/main` by unpushed commits (incl. `a1a7b93` MF valuation at latest NAV, `148d2de` post-save redirect to the type tab, `d749f22` MF NAV column); push only when the user says so. Production (Vercel web + api, Neon `production` branch) is on migration `0005`, `CRON_SECRET` set, AMFI master loaded (14,412 schemes / 8,821 active), daily cron 22:00 IST live.
 - Neon `dev` branch: all 5 holdings tables were emptied on 2026-10-25 at the user's request (backup JSON was in that session's scratchpad, temporary). Master/market tables kept. The user may enter real holdings again — rule 5 in AGENTS.md still applies.
-- API tests: `cd api && .venv/bin/python -m pytest -q` (71 passing). Add a test with every bug fix (user decision: no full suite).
+- API tests: `cd api && .venv/bin/python -m pytest -q` (74 passing). Add a test with every bug fix (user decision: no full suite).
+
+## Built this session (committed, unpushed)
+- MF valuation at latest AMFI NAV: current = units × `mf_nav_latest` NAV for scheme-linked holdings (stale NAV still used); manual/no-NAV stay at invested. `/api/portfolio` and `/api/holdings/mf` MF items carry `nav` and `nav_date`. One extra query over held schemes, run concurrently.
+- After saving the add form → `/portfolio/{type}`.
+- MF grid "NAV" column after Avg NAV (visible by default, not sortable).
 
 ## Built in the last session (all shipped)
 - `/add` gallery (`web/lib/asset-catalog.ts`) → `/add/[type]` forms; header breadcrumb; global "Add asset" menu in the top bar (shortcut `N`), in-page "Add FD/RD/…" as secondary.
@@ -17,12 +22,11 @@ Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers wh
 - `npm run clean` (root) clears `web/.next`, tsbuildinfo, Python caches.
 
 ## Next candidates (ask the user which first)
-1. NAV-based MF valuation (current value = units × latest NAV; use `mf_nav_latest`), plus backfill/history pruning per SPEC §1.
-2. Holding details page at `/portfolio/{type}/{id}` (flip `DETAILS_ENABLED` in `components/portfolio/grid/row-actions.tsx`).
-3. Stocks/bonds master data (NSE `EQUITY_L.csv`, BSE scrip list; SGB/G-sec lists) — feasibility notes in the last session: stocks feasible (monthly local fetch, NSE blocks bots), bonds partial.
-4. Matured holdings view (pinned for later).
-5. After saving an asset, redirect to that type's tab (`/portfolio/{type}`), not `/portfolio`.
-6. Integrations decisions still open with the user: NSE EOD files (grey-area ToS), CAS upload vs broker API, paid data or free only, price history depth, Account Aggregator.
+1. Holding details page at `/portfolio/{type}/{id}` (flip `DETAILS_ENABLED` in `components/portfolio/grid/row-actions.tsx`).
+2. Stocks/bonds master data (NSE `EQUITY_L.csv`, BSE scrip list; SGB/G-sec lists) — feasibility notes in the last session: stocks feasible (monthly local fetch, NSE blocks bots), bonds partial.
+3. Matured holdings view (pinned for later).
+4. Prune NAV history of unheld schemes (daily cron, 7-day grace on `fetched_at`) — deferred by user (SPEC §1).
+5. Integrations decisions still open with the user: NSE EOD files (grey-area ToS), CAS upload vs broker API, paid data or free only, price history depth, Account Aggregator.
 
 ## How the user works (and how the last session ran)
 - Orchestrator + builders (see `CLAUDE.md` and `~/.claude/CLAUDE.md`): main session plans, briefs, reviews, verifies in the browser, commits; builders (Sonnet, effort medium) edit; Haiku for docs/chores; max 3 builders in parallel; check usage before dispatching.
