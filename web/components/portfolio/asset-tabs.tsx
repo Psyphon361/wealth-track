@@ -9,6 +9,9 @@ import type { AssetType, DashboardResponse } from "@/lib/types";
 
 const TAB_ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf"];
 
+/** Width of every tab and of the sliding indicator, in rem. */
+const TAB_WIDTH_REM = 7.5;
+
 export const TAB_LABELS: Record<AssetType, string> = {
   fd: "FD",
   rd: "RD",
@@ -84,8 +87,9 @@ export function AssetTabs() {
               <Link
                 href={`/portfolio/${type}`}
                 aria-current={isActive ? "page" : undefined}
+                style={{ width: `${TAB_WIDTH_REM}rem` }}
                 className={cn(
-                  "flex w-36 items-center justify-center gap-1.5 px-3 py-2 text-sm whitespace-nowrap outline-none transition-colors focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+                  "flex items-center justify-center gap-1.5 px-2 py-2 text-sm whitespace-nowrap outline-none transition-colors focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
                   isActive
                     ? "font-medium text-foreground"
                     : "text-muted-foreground hover:text-foreground",
@@ -104,10 +108,13 @@ export function AssetTabs() {
         <li
           aria-hidden
           className={cn(
-            "pointer-events-none absolute bottom-0 left-0 h-0.5 w-36 bg-primary transition-transform duration-300 ease-out motion-reduce:transition-none",
+            "pointer-events-none absolute bottom-0 left-0 h-0.5 bg-primary transition-transform duration-300 ease-out motion-reduce:transition-none",
             active ? "opacity-100" : "opacity-0",
           )}
-          style={{ transform: `translateX(${index * 9}rem)` }}
+          style={{
+            width: `${TAB_WIDTH_REM}rem`,
+            transform: `translateX(${index * TAB_WIDTH_REM}rem)`,
+          }}
         />
       </ul>
     </nav>
