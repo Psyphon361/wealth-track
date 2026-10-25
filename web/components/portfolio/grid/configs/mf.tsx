@@ -1,5 +1,6 @@
 import { AssetForm } from "@/components/forms/asset-form";
 import { MF_CATEGORY_LABELS, type MutualFundItem } from "@/lib/types";
+import { formatDate } from "@/lib/format";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -9,6 +10,7 @@ const labels = {
   platform: "Platform",
   units: "Units",
   avg_nav: "Avg NAV",
+  nav: "NAV",
   invested: "Invested",
   current_value: "Current",
   gain: "Gain",
@@ -66,6 +68,20 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     kit.text("platform", (r) => r.platform),
     kit.number("units", (r) => r.units, (n) => units.format(n)),
     kit.number("avg_nav", (r) => r.avg_nav, (n) => nav.format(n)),
+    kit.display("nav", (r) =>
+      r.nav == null ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        <div className="text-right leading-tight">
+          <div className="num whitespace-nowrap">{nav.format(r.nav)}</div>
+          {r.nav_date ? (
+            <div className="text-[11px] whitespace-nowrap text-muted-foreground">
+              as of {formatDate(r.nav_date)}
+            </div>
+          ) : null}
+        </div>
+      ),
+    ),
     kit.money("invested", (r) => r.invested),
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),

@@ -235,7 +235,8 @@ export type FixedDepositItem = FixedDeposit & ComputedFields;
 export type RecurringDepositItem = RecurringDeposit & ComputedFields;
 export type StockItem = Stock & ComputedFields;
 export type BondItem = Bond & ComputedFields;
-export type MutualFundItem = MutualFund & ComputedFields;
+export type MutualFundItem = MutualFund &
+  ComputedFields & { nav: number | null; nav_date: string | null };
 
 export type HoldingRow =
   | FixedDepositItem

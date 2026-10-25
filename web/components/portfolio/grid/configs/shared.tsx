@@ -30,6 +30,7 @@ export const RIGHT_ALIGNED = new Set([
   "purchase_price",
   "units",
   "avg_nav",
+  "nav",
   "invested",
   "current_value",
   "gain",
@@ -156,6 +157,27 @@ export function createColumnKit<TRow extends HoldingRow>(
       },
     });
 
+  /** Non-sortable, right-aligned column with a custom cell. */
+  const display = (
+    id: string,
+    render: (row: TRow) => ReactNode,
+  ): GridColumn<TRow> =>
+    helper.display({
+      id,
+      enableSorting: false,
+      header: () => (
+        <div
+          className={cn(
+            "text-[11px] font-medium tracking-wider text-muted-foreground uppercase",
+            RIGHT_ALIGNED.has(id) && "text-right",
+          )}
+        >
+          {labels[id]}
+        </div>
+      ),
+      cell: ({ row }) => render(row.original),
+    });
+
   const percent = (
     id: string,
     get: (row: TRow) => number,
@@ -219,6 +241,7 @@ export function createColumnKit<TRow extends HoldingRow>(
     money,
     number,
     date,
+    display,
     percent,
     gain,
     gainPct,
