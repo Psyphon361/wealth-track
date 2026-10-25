@@ -17,10 +17,10 @@ concurrency:
 
 jobs:
   migrate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check secrets
         env:
@@ -31,7 +31,7 @@ jobs:
             exit 1
           fi
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.2
 
       - name: Install Python 3.12 and dependencies
         run: |
@@ -51,7 +51,7 @@ jobs:
         run: ../.venv/bin/alembic current
 
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: migrate
     steps:
       - name: Trigger Vercel API deploy hook

@@ -23,20 +23,16 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 - GitHub: https://github.com/Psyphon361/wealth-track (`origin`, branch `main`). Check `git log origin/main..main` for unpushed commits.
 - Vercel: user created two projects (root `api/` and root `web/`). Web is live at https://wealth-track-nu.vercel.app — login gate works (unauthenticated `/api/dashboard` → 401, `/` → redirect to /login).
-- **OPEN BUG (prod)**: after login, `GET /api/dashboard` on the web app returns **404**. Since the proxy forwarded it, the upstream (`API_URL`) answered 404. Most likely `API_URL` in the web project is wrong (ends with `/api`, points to a deployment-specific/old URL, or the API project failed to deploy). Next step: get the API project's production URL from the user, `curl <api>/api/health` (expect ok) and `<api>/api/dashboard` (expect 401 without key), then fix `API_URL` (no `/api`, no trailing slash) and redeploy web.
-- **Production DB**: Neon `production` branch. Migrations must be at head `0005` — ask the user to run `cd api && DATABASE_URL='<prod direct url>' .venv/bin/alembic upgrade head` and confirm `alembic current` = `0005 (head)`. Not confirmed yet.
+- Production (as of 2026-10-25): migrations ran via the GitHub Action; the production DB is at `0005` (it had been at `0002`, so `0003` is now applied too). `CRON_SECRET` is set. The first AMFI import succeeded (14412 schemes, 8821 active) and the daily cron (22:00 IST) is live. The earlier 404 on `/api/dashboard` after login was fixed. GitHub secrets (`PROD_DATABASE_URL` as a `production` environment secret, `VERCEL_API_DEPLOY_HOOK` as a repository secret) and the Vercel deploy hook are configured.
 
 ## Data
 
-- Neon `dev` branch holds the user's REAL holdings (e.g. an "axis" FD and a government bond "Tanish"). Never delete or modify rows you didn't create.
+- Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_schemes`, `mf_nav_latest`, `mf_nav_history`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
 
 - Holdings details page (eye icon) not built yet.
-- Production: set CRON_SECRET and GitHub secrets, then run migrations 0004–0005 (via the API deploy workflow) and the first AMFI import.
 - After saving, the add form returns to /portfolio (first asset type), not to the saved type's tab.
-- Dev DB has 25 seeded [TEST] rows (notes "dummy seed 2026-10-25").
-
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
 - Generic HTTP error wording ("Request failed") and the routing 404 description were not specified by the user — confirm if they matter.
