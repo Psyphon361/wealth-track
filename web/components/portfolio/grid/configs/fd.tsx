@@ -126,7 +126,7 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
         const cell = <GainCell gain={r.gain} pct={r.gain_pct} showPct={false} />;
         if (r.payout_type !== "payout") return cell;
         return (
-          <div className="flex flex-col items-start leading-tight">
+          <div className="flex flex-col items-end text-right leading-tight">
             {cell}
             <span className="text-[11px] text-muted-foreground">
               interest paid
@@ -140,7 +140,7 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
       cell: ({ row }) => {
         const r = row.original;
         return (
-          <div className="flex flex-col items-start leading-tight">
+          <div className="flex flex-col items-end text-right leading-tight">
             <span className={cn("num whitespace-nowrap", gainTone(r.gain))}>
               {r.gain > 0 ? "+" : ""}
               {formatPct(r.gain_pct)}
