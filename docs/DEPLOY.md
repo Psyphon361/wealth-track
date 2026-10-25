@@ -33,7 +33,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic upgrade h
 DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
 ```
 
-`alembic current` should print `0003 (head)`. Repeat this step whenever a new migration is added.
+`alembic current` should print `0004 (head)`. Repeat this step whenever a new migration is added.
 
 ## 4. API project (FastAPI)
 
@@ -42,6 +42,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
 3. **Environment variables** (Production):
    - `DATABASE_URL` = Neon production **pooled** connection string (host contains `-pooler`, keep `?sslmode=require`).
    - `API_KEY` = the first secret from step 2.
+   - `CRON_SECRET` = a new value from `openssl rand -hex 32` (bearer token for the daily AMFI cron).
 4. Deploy. The function region is pinned to `iad1` by `api/vercel.json` (next to Neon us-east).
 5. Check (replace with your API URL):
 
@@ -61,7 +62,25 @@ curl -i https://<api-project>.vercel.app/api/dashboard # 401 Unauthorized
    - `API_URL` = `https://<api-project>.vercel.app` (no trailing slash, no `/api`).
 4. Deploy. Then **Settings → Functions → Function Region** → `Washington, D.C. (iad1)` and redeploy, so the proxy sits next to the API.
 
-## 6. Smoke test
+## 6. Load MF master data
+
+The MF scheme picker needs `mf_schemes` and `mf_nav_latest` filled. Run the import once; after that the daily cron keeps them current.
+
+Either locally, from `api/` (use the production **direct** connection string):
+
+```bash
+DATABASE_URL='<production direct connection string>' .venv/bin/python -m app.jobs.amfi_import
+```
+
+Or trigger the cron endpoint once against the deployed API:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<api-project>.vercel.app/api/cron/amfi
+```
+
+The import takes about 15–20 s.
+
+## 7. Smoke test
 
 1. Open the web URL → you are redirected to `/login`.
 2. Wrong password → "Incorrect password." Right password → Dashboard.
@@ -87,3 +106,4 @@ The production database starts empty; your `dev` branch data stays in dev.
 | Data requests return 401 after logging in | `API_KEY` differs between the two projects |
 | API errors mentioning the database | `DATABASE_URL` wrong, not the pooled string, or migrations not run on production (step 3) |
 | First request after a while is slow | Cold start of the serverless function; subsequent requests are fast |
+| Local AMFI import fails with an SSL certificate error | uv's Python has no CA bundle on macOS; set `SSL_CERT_FILE` to a system CA bundle and rerun the import |

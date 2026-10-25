@@ -12,11 +12,26 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 | Recurring Deposit (`rd`) | `recurring_deposits` | bank, label?, monthly_instalment, rate, start_date, tenure_years, tenure_months, tenure_days, compounding (default quarterly) |
 | Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date |
 | Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value (per unit; nullable in DB for old rows, required on input), purchase_price (per unit), purchase_date, ytm (% p.a.), maturity_date |
-| Mutual Fund (`mf`) | `mutual_funds` | scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), purchase_date |
+| Mutual Fund (`mf`) | `mutual_funds` | scheme_code? (FK → `mf_schemes.scheme_code`), scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), purchase_date |
 
 Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4). Enums are VARCHAR + CHECK (not native PG enums).
 
 Removed by user decision: FD maturity amount & status inputs, stock current price (future API), MF AMC/folio/plan/option, SIP support, bond coupon rate/frequency (YTM used instead).
+
+### Master data (MF)
+
+- **`mf_schemes`** (static; daily upsert writes only rows that changed): scheme_code PK, name, amc, amfi_category, category (mapped to the app enum), plan (direct/regular), option (growth/idcw/bonus/other), idcw_frequency, isin_growth_payout, isin_reinvest, is_active, updated_at.
+- **`mf_nav_latest`:** scheme_code PK/FK, nav (4 dp), nav_date. One current NAV per scheme.
+- **Source:** AMFI `https://portal.amfiindia.com/spages/NAVAll.txt`. A scheme is active if its NAV date is within 30 days of the file's latest date. Rows are never deleted.
+- **Category mapping** (AMFI category → app enum):
+  - ELSS → elss
+  - other Equity → equity
+  - Liquid/Overnight/Money Market → liquid
+  - other Debt → debt
+  - Hybrid → hybrid
+  - Index Funds/Other ETFs → index
+  - else → other
+- **Planned next phase (not built), `mf_nav_history`:** global market data with no user_id. Daily NAVs only for schemes held by at least one holding; backfill from mfapi.in when a scheme is first held, from its purchase date; retention from the earliest purchase date of that scheme, capped at 10 years; prune schemes nobody has held for 90 days.
 
 ## 2. Validation rules (API and forms, identical wording)
 
@@ -39,7 +54,10 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 14 | ISIN (optional): uppercased, `^[A-Z]{2}[A-Z0-9]{9}[0-9]$` | ISIN must be 12 characters, e.g. INE002A01018 |
 | 15 | Symbol (optional): uppercased, `^[A-Z0-9&-]{1,20}$` | Symbol: letters, digits, & or -, up to 20 characters |
 | 16 | Text ≤ 200 chars (names, bank, label, issuer, broker, platform, scheme); notes ≤ 1000 | Must be at most N characters |
+| 17 | MF `scheme_code` (optional) must exist in `mf_schemes` | Select a scheme from the list |
 | P | Payout FD cannot use `simple` | Choose a payout frequency |
+
+MF scheme picker: the form requires a scheme in picker mode; "Not listed? Enter manually" allows free text with a null `scheme_code`. When a code is set, the server snapshots `scheme_name` from the master.
 
 No minimum amounts beyond > 0 (user decision). Cross-field errors are attached to a field: tenure → `tenure_years`, payout frequency → `compounding`, price range → `purchase_price`, maturity rules → `maturity_date`. Read models accept existing rows even if they'd fail new create-time rules.
 
@@ -61,6 +79,9 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 ## 4. API (prefix `/api`, snake_case JSON, decimals as numbers)
 
 - `GET /health` → `{"status":"ok"}` (no API key needed).
+- `GET /master/mf?q=&limit=20` → active schemes from `mf_schemes` with nav and nav_date. `q` ≥ 2 characters; every token must match; ranked by trigram similarity.
+- `GET /master/mf/{scheme_code}` → one scheme (with nav and nav_date); 404 "Scheme not found".
+- `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
 - `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
@@ -80,7 +101,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - (`*` = free-text values whose options come from the data.)
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond) and `interest_received` (payout FD).
-- Auth: if `API_KEY` env is set, every route except `/api/health` and OPTIONS needs header `X-API-Key` (401 otherwise).
+- Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 
 ### Message contract (toasts render these verbatim)
 - POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name).
@@ -103,6 +124,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio`, cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
+- MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.
 - Toasts (sonner, themed): title = API `message`, description = API `description`.
 - Theme: dark only, zinc palette, emerald primary, Geist Sans/Mono, root font-size 110%, sidebar 13.5rem.
@@ -113,6 +135,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 |---|---|---|
 | api | `DATABASE_URL` | Neon pooled string (`postgresql://…?sslmode=require`; normalised to psycopg3) |
 | api | `API_KEY` | optional locally; required in production |
+| api | `CRON_SECRET` | production (`openssl rand -hex 32`); bearer token for `/api/cron/amfi` |
 | api | `CORS_ORIGINS` | default `["http://localhost:3000"]`; not needed in production (proxy) |
 | web | `API_URL` | FastAPI origin, no trailing slash, no `/api` (default http://localhost:8000) |
 | web | `API_KEY` | same value as api |
