@@ -18,6 +18,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.mf_scheme import MFNavLatest, MFScheme
+from app.services import nav_history
 
 NAVALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 FETCH_TIMEOUT = 30
@@ -84,6 +85,7 @@ class ImportResult:
     unchanged: int
     deactivated: int
     navs_upserted: int
+    history_appended: int = 0
 
 
 # --- Normalisation -------------------------------------------------------------
@@ -327,6 +329,10 @@ def import_navall(session: Session, text: str) -> ImportResult:
         ).returning(nav_table.c.scheme_code)
         navs_upserted += len(session.execute(statement).all())
 
+    history_appended = nav_history.append_today_for_holdings(
+        session, [(n.scheme_code, n.nav_date, n.nav) for n in parsed.navs]
+    )
+
     active = session.scalar(sa.select(sa.func.count()).where(MFScheme.is_active)) or 0
     total = session.scalar(sa.select(sa.func.count()).select_from(MFScheme)) or 0
     session.commit()
@@ -340,6 +346,7 @@ def import_navall(session: Session, text: str) -> ImportResult:
         unchanged=len(parsed.rows) - inserted - updated,
         deactivated=deactivated,
         navs_upserted=navs_upserted,
+        history_appended=history_appended,
     )
 
 

@@ -59,12 +59,17 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         label = _field_label(first.get("loc", ()))
         description = f"{label}: {first['msg']}" if label else str(first["msg"])
     is_filter_query = request.method == "GET" and request.url.path.startswith("/api/holdings/")
+    is_nav_lookup = request.method == "GET" and request.url.path.endswith("/nav")
+    if is_nav_lookup:
+        message = "Invalid date"
+    elif is_filter_query:
+        message = "Invalid filters"
+    else:
+        message = "Couldn't save — check the highlighted fields"
     return JSONResponse(
         status_code=422,
         content={
-            "message": "Invalid filters"
-            if is_filter_query
-            else "Couldn't save — check the highlighted fields",
+            "message": message,
             "description": description,
             "detail": jsonable_encoder(errors),
         },
@@ -73,7 +78,10 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error_handler(request: Request, exc: StarletteHTTPException):
-    if exc.status_code == 401:
+    if isinstance(exc.detail, dict) and {"message", "description"} <= exc.detail.keys():
+        message = exc.detail["message"]
+        description = exc.detail["description"]
+    elif exc.status_code == 401:
         message = "Not authorised"
         description = "Your session may have expired. Log in again."
     elif exc.status_code == 404:
@@ -82,7 +90,7 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException):
         if slug in ASSET_LABELS:
             message = f"{ASSET_LABELS[slug]} not found"
             description = "It may have been deleted already."
-        elif parts[:3] == ["api", "master", "mf"] and len(parts) == 4:
+        elif parts[:3] == ["api", "master", "mf"] and len(parts) in (4, 5):
             message = "Scheme not found"
             description = "It isn't in the AMFI scheme list."
         else:

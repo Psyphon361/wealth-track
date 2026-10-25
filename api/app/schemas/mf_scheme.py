@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -32,3 +33,12 @@ class AmfiImportResult(BaseModel):
     unchanged: int
     deactivated: int
     navs_upserted: int
+    history_appended: int = 0
+
+
+class MFNavOnDate(BaseModel):
+    scheme_code: int
+    requested_date: date
+    nav_date: date
+    nav: Dec
+    source: Literal["latest", "history"]

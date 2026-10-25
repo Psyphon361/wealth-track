@@ -32,6 +32,35 @@ class MFScheme(Base):
     )
 
 
+class MFNavHistory(Base):
+    """Historical NAV per scheme and date, filled on demand from mfapi.in (and the daily import)."""
+
+    __tablename__ = "mf_nav_history"
+
+    scheme_code: Mapped[int] = mapped_column(
+        ForeignKey("mf_schemes.scheme_code", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    nav_date: Mapped[date] = mapped_column(primary_key=True)
+    nav: Mapped[Decimal] = mapped_column(Numeric(14, 4))
+
+
+class MFNavHistorySync(Base):
+    """Last full mfapi.in fetch for a scheme; first_date/last_date bound the stored history."""
+
+    __tablename__ = "mf_nav_history_sync"
+
+    scheme_code: Mapped[int] = mapped_column(
+        ForeignKey("mf_schemes.scheme_code", ondelete="CASCADE"),
+        primary_key=True,
+        autoincrement=False,
+    )
+    first_date: Mapped[date | None]
+    last_date: Mapped[date | None]
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class MFNavLatest(Base):
     """Latest NAV per scheme; kept apart from the static master so unchanged schemes aren't rewritten."""
 

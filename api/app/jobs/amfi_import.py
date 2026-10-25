@@ -21,7 +21,7 @@ def main() -> None:
     print(
         f"schemes inserted={result.inserted} updated={result.updated} "
         f"unchanged={result.unchanged} deactivated={result.deactivated} "
-        f"navs_upserted={result.navs_upserted}"
+        f"navs_upserted={result.navs_upserted} history_appended={result.history_appended}"
     )
     print(f"fetch={fetched - started:.1f}s import={done - fetched:.1f}s total={done - started:.1f}s")
 
