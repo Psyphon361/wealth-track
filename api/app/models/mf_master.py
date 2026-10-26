@@ -7,14 +7,14 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db import Base
 
 
-class MFScheme(Base):
+class MFMaster(Base):
     """AMFI mutual fund scheme master, refreshed daily from NAVAll.txt.
 
     The trigram index on lower(name) is created in migration 0004 (expression index with
     operator class, so it is not declared here).
     """
 
-    __tablename__ = "mf_schemes"
+    __tablename__ = "mf_master"
 
     scheme_code: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     name: Mapped[str] = mapped_column(String(300))
@@ -38,7 +38,7 @@ class MFNavHistory(Base):
     __tablename__ = "mf_nav_history"
 
     scheme_code: Mapped[int] = mapped_column(
-        ForeignKey("mf_schemes.scheme_code", ondelete="CASCADE"),
+        ForeignKey("mf_master.scheme_code", ondelete="CASCADE"),
         primary_key=True,
         autoincrement=False,
     )
@@ -52,7 +52,7 @@ class MFNavHistorySync(Base):
     __tablename__ = "mf_nav_history_sync"
 
     scheme_code: Mapped[int] = mapped_column(
-        ForeignKey("mf_schemes.scheme_code", ondelete="CASCADE"),
+        ForeignKey("mf_master.scheme_code", ondelete="CASCADE"),
         primary_key=True,
         autoincrement=False,
     )
@@ -67,7 +67,7 @@ class MFNavLatest(Base):
     __tablename__ = "mf_nav_latest"
 
     scheme_code: Mapped[int] = mapped_column(
-        ForeignKey("mf_schemes.scheme_code", ondelete="CASCADE"),
+        ForeignKey("mf_master.scheme_code", ondelete="CASCADE"),
         primary_key=True,
         autoincrement=False,
     )

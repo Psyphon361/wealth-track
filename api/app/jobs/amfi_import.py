@@ -1,4 +1,4 @@
-"""Fetch NAVAll.txt from AMFI and refresh mf_schemes: `python -m app.jobs.amfi_import`."""
+"""Fetch NAVAll.txt from AMFI and refresh mf_master: `python -m app.jobs.amfi_import`."""
 
 import time
 

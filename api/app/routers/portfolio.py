@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models.mf_scheme import MFNavLatest
+from app.models.mf_master import MFNavLatest
 from app.models.mutual_fund import MutualFund
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse

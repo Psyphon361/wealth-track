@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.mf_scheme import MFNavLatest, MFScheme
+from app.models.mf_master import MFNavLatest, MFMaster
 from app.services import nav_history
 
 NAVALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
@@ -277,12 +277,12 @@ def import_navall(session: Session, text: str) -> ImportResult:
         raise ValueError("NAVAll file contained no scheme rows")
 
     inserted = updated = 0
-    columns = [c.name for c in MFScheme.__table__.columns if c.name != "updated_at"]
+    columns = [c.name for c in MFMaster.__table__.columns if c.name != "updated_at"]
     data_columns = [name for name in columns if name != "scheme_code"]
-    table = MFScheme.__table__
+    table = MFMaster.__table__
     values = [{name: getattr(row, name) for name in columns} for row in parsed.rows]
     for start in range(0, len(values), BATCH_SIZE):
-        statement = pg_insert(MFScheme).values(values[start:start + BATCH_SIZE])
+        statement = pg_insert(MFMaster).values(values[start:start + BATCH_SIZE])
         update = {name: statement.excluded[name] for name in data_columns}
         update["updated_at"] = sa.func.now()
         statement = statement.on_conflict_do_update(
@@ -300,7 +300,7 @@ def import_navall(session: Session, text: str) -> ImportResult:
 
     deactivated = session.execute(
         sa.text(
-            "UPDATE mf_schemes SET is_active = false, updated_at = now() "
+            "UPDATE mf_master SET is_active = false, updated_at = now() "
             "WHERE is_active AND scheme_code <> ALL(:codes)"
         ).bindparams(
             sa.bindparam(
@@ -333,8 +333,8 @@ def import_navall(session: Session, text: str) -> ImportResult:
         session, [(n.scheme_code, n.nav_date, n.nav) for n in parsed.navs]
     )
 
-    active = session.scalar(sa.select(sa.func.count()).where(MFScheme.is_active)) or 0
-    total = session.scalar(sa.select(sa.func.count()).select_from(MFScheme)) or 0
+    active = session.scalar(sa.select(sa.func.count()).where(MFMaster.is_active)) or 0
+    total = session.scalar(sa.select(sa.func.count()).select_from(MFMaster)) or 0
     session.commit()
     return ImportResult(
         rows=len(parsed.rows),
@@ -353,13 +353,13 @@ def import_navall(session: Session, text: str) -> ImportResult:
 # --- Lookup / search -----------------------------------------------------------
 
 
-def get_scheme(session: Session, scheme_code: int) -> MFScheme | None:
+def get_scheme(session: Session, scheme_code: int) -> MFMaster | None:
     if not 1 <= scheme_code <= MAX_SCHEME_CODE:
         return None
-    return session.get(MFScheme, scheme_code)
+    return session.get(MFMaster, scheme_code)
 
 
-def require_scheme(session: Session, scheme_code: int) -> MFScheme:
+def require_scheme(session: Session, scheme_code: int) -> MFMaster:
     """Used by MF create/update: unknown code -> 422 on `scheme_code`."""
     scheme = get_scheme(session, scheme_code)
     if scheme is None:
@@ -376,8 +376,8 @@ def require_scheme(session: Session, scheme_code: int) -> MFScheme:
     return scheme
 
 
-def _with_nav(scheme: MFScheme, nav, nav_date) -> dict:
-    data = {c.name: getattr(scheme, c.name) for c in MFScheme.__table__.columns}
+def _with_nav(scheme: MFMaster, nav, nav_date) -> dict:
+    data = {c.name: getattr(scheme, c.name) for c in MFMaster.__table__.columns}
     return {**data, "nav": nav, "nav_date": nav_date}
 
 
@@ -385,9 +385,9 @@ def get_scheme_with_nav(session: Session, scheme_code: int) -> dict | None:
     if not 1 <= scheme_code <= MAX_SCHEME_CODE:
         return None
     row = session.execute(
-        sa.select(MFScheme, MFNavLatest.nav, MFNavLatest.nav_date)
-        .outerjoin(MFNavLatest, MFNavLatest.scheme_code == MFScheme.scheme_code)
-        .where(MFScheme.scheme_code == scheme_code)
+        sa.select(MFMaster, MFNavLatest.nav, MFNavLatest.nav_date)
+        .outerjoin(MFNavLatest, MFNavLatest.scheme_code == MFMaster.scheme_code)
+        .where(MFMaster.scheme_code == scheme_code)
     ).first()
     return _with_nav(*row) if row else None
 
@@ -398,22 +398,22 @@ def search_schemes(session: Session, q: str, limit: int = 20) -> list[dict]:
         return []
     limit = max(1, min(limit, 50))
     statement = (
-        sa.select(MFScheme, MFNavLatest.nav, MFNavLatest.nav_date)
-        .outerjoin(MFNavLatest, MFNavLatest.scheme_code == MFScheme.scheme_code)
-        .where(MFScheme.is_active)
+        sa.select(MFMaster, MFNavLatest.nav, MFNavLatest.nav_date)
+        .outerjoin(MFNavLatest, MFNavLatest.scheme_code == MFMaster.scheme_code)
+        .where(MFMaster.is_active)
     )
     for token in tokens:
         statement = statement.where(
             sa.or_(
-                MFScheme.name.icontains(token, autoescape=True),
-                MFScheme.amc.icontains(token, autoescape=True),
-                MFScheme.plan.icontains(token, autoescape=True),
-                MFScheme.option.icontains(token, autoescape=True),
+                MFMaster.name.icontains(token, autoescape=True),
+                MFMaster.amc.icontains(token, autoescape=True),
+                MFMaster.plan.icontains(token, autoescape=True),
+                MFMaster.option.icontains(token, autoescape=True),
             )
         )
     statement = statement.order_by(
-        sa.func.similarity(sa.func.lower(MFScheme.name), q.strip().lower()).desc(),
-        MFScheme.name,
-        MFScheme.scheme_code,
+        sa.func.similarity(sa.func.lower(MFMaster.name), q.strip().lower()).desc(),
+        MFMaster.name,
+        MFMaster.scheme_code,
     ).limit(limit)
     return [_with_nav(*row) for row in session.execute(statement)]

@@ -12,7 +12,7 @@ from fastapi.exceptions import RequestValidationError
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.models.mf_scheme import MFNavHistory, MFNavHistorySync, MFNavLatest
+from app.models.mf_master import MFNavHistory, MFNavHistorySync, MFNavLatest
 
 MFAPI_URL = "https://api.mfapi.in/mf/{scheme_code}"
 FETCH_TIMEOUT = 20

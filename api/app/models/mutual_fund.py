@@ -13,7 +13,7 @@ class MutualFund(TimestampedMixin, Base):
 
     scheme_name: Mapped[str] = mapped_column(String(200))
     scheme_code: Mapped[int | None] = mapped_column(
-        ForeignKey("mf_schemes.scheme_code", ondelete="SET NULL")
+        ForeignKey("mf_master.scheme_code", ondelete="SET NULL")
     )
     platform: Mapped[str | None] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(
