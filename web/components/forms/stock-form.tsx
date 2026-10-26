@@ -8,9 +8,9 @@ import { apiGet } from "@/lib/api";
 import {
   EXCHANGE_LABELS,
   type Exchange,
-  type Security,
   type Stock,
   type StockInput,
+  type StockMaster,
 } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -41,8 +41,8 @@ import { useAssetSave } from "./use-asset-form";
 
 const schema = z
   .object({
-    security_mode: z.enum(["picker", "manual"]),
-    security_id: z.number().nullable(),
+    master_mode: z.enum(["picker", "manual"]),
+    master_id: z.number().nullable(),
     name: z
       .string()
       .trim()
@@ -56,11 +56,11 @@ const schema = z
     notes: notesText,
   })
   .superRefine((v, ctx) => {
-    if (v.security_mode === "picker") {
-      if (v.security_id === null) {
+    if (v.master_mode === "picker") {
+      if (v.master_id === null) {
         ctx.addIssue({
           code: "custom",
-          path: ["security_id"],
+          path: ["master_id"],
           message: STOCK_REQUIRED_ERROR,
         });
       }
@@ -77,12 +77,12 @@ const EXCHANGE_OPTIONS = toOptions(EXCHANGE_LABELS);
 const LINK_BUTTON =
   "w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline";
 
-function symbolFor(s: Security, exchange: Exchange): string {
+function symbolFor(s: StockMaster, exchange: Exchange): string {
   if (exchange === "NSE" && s.nse_symbol) return s.nse_symbol;
   return s.bse_symbol ?? s.bse_code ?? s.nse_symbol ?? "";
 }
 
-function codesLine(s: Security): string {
+function codesLine(s: StockMaster): string {
   const parts: string[] = [];
   if (s.nse_symbol) parts.push(`NSE: ${s.nse_symbol}`);
   const bse = s.bse_symbol ?? s.bse_code;
@@ -93,8 +93,8 @@ function codesLine(s: Security): string {
 
 function toDefaults(r?: Stock): FormIn {
   return {
-    security_mode: !r || r.security_id != null ? "picker" : "manual",
-    security_id: r?.security_id ?? null,
+    master_mode: !r || r.master_id != null ? "picker" : "manual",
+    master_id: r?.master_id ?? null,
     name: r?.name ?? "",
     symbol: r?.symbol ?? "",
     exchange: r?.exchange ?? "NSE",
@@ -125,28 +125,28 @@ export function StockForm({
   });
   const { saving, save } = useAssetSave("stock", record, onSaved, (issues) => {
     for (const i of issues) {
-      if (i.field === "security_id") {
-        setError("security_id", { type: "server", message: i.message });
+      if (i.field === "master_id") {
+        setError("master_id", { type: "server", message: i.message });
       }
     }
   });
-  const mode = useWatch({ control, name: "security_mode" });
-  const securityName = useWatch({ control, name: "name" });
+  const mode = useWatch({ control, name: "master_mode" });
+  const masterName = useWatch({ control, name: "name" });
   const exchange = useWatch({ control, name: "exchange" });
   // Master details for the summary line (selected, or fetched when editing).
-  const [meta, setMeta] = useState<Security | null>(null);
-  const metaRef = useRef<Security | null>(null);
+  const [meta, setMeta] = useState<StockMaster | null>(null);
+  const metaRef = useRef<StockMaster | null>(null);
 
-  function updateMeta(s: Security | null) {
+  function updateMeta(s: StockMaster | null) {
     metaRef.current = s;
     setMeta(s);
   }
 
-  const initialId = record?.security_id ?? null;
+  const initialId = record?.master_id ?? null;
   useEffect(() => {
     if (initialId === null) return;
     let cancelled = false;
-    apiGet<Security>(`/master/security/${initialId}`)
+    apiGet<StockMaster>(`/master/stock/${initialId}`)
       .then((s) => {
         if (!cancelled) updateMeta(s);
       })
@@ -168,16 +168,16 @@ export function StockForm({
   }, [exchange, setValue]);
 
   function switchMode(next: "picker" | "manual") {
-    setValue("security_mode", next);
-    setValue("security_id", null);
+    setValue("master_mode", next);
+    setValue("master_id", null);
     updateMeta(null);
-    clearErrors(["security_id", "name"]);
+    clearErrors(["master_id", "name"]);
   }
 
   const onSubmit = handleSubmit((values) => {
-    const manual = values.security_mode === "manual";
+    const manual = values.master_mode === "manual";
     const payload: StockInput = {
-      security_id: manual ? null : values.security_id,
+      master_id: manual ? null : values.master_id,
       name: values.name,
       symbol: values.symbol,
       exchange: values.exchange,
@@ -201,22 +201,22 @@ export function StockForm({
         {mode === "picker" ? (
           <Controller
             control={control}
-            name="security_id"
+            name="master_id"
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid} className="gap-1.5">
                 <FieldLabel
-                  htmlFor="security_id"
+                  htmlFor="master_id"
                   className="text-xs font-normal text-muted-foreground"
                 >
                   Stock
                 </FieldLabel>
-                <MasterPicker<Security>
-                  id="security_id"
+                <MasterPicker<StockMaster>
+                  id="master_id"
                   hasValue={field.value !== null}
                   summary={
                     <>
                       <div className="truncate text-sm font-medium">
-                        {meta?.name ?? securityName}
+                        {meta?.name ?? masterName}
                       </div>
                       {meta ? (
                         <div className="truncate text-[11px] text-muted-foreground">

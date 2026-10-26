@@ -91,12 +91,10 @@ export interface RecurringDepositInput {
   notes: string | null;
 }
 
-export type SecurityKind = "stock" | "etf" | "bond";
-
-export interface Security {
+export interface StockMaster {
   id: number;
   isin: string;
-  kind: SecurityKind;
+  kind: "stock" | "etf";
   name: string;
   nse_symbol: string | null;
   nse_series: string | null;
@@ -104,15 +102,25 @@ export interface Security {
   bse_symbol: string | null;
   bse_group: string | null;
   face_value: number | null;
+  is_active: boolean;
+}
+
+export interface BondMaster {
+  id: number;
+  isin: string;
+  name: string;
+  issuer: string | null;
+  nse_symbol: string | null;
+  nse_series: string | null;
+  face_value: number | null;
   coupon_rate: number | null;
   maturity_date: string | null;
-  issuer: string | null;
-  bond_type: BondType | null;
+  bond_type: BondType;
   is_active: boolean;
 }
 
 export interface StockInput {
-  security_id: number | null;
+  master_id: number | null;
   name: string;
   symbol: string | null;
   exchange: Exchange;
@@ -124,7 +132,7 @@ export interface StockInput {
 }
 
 export interface BondInput {
-  security_id: number | null;
+  master_id: number | null;
   name: string;
   isin: string | null;
   issuer: string;

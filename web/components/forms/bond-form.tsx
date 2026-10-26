@@ -10,7 +10,7 @@ import {
   BOND_TYPE_LABELS,
   type Bond,
   type BondInput,
-  type Security,
+  type BondMaster,
 } from "@/lib/types";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { FormShell } from "./form-shell";
@@ -51,8 +51,8 @@ import { useAssetSave } from "./use-asset-form";
 
 const schema = z
   .object({
-    security_mode: z.enum(["picker", "manual"]),
-    security_id: z.number().nullable(),
+    master_mode: z.enum(["picker", "manual"]),
+    master_id: z.number().nullable(),
     name: z
       .string()
       .trim()
@@ -70,11 +70,11 @@ const schema = z
     notes: notesText,
   })
   .superRefine((v, ctx) => {
-    if (v.security_mode === "picker") {
-      if (v.security_id === null) {
+    if (v.master_mode === "picker") {
+      if (v.master_id === null) {
         ctx.addIssue({
           code: "custom",
-          path: ["security_id"],
+          path: ["master_id"],
           message: BOND_REQUIRED_ERROR,
         });
       }
@@ -109,9 +109,9 @@ const BOND_TYPE_OPTIONS = toOptions(BOND_TYPE_LABELS);
 const LINK_BUTTON =
   "w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline";
 
-function metaLine(s: Security): string {
+function metaLine(s: BondMaster): string {
   const parts: string[] = [s.isin];
-  if (s.bond_type) parts.push(BOND_TYPE_LABELS[s.bond_type] ?? s.bond_type);
+  parts.push(BOND_TYPE_LABELS[s.bond_type] ?? s.bond_type);
   if (s.coupon_rate != null) parts.push(`${s.coupon_rate}%`);
   if (s.maturity_date) parts.push(`matures ${formatDate(s.maturity_date)}`);
   return parts.filter(Boolean).join(" · ");
@@ -119,8 +119,8 @@ function metaLine(s: Security): string {
 
 function toDefaults(r?: Bond): FormIn {
   return {
-    security_mode: !r || r.security_id != null ? "picker" : "manual",
-    security_id: r?.security_id ?? null,
+    master_mode: !r || r.master_id != null ? "picker" : "manual",
+    master_id: r?.master_id ?? null,
     name: r?.name ?? "",
     isin: r?.isin ?? "",
     issuer: r?.issuer ?? "",
@@ -155,25 +155,25 @@ export function BondForm({
   });
   const { saving, save } = useAssetSave("bond", record, onSaved, (issues) => {
     for (const i of issues) {
-      if (i.field === "security_id") {
-        setError("security_id", { type: "server", message: i.message });
+      if (i.field === "master_id") {
+        setError("master_id", { type: "server", message: i.message });
       }
     }
   });
-  const mode = useWatch({ control, name: "security_mode" });
+  const mode = useWatch({ control, name: "master_mode" });
   const bondName = useWatch({ control, name: "name" });
   const purchaseDate = useWatch({ control, name: "purchase_date" });
   const maturityLimit = isValidISODate(purchaseDate)
     ? addMonthsISO(purchaseDate, MAX_BOND_YEARS * 12)
     : undefined;
   // Master details for the summary line (selected, or fetched when editing).
-  const [meta, setMeta] = useState<Security | null>(null);
+  const [meta, setMeta] = useState<BondMaster | null>(null);
 
-  const initialId = record?.security_id ?? null;
+  const initialId = record?.master_id ?? null;
   useEffect(() => {
     if (initialId === null) return;
     let cancelled = false;
-    apiGet<Security>(`/master/security/${initialId}`)
+    apiGet<BondMaster>(`/master/bond/${initialId}`)
       .then((s) => {
         if (!cancelled) setMeta(s);
       })
@@ -186,16 +186,16 @@ export function BondForm({
   }, [initialId]);
 
   function switchMode(next: "picker" | "manual") {
-    setValue("security_mode", next);
-    setValue("security_id", null);
+    setValue("master_mode", next);
+    setValue("master_id", null);
     setMeta(null);
-    clearErrors(["security_id", "name"]);
+    clearErrors(["master_id", "name"]);
   }
 
   const onSubmit = handleSubmit((values) => {
-    const manual = values.security_mode === "manual";
+    const manual = values.master_mode === "manual";
     const payload: BondInput = {
-      security_id: manual ? null : values.security_id,
+      master_id: manual ? null : values.master_id,
       name: values.name,
       isin: values.isin,
       issuer: values.issuer,
@@ -223,17 +223,17 @@ export function BondForm({
         {mode === "picker" ? (
           <Controller
             control={control}
-            name="security_id"
+            name="master_id"
             render={({ field, fieldState }) => (
               <Field data-invalid={fieldState.invalid} className="gap-1.5">
                 <FieldLabel
-                  htmlFor="security_id"
+                  htmlFor="master_id"
                   className="text-xs font-normal text-muted-foreground"
                 >
                   Bond
                 </FieldLabel>
-                <MasterPicker<Security>
-                  id="security_id"
+                <MasterPicker<BondMaster>
+                  id="master_id"
                   hasValue={field.value !== null}
                   summary={
                     <>
@@ -270,7 +270,7 @@ export function BondForm({
                     setValue("name", s.name);
                     setValue("isin", s.isin);
                     if (s.issuer) setValue("issuer", s.issuer);
-                    if (s.bond_type) setValue("bond_type", s.bond_type);
+                    setValue("bond_type", s.bond_type);
                     if (s.face_value != null) {
                       setValue("face_value", String(s.face_value));
                     }
