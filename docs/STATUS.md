@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-10-25)
+# STATUS — handoff notes (last updated 2026-10-26)
 
 ## Done (all committed on `main`)
 
@@ -18,6 +18,7 @@
 - MF valuation at the latest AMFI NAV (units × NAV for scheme-linked holdings; `nav`/`nav_date` in API items) (SPEC §3).
 - After saving an asset, the add form opens that type's portfolio tab (`/portfolio/{type}`).
 - MF grid "NAV" column (latest NAV, "as of" date).
+- Securities master for stocks, ETFs and bonds (`securities`, migration 0006) from NSE/BSE files with a daily cron; stock and bond form pickers with the linked `security_id` (SPEC §1, §4, §5).
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -38,11 +39,15 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
 - Generic HTTP error wording ("Request failed") and the routing 404 description were not specified by the user — confirm if they matter.
+- SGB names come raw from the bhavcopy (e.g. "2.5%GOLDBONDS2028SR-III") and have no maturity date.
+- Social Stock Exchange instruments (e.g. "SGBS Unnati Foundation…", series SE) are classified corporate and can outrank real SGBs when searching "sgb".
+- `tax_free` detection in the securities master has low recall.
+- Securities cron on Vercel: NSE/BSE answering Vercel's US IPs is not verified until the first production run (fallback: run the CLI).
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
 ## Deferred (not started)
 
-- Live prices for stocks and bonds (current value = invested until then). MF uses the latest AMFI NAV (daily, not live).
+- Live prices for stocks and bonds (current value = invested until then; price source decision pending). MF uses the latest AMFI NAV (daily, not live).
 - Pruning of unheld schemes' NAV history (see SPEC §1).
 - SIP support for MF; transaction history (each holding is one record).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only), multi-user auth.

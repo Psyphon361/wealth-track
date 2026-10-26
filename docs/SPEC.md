@@ -10,8 +10,8 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 |---|---|---|
 | Fixed Deposit (`fd`) | `fixed_deposits` | bank, label?, principal, rate (% p.a.), start_date, tenure_years, tenure_months, tenure_days, compounding (`monthly`\|`quarterly`\|`half_yearly`\|`yearly`\|`simple`, default quarterly), payout_type (`cumulative`\|`payout`) |
 | Recurring Deposit (`rd`) | `recurring_deposits` | bank, label?, monthly_instalment, rate, start_date, tenure_years, tenure_months, tenure_days, compounding (default quarterly) |
-| Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date |
-| Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value (per unit; nullable in DB for old rows, required on input), purchase_price (per unit), purchase_date, ytm (% p.a.), maturity_date |
+| Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date, security_id? (FK → `securities`) |
+| Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value (per unit; nullable in DB for old rows, required on input), purchase_price (per unit), purchase_date, ytm (% p.a.), maturity_date, security_id? (FK → `securities`) |
 | Mutual Fund (`mf`) | `mutual_funds` | scheme_code? (FK → `mf_schemes.scheme_code`), scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), purchase_date |
 
 Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4). Enums are VARCHAR + CHECK (not native PG enums).
@@ -36,6 +36,14 @@ Removed by user decision: FD maturity amount & status inputs, stock current pric
 - **Daily cron:** also appends today's NAV for schemes referenced by any holding's `scheme_code`.
 - **Not built yet:** pruning of NAV history for schemes nobody holds (proposed: daily cron, 7-day grace on `fetched_at`; deferred by user).
 
+### Master data (stocks/bonds)
+
+- **`securities`** (static; daily import writes only rows that changed): id, isin UNIQUE, kind (`stock`\|`etf`\|`bond`), name, nse_symbol, nse_series, bse_code, bse_symbol, bse_group, face_value, coupon_rate, maturity_date, issuer, bond_type (derived: series GS/TB/SG → government, GB → sgb, tax-free markers in name/issuer/symbol → tax_free, else corporate), is_active, last_seen, updated_at. Trigram index on lower(name).
+- **Sources** (`api/app/services/securities.py`): NSE `EQUITY_L.csv`, NSE `eq_etfseclist.csv`, NSE `DEBT.csv` (required); NSE UDiFF CM bhavcopy zip (SME series SM/ST, SGBs series GB) and BSE UDiFF bhavcopy (Referer header) (optional). Daily files walk back up to 7 days. Merge by ISIN (NSE preferred).
+- **Activity:** rows from the required lists deactivate when missing; bhavcopy/BSE-only rows deactivate after 30 days unseen (`last_seen` refreshed at weekly resolution). Rows are never deleted.
+- **Holdings link:** stock/bond payloads accept `security_id`; the server snapshots name and symbol (stock: NSE symbol if exchange is NSE, else BSE symbol) or name and ISIN (bond). Stock/bond holdings keep what the user sent for issuer, face value, maturity and bond type.
+- **Cron:** `GET /api/cron/securities` (bearer `CRON_SECRET`), Vercel `0 14 * * *` UTC (19:30 IST). CLI: `python -m app.jobs.securities_import`.
+
 ## 2. Validation rules (API and forms, identical wording)
 
 Base: required text non-empty ("Required"); numbers must parse ("Enter a valid number"); amounts/rates/quantities > 0 ("Must be greater than 0"); quantity whole ("Must be a whole number").
@@ -58,6 +66,8 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 15 | Symbol (optional): uppercased, `^[A-Z0-9&-]{1,20}$` | Symbol: letters, digits, & or -, up to 20 characters |
 | 16 | Text ≤ 200 chars (names, bank, label, issuer, broker, platform, scheme); notes ≤ 1000 | Must be at most N characters |
 | 17 | MF `scheme_code` (optional) must exist in `mf_schemes` | Select a scheme from the list |
+| 18 | Stock `security_id` (optional) must be a stock or ETF in `securities` | Select a stock from the list |
+| 19 | Bond `security_id` (optional) must be a bond in `securities` | Select a bond from the list |
 | P | Payout FD cannot use `simple` | Choose a payout frequency |
 
 MF scheme picker: the form requires a scheme in picker mode; "Not listed? Enter manually" allows free text with a null `scheme_code`. When a code is set, the server snapshots `scheme_name` from the master.
@@ -90,7 +100,11 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - 404 "NAV not available" / "No NAV published on or before this date." (also for dates older than 10 years)
   - 422 "Invalid date" ("Date: Date cannot be in the future")
   - 502 "Couldn't fetch NAV history"
+- `GET /master/stock?q=&limit=20` → active stocks and ETFs from `securities`. `q` ≥ 2 characters; tokens are ANDed over name, NSE/BSE symbol, BSE code, ISIN and issuer; ranked by trigram similarity on name.
+- `GET /master/bond?q=&limit=20` → active bonds, same search rules.
+- `GET /master/security/{id}` → one security; 404 "Security not found" / "The requested resource doesn't exist."
 - `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
+- `GET /cron/securities` → runs the securities import (see Master data). Same bearer auth; Vercel Cron `0 14 * * *` UTC.
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
 - `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf: latest NAV, 4 dp, and its date; null when no NAV). The NAV lookup is one extra query over held schemes only.
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
@@ -134,6 +148,9 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
+- Stock form (`components/forms/stock-form.tsx`, picker from `components/forms/master-picker.tsx`): picker by default ("Search stocks and ETFs…"; rows show name, NSE/BSE symbols, ISIN, ETF badge). Picking sets name, symbol and the exchange default; changing the exchange re-derives the symbol. "Not listed? Enter manually" switches to free text; "Search the stock list instead" switches back.
+- Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name and ISIN and pre-fills issuer, bond type, face value and maturity (all still editable).
+- Edit dialog for stocks/bonds shows the linked security (fetched from `/master/security/{id}`).
 - MF Average NAV auto-fill (`components/forms/use-nav-autofill.ts`): once a scheme and purchase date are set, Average NAV fills from `/api/master/mf/{scheme_code}/nav` with the hint "NAV on {date} · AMFI". It stays editable and never overwrites a value the user typed. Errors show the API message as a muted hint.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.
 - Toasts (sonner, themed): title = API `message`, description = API `description`.
