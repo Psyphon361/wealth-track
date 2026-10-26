@@ -13,12 +13,12 @@
 - /add redesign: grouped tile gallery (Groww-style) → per-type form page /add/[type]; legacy ?type= redirects.
 - Portfolio redesign: per-asset tabs and grids (/api/holdings/{type}) with type-specific columns/filters, search, sorting, 10-row paging, column visibility saved per type, tab transition animation.
 - Deployment prep: Vercel-ready API (`api/vercel.json`, region iad1, API key), password gate + same-origin proxy in web, `docs/DEPLOY.md`.
-- MF master data from AMFI (mf_schemes + mf_nav_latest, daily cron, scheme picker in MF form).
+- MF master data from AMFI (mf_schemes, renamed mf_master in migration 0007, + mf_nav_latest; daily cron; scheme picker in MF form).
 - Historical NAV lookup (mf_nav_history via mfapi.in, cached) and Average NAV auto-fill in the MF form.
 - MF valuation at the latest AMFI NAV (units × NAV for scheme-linked holdings; `nav`/`nav_date` in API items) (SPEC §3).
 - After saving an asset, the add form opens that type's portfolio tab (`/portfolio/{type}`).
 - MF grid "NAV" column (latest NAV, "as of" date).
-- Securities master for stocks, ETFs and bonds (`securities`, migration 0006) from NSE/BSE files with a daily cron; stock and bond form pickers with the linked `security_id` (SPEC §1, §4, §5).
+- Securities masters for stocks/ETFs (`stock_master`) and bonds (`bond_master`), migration 0006, from NSE/BSE files with a daily cron; stock and bond form pickers with the linked `master_id` (SPEC §1, §4, §5). MF master table renamed `mf_schemes` → `mf_master` (migration 0007).
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -31,7 +31,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Data
 
-- Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_schemes`, `mf_nav_latest`, `mf_nav_history`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
+- Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
 
@@ -42,6 +42,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - SGB names come raw from the bhavcopy (e.g. "2.5%GOLDBONDS2028SR-III") and have no maturity date.
 - Social Stock Exchange instruments (e.g. "SGBS Unnati Foundation…", series SE) are classified corporate and can outrank real SGBs when searching "sgb".
 - `tax_free` detection in the securities master has low recall.
+- Some NSE ETF names in `stock_master` are raw codes (e.g. "NIPINDETFNIFTYBEES").
 - Securities cron on Vercel: NSE/BSE answering Vercel's US IPs is not verified until the first production run (fallback: run the CLI).
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
