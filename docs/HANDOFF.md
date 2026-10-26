@@ -3,7 +3,7 @@
 Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers what those don't: how the last session worked, what it learned the hard way, and what's next. Verify against the code before acting; update this file when you finish a chunk of work.
 
 ## Where things stand
-- `main` is ahead of `origin/main` by unpushed commits (incl. `a1a7b93` MF valuation at latest NAV, `148d2de` post-save redirect to the type tab, `d749f22` MF NAV column, `1732d66` securities master API, `7214d7d` stock/bond master search + cron + holdings link, `ce1beeb` stock and bond pickers, `77eb203` docs, `8c4c85e` separate stock_master and bond_master tables, `9fa98e4` web stock/bond forms use stock_master/bond_master, `165b70b` rename mf_schemes to mf_master); push only when the user says so. Production (Vercel web + api, Neon `production` branch) is on migration `0005`, `CRON_SECRET` set, AMFI master loaded (14,412 schemes / 8,821 active), daily cron 22:00 IST live. Pushing the `api/` commits makes the GitHub Action run `alembic upgrade head` on prod, so `0006` (stock_master, bond_master) and `0007` (mf_master rename) go to prod with the push.
+- `main` == `origin/main` (all commits through `779595d` pushed). Production (Vercel web + api, Neon `production` branch) is on migration `0007`. Prod masters are populated by the 2026-10-26 securities import (`GET /api/cron/securities` on Vercel, all sources fetched with no errors): `stock_master` 5,765 rows (equity 2,629, etf 355, NSE bhavcopy SME 467, BSE 5,013), `bond_master` 6,205 (debt 6,162, bhavcopy SGB 43); bhavcopy and BSE file date 2026-10-23. `CRON_SECRET` set; AMFI master loaded (14,412 schemes / 8,821 active). Daily crons: securities 14:00 UTC (19:30 IST), AMFI 16:30 UTC (22:00 IST).
 - Migration head is `0007` (dev DB). Neon `dev` branch: the master tables are populated: `stock_master` 5,765 rows (5,384 stock + 381 etf), `bond_master` 6,205, `mf_master` 14,412. All 5 holdings tables were emptied on 2026-10-25 at the user's request (backup JSON was in that session's scratchpad, temporary). Master/market tables kept. The user may enter real holdings again — rule 5 in AGENTS.md still applies.
 - API tests: `cd api && .venv/bin/python -m pytest -q` (120 passing). Add a test with every bug fix (user decision: no full suite).
 
@@ -26,10 +26,9 @@ Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers wh
 ## Next candidates (ask the user which first)
 1. Holding details page at `/portfolio/{type}/{id}` (flip `DETAILS_ENABLED` in `components/portfolio/grid/row-actions.tsx`).
 2. Polish SGB names/maturity and exclude SSE (series SE) instruments from the securities master.
-3. Verify `/api/cron/securities` from Vercel after push (NSE/BSE may block US IPs; fallback: run the CLI locally).
-4. Matured holdings view (pinned for later).
-5. Prune NAV history of unheld schemes (daily cron, 7-day grace on `fetched_at`) — deferred by user (SPEC §1).
-6. Integrations decisions still open with the user: NSE EOD files (grey-area ToS), CAS upload vs broker API, paid data or free only, price history depth, Account Aggregator.
+3. Matured holdings view (pinned for later).
+4. Prune NAV history of unheld schemes (daily cron, 7-day grace on `fetched_at`) — deferred by user (SPEC §1).
+5. Integrations decisions still open with the user: NSE EOD files (grey-area ToS), CAS upload vs broker API, paid data or free only, price history depth, Account Aggregator.
 
 ## How the user works (and how the last session ran)
 - Orchestrator + builders (see `CLAUDE.md` and `~/.claude/CLAUDE.md`): main session plans, briefs, reviews, verifies in the browser, commits; builders (Sonnet, effort medium) edit; Haiku for docs/chores; max 3 builders in parallel; check usage before dispatching.

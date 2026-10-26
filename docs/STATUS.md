@@ -43,7 +43,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Social Stock Exchange instruments (e.g. "SGBS Unnati Foundation…", series SE) are classified corporate and can outrank real SGBs when searching "sgb".
 - `tax_free` detection in the securities master has low recall.
 - Some NSE ETF names in `stock_master` are raw codes (e.g. "NIPINDETFNIFTYBEES").
-- Securities cron on Vercel: NSE/BSE answering Vercel's US IPs is not verified until the first production run (fallback: run the CLI).
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
 ## Deferred (not started)
