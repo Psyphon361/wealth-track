@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Numeric, String
+from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -17,6 +17,9 @@ class Stock(TimestampedMixin, Base):
         str_enum("NSE", "BSE", name="stock_exchange"),
         default="NSE",
         server_default="NSE",
+    )
+    security_id: Mapped[int | None] = mapped_column(
+        ForeignKey("securities.id", ondelete="SET NULL")
     )
     broker: Mapped[str | None] = mapped_column(String(200))
     quantity: Mapped[int]

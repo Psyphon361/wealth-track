@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Numeric, String
+from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -16,6 +16,9 @@ class Bond(TimestampedMixin, Base):
     issuer: Mapped[str] = mapped_column(String(200))
     bond_type: Mapped[str] = mapped_column(
         str_enum("government", "corporate", "tax_free", "sgb", "other", name="bond_type")
+    )
+    security_id: Mapped[int | None] = mapped_column(
+        ForeignKey("securities.id", ondelete="SET NULL")
     )
     platform: Mapped[str | None] = mapped_column(String(200))
     quantity: Mapped[int]
