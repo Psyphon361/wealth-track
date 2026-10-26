@@ -18,8 +18,8 @@ class Stock(TimestampedMixin, Base):
         default="NSE",
         server_default="NSE",
     )
-    security_id: Mapped[int | None] = mapped_column(
-        ForeignKey("securities.id", ondelete="SET NULL")
+    master_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_master.id", ondelete="SET NULL")
     )
     broker: Mapped[str | None] = mapped_column(String(200))
     quantity: Mapped[int]

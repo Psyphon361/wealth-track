@@ -1,5 +1,6 @@
 import secrets
 import urllib.error
+from dataclasses import asdict
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.schemas.mf_scheme import AmfiImportResult
-from app.schemas.security import SecuritiesImportResult
-from app.services import amfi, securities
+from app.schemas.market_master import MarketImportResult
+from app.services import amfi, bond_master, market_files, stock_master
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -34,12 +35,15 @@ def refresh_amfi(db: Session = Depends(get_db)):
 
 
 @router.get(
-    "/securities", response_model=SecuritiesImportResult, dependencies=[Depends(require_cron_secret)]
+    "/securities", response_model=MarketImportResult, dependencies=[Depends(require_cron_secret)]
 )
 def refresh_securities(db: Session = Depends(get_db)):
     today = date.today()
     try:
-        sources = securities.fetch_sources(today)
+        sources = market_files.fetch_sources(today)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise HTTPException(status_code=502, detail="Couldn't fetch the securities files") from exc
-    return securities.import_securities(db, sources, today)
+    return {
+        "stocks": asdict(stock_master.import_stocks(db, sources, today)),
+        "bonds": asdict(bond_master.import_bonds(db, sources, today)),
+    }

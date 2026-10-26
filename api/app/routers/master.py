@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.schemas.market_master import BondMasterRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.schemas.security import SecurityRead
-from app.services import amfi, nav_history, securities
+from app.services import amfi, bond_master, nav_history, stock_master
 
 router = APIRouter(prefix="/master", tags=["master"])
 
@@ -28,36 +28,50 @@ def get_mf(scheme_code: int, db: Session = Depends(get_db)):
     return scheme
 
 
-@router.get("/stock", response_model=list[SecurityRead])
+@router.get("/stock", response_model=list[StockMasterRead])
 def search_stock(
     q: str = Query(default=""),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    return securities.search_securities(db, q, ("stock", "etf"), limit)
+    return stock_master.search_stocks(db, q, limit)
 
 
-@router.get("/bond", response_model=list[SecurityRead])
+@router.get("/stock/{master_id}", response_model=StockMasterRead)
+def get_stock(master_id: int, db: Session = Depends(get_db)):
+    stock = stock_master.get_stock_master(db, master_id)
+    if stock is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Stock not found",
+                "description": "The requested resource doesn't exist.",
+            },
+        )
+    return stock
+
+
+@router.get("/bond", response_model=list[BondMasterRead])
 def search_bond(
     q: str = Query(default=""),
     limit: int = Query(default=20, ge=1, le=50),
     db: Session = Depends(get_db),
 ):
-    return securities.search_securities(db, q, ("bond",), limit)
+    return bond_master.search_bonds(db, q, limit)
 
 
-@router.get("/security/{security_id}", response_model=SecurityRead)
-def get_security(security_id: int, db: Session = Depends(get_db)):
-    security = securities.get_security(db, security_id)
-    if security is None:
+@router.get("/bond/{master_id}", response_model=BondMasterRead)
+def get_bond(master_id: int, db: Session = Depends(get_db)):
+    bond = bond_master.get_bond_master(db, master_id)
+    if bond is None:
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Security not found",
+                "message": "Bond not found",
                 "description": "The requested resource doesn't exist.",
             },
         )
-    return security
+    return bond
 
 
 @router.get("/mf/{scheme_code}/nav", response_model=MFNavOnDate)

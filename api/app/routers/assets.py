@@ -7,7 +7,7 @@ from app import schemas
 from app.db import Base, get_db
 from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock
 from app.schemas.messages import Outcome
-from app.services import amfi, securities
+from app.services import amfi, bond_master, stock_master
 
 router = APIRouter(prefix="/assets")
 
@@ -60,19 +60,15 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         data = body.model_dump()
         if data.get("scheme_code") is not None:
             data["scheme_name"] = amfi.require_scheme(db, data["scheme_code"]).name[:200]
-        security_id = data.get("security_id")
-        if security_id is not None and slug == "stock":
-            security = securities.require_security(
-                db, security_id, ("stock", "etf"), securities.UNKNOWN_STOCK_MESSAGE
-            )
-            data["name"] = security.name[:200]
-            data["symbol"] = securities.pick_stock_symbol(security, data["exchange"], data["symbol"])
-        elif security_id is not None and slug == "bond":
-            security = securities.require_security(
-                db, security_id, ("bond",), securities.UNKNOWN_BOND_MESSAGE
-            )
-            data["name"] = security.name[:200]
-            data["isin"] = security.isin
+        master_id = data.get("master_id")
+        if master_id is not None and slug == "stock":
+            stock = stock_master.require_stock_master(db, master_id)
+            data["name"] = stock.name[:200]
+            data["symbol"] = stock_master.pick_stock_symbol(stock, data["exchange"], data["symbol"])
+        elif master_id is not None and slug == "bond":
+            bond = bond_master.require_bond_master(db, master_id)
+            data["name"] = bond.name[:200]
+            data["isin"] = bond.isin
         return data
 
     @sub.get("", response_model=list[read])

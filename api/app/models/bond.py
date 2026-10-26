@@ -17,8 +17,8 @@ class Bond(TimestampedMixin, Base):
     bond_type: Mapped[str] = mapped_column(
         str_enum("government", "corporate", "tax_free", "sgb", "other", name="bond_type")
     )
-    security_id: Mapped[int | None] = mapped_column(
-        ForeignKey("securities.id", ondelete="SET NULL")
+    master_id: Mapped[int | None] = mapped_column(
+        ForeignKey("bond_master.id", ondelete="SET NULL")
     )
     platform: Mapped[str | None] = mapped_column(String(200))
     quantity: Mapped[int]
