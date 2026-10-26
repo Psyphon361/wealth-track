@@ -350,6 +350,7 @@ class RecurringDepositRead(RecurringDepositBase, _Read):
 class StockBase(BaseModel):
     name: Required
     symbol: Annotated[str | None, Field(default=None)]
+    security_id: int | None = None
     exchange: Literal["NSE", "BSE"] = "NSE"
     broker: Optional
     quantity: int
@@ -374,6 +375,7 @@ class StockRead(StockBase, _Read):
 class BondBase(BaseModel):
     name: Required
     isin: Annotated[str | None, Field(default=None)]
+    security_id: int | None = None
     issuer: Required
     bond_type: Literal["government", "corporate", "tax_free", "sgb", "other"]
     platform: Optional

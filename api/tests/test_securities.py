@@ -226,3 +226,25 @@ def test_html_shell_is_detected_as_missing_file():
     assert is_html(b"  \n<HTML><HEAD>")
     assert not is_html(b"TradDt,BizDt,Sgmt")
     assert not is_html(_zip("a,b\n1,2\n"))
+
+
+@pytest.mark.parametrize(
+    ("nse", "bse", "exchange", "payload", "expected"),
+    [
+        ("RELIANCE", "RELIANCE", "NSE", "X", "RELIANCE"),
+        ("RELIANCE", "RELIND", "BSE", "X", "RELIND"),
+        (None, "BSESYM", "NSE", "X", "BSESYM"),
+        ("M&M", None, "BSE", "X", "X"),
+        ("BAD SYM", "OK1", "NSE", "X", "OK1"),
+        ("BAD.SYM", "ALSO.BAD", "NSE", "X", "X"),
+        (None, None, "NSE", None, None),
+        ("A" * 21, "ABC", "BSE", "X", "ABC"),
+    ],
+)
+def test_pick_stock_symbol(nse, bse, exchange, payload, expected):
+    from types import SimpleNamespace
+
+    from app.services.securities import pick_stock_symbol
+
+    security = SimpleNamespace(nse_symbol=nse, bse_symbol=bse)
+    assert pick_stock_symbol(security, exchange, payload) == expected

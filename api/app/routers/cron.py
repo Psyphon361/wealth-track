@@ -1,5 +1,6 @@
 import secrets
 import urllib.error
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -7,7 +8,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.schemas.mf_scheme import AmfiImportResult
-from app.services import amfi
+from app.schemas.security import SecuritiesImportResult
+from app.services import amfi, securities
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -29,3 +31,15 @@ def refresh_amfi(db: Session = Depends(get_db)):
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise HTTPException(status_code=502, detail="Couldn't fetch the AMFI file") from exc
     return amfi.import_navall(db, text)
+
+
+@router.get(
+    "/securities", response_model=SecuritiesImportResult, dependencies=[Depends(require_cron_secret)]
+)
+def refresh_securities(db: Session = Depends(get_db)):
+    today = date.today()
+    try:
+        sources = securities.fetch_sources(today)
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise HTTPException(status_code=502, detail="Couldn't fetch the securities files") from exc
+    return securities.import_securities(db, sources, today)

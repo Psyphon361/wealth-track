@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.services import amfi, nav_history
+from app.schemas.security import SecurityRead
+from app.services import amfi, nav_history, securities
 
 router = APIRouter(prefix="/master", tags=["master"])
 
@@ -25,6 +26,38 @@ def get_mf(scheme_code: int, db: Session = Depends(get_db)):
     if scheme is None:
         raise HTTPException(status_code=404, detail="Scheme not found")
     return scheme
+
+
+@router.get("/stock", response_model=list[SecurityRead])
+def search_stock(
+    q: str = Query(default=""),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return securities.search_securities(db, q, ("stock", "etf"), limit)
+
+
+@router.get("/bond", response_model=list[SecurityRead])
+def search_bond(
+    q: str = Query(default=""),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return securities.search_securities(db, q, ("bond",), limit)
+
+
+@router.get("/security/{security_id}", response_model=SecurityRead)
+def get_security(security_id: int, db: Session = Depends(get_db)):
+    security = securities.get_security(db, security_id)
+    if security is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Security not found",
+                "description": "The requested resource doesn't exist.",
+            },
+        )
+    return security
 
 
 @router.get("/mf/{scheme_code}/nav", response_model=MFNavOnDate)

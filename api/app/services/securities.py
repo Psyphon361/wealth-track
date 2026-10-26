@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 import sqlalchemy as sa
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -490,3 +491,66 @@ def import_securities(session: Session, sources: Sources, today: date) -> Import
         bhav_error=extra["errors"]["bhav"],
         bse_error=extra["errors"]["bse"],
     )
+
+
+# --- Lookup / search -----------------------------------------------------------
+
+UNKNOWN_STOCK_MESSAGE = "Select a stock from the list"
+UNKNOWN_BOND_MESSAGE = "Select a bond from the list"
+_SYMBOL = re.compile(r"^[A-Z0-9&-]{1,20}$")
+
+
+def get_security(session: Session, security_id: int) -> Security | None:
+    if not 1 <= security_id <= 2**31 - 1:
+        return None
+    return session.get(Security, security_id)
+
+
+def require_security(
+    session: Session, security_id: int, kinds: tuple[str, ...], message: str
+) -> Security:
+    """Used by stock/bond create/update: unknown id or wrong kind -> 422 on `security_id`."""
+    security = get_security(session, security_id)
+    if security is None or security.kind not in kinds:
+        raise RequestValidationError(
+            [{"type": "value_error", "loc": ("body", "security_id"), "msg": message, "input": security_id}]
+        )
+    return security
+
+
+def pick_stock_symbol(security: Security, exchange: str, payload_symbol: str | None) -> str | None:
+    """NSE symbol on NSE (else the BSE symbol), BSE symbol on BSE, else the payload's.
+
+    Candidates that do not satisfy the app's symbol pattern are skipped, never rejected.
+    """
+    candidates = [security.nse_symbol, security.bse_symbol] if exchange == "NSE" else [security.bse_symbol]
+    for candidate in candidates:
+        if candidate and _SYMBOL.match(candidate.strip().upper()):
+            return candidate.strip().upper()
+    return payload_symbol
+
+
+def search_securities(
+    session: Session, q: str, kinds: tuple[str, ...], limit: int = 20
+) -> list[Security]:
+    if len(q.strip()) < 2:
+        return []
+    limit = max(1, min(limit, 50))
+    statement = sa.select(Security).where(Security.is_active, Security.kind.in_(kinds))
+    for token in q.split():
+        statement = statement.where(
+            sa.or_(
+                Security.name.icontains(token, autoescape=True),
+                Security.nse_symbol.icontains(token, autoescape=True),
+                Security.bse_symbol.icontains(token, autoescape=True),
+                Security.bse_code.icontains(token, autoescape=True),
+                Security.isin.icontains(token, autoescape=True),
+                Security.issuer.icontains(token, autoescape=True),
+            )
+        )
+    statement = statement.order_by(
+        sa.func.similarity(sa.func.lower(Security.name), q.strip().lower()).desc(),
+        Security.name,
+        Security.id,
+    ).limit(limit)
+    return list(session.scalars(statement))
