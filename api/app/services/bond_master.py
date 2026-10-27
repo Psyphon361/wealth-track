@@ -221,8 +221,20 @@ def parse_seed_sgb(data: bytes | str) -> SourceRows:
     return result
 
 
+def tax_free_display_name(issuer: str, coupon: Decimal | None, maturity: date | None) -> str:
+    """'REC Limited 7.38% Tax-free Dec 2027'; without a coupon 'REC Limited Tax-free bond 2027'."""
+    if coupon and maturity:
+        text = f"{issuer} {coupon.normalize():f}% Tax-free {_MONTH_NAMES[maturity.month - 1]} {maturity.year}"
+    elif coupon:
+        text = f"{issuer} {coupon.normalize():f}% Tax-free bond"
+    else:
+        text = f"{issuer} Tax-free bond" + (f" {maturity.year}" if maturity else "")
+    return text[:300]
+
+
 def parse_seed_tax_free(data: bytes | str) -> SourceRows:
-    """api/data/tax_free_bonds.csv: kind tax_free -> tax_free, 54ec -> other (54EC stays in the name)."""
+    """api/data/tax_free_bonds.csv: kind tax_free -> tax_free (short generated name; the CSV name is the
+    long NSDL legal name), 54ec -> other (54EC stays in the name)."""
     result = SourceRows()
     for rec in market.records(data):
         isin, kind = market.s(rec.get("isin")), market.s(rec.get("kind")).lower()
@@ -231,13 +243,16 @@ def parse_seed_tax_free(data: bytes | str) -> SourceRows:
         if not market.ISIN_RE.match(isin) or not name or kind not in ("tax_free", "54ec"):
             result.skipped += 1
             continue
+        coupon, maturity = _coupon(rec.get("coupon_rate")), _iso_date(rec.get("maturity_date"))
         if kind == "54ec" and "54EC" not in name.upper():
             name = f"{name} 54EC"
+        if kind == "tax_free":
+            name = tax_free_display_name(issuer or name, coupon, maturity)
         result.rows.append(
             _row(
                 isin=isin, name=name[:300], issuer=issuer[:300] or None,
                 bond_type="tax_free" if kind == "tax_free" else "other",
-                coupon_rate=_coupon(rec.get("coupon_rate")), maturity_date=_iso_date(rec.get("maturity_date")),
+                coupon_rate=coupon, maturity_date=maturity,
             )  # fmt: skip
         )
     return result

@@ -17,6 +17,7 @@ from app.services.bond_master import (
     parse_nse_sgb,
     parse_seed_sgb,
     parse_seed_tax_free,
+    tax_free_display_name,
 )
 from app.services.market_files import merged_tags_sql
 from tests.market_helpers import TODAY, by_isin, make_sources, read
@@ -238,13 +239,33 @@ def test_seed_tax_free_csv_kinds():
     assert result.skipped == 1  # unknown kind
     rows = by_isin(result.rows)
     assert rows["INE020B07GX4"]["bond_type"] == "tax_free"
-    assert rows["INE020B07GX4"]["name"] == "REC Tax Free 7.38% 2027"
+    assert rows["INE020B07GX4"]["name"] == "REC Limited 7.38% Tax-free Dec 2027"
     assert rows["INE020B07GX4"]["maturity_date"] == date(2027, 12, 19)
     pfc = rows["INE134E07ZZ9"]
     assert pfc["bond_type"] == "other"
     assert pfc["name"] == "PFC 54EC 5.25% 2026"
     assert rows["INE134E07AA1"]["name"] == "PFC Capital Gain Bonds 54EC"
     assert rows["INE134E07AA1"]["coupon_rate"] is None
+
+
+def test_tax_free_display_name_rule():
+    assert tax_free_display_name("REC Limited", Decimal("7.380"), date(2027, 12, 19)) == "REC Limited 7.38% Tax-free Dec 2027"
+    assert tax_free_display_name("NHAI", Decimal("8.100"), date(2029, 1, 5)) == "NHAI 8.1% Tax-free Jan 2029"
+    assert tax_free_display_name("IRFC", Decimal("8.000"), date(2030, 2, 1)) == "IRFC 8% Tax-free Feb 2030"
+    assert tax_free_display_name("REC Limited", None, date(2027, 12, 19)) == "REC Limited Tax-free bond 2027"
+    assert tax_free_display_name("REC Limited", None, None) == "REC Limited Tax-free bond"
+    assert len(tax_free_display_name("X" * 400, Decimal("7"), date(2027, 1, 1))) == 300
+
+
+def test_tax_free_seed_name_ignores_long_csv_name():
+    csv_text = (
+        "isin,issuer,name,kind,coupon_rate,maturity_date\n"
+        "INE020B07GH7,REC Limited,8.12% -for categories I & II Tax Free Secured Bonds Series-2,tax_free,8.12,2027-03-27\n"
+        "INE020B07GY2,REC Limited,Long NSDL name,tax_free,,\n"
+    )
+    rows = by_isin(parse_seed_tax_free(csv_text).rows)
+    assert rows["INE020B07GH7"]["name"] == "REC Limited 8.12% Tax-free Mar 2027"
+    assert rows["INE020B07GY2"]["name"] == "REC Limited Tax-free bond"
 
 
 def test_merge_priority_seed_beats_debt_and_fills_gaps():
@@ -257,7 +278,7 @@ def test_merge_priority_seed_beats_debt_and_fills_gaps():
     assert extra["excluded"] == 1
     assert extra["source_errors"] == {}
     rec = merged["INE020B07GX4"]
-    assert rec["name"] == "REC Tax Free 7.38% 2027"  # seed name beats debt name
+    assert rec["name"] == "REC Limited 7.38% Tax-free Dec 2027"  # seed name beats debt name
     assert rec["nse_symbol"] == "738REC27TF"  # debt fills what the seed lacks
     assert rec["face_value"] == Decimal("1000.00")
     assert rec["bond_type"] == "tax_free"
