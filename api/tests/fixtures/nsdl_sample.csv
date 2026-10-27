@@ -1,0 +1,9 @@
+isin,issuer,instrument_type,issue_mode,tax_category,face_value,issue_size,allotment_date,maturity_date,is_perpetual,coupon_rate,coupon_type,interest_frequency,rating,rating_agency,issuer_ownership,status,as_of
+INE148I07UR1,Sammaan Capital Limited,debentures,private,taxable,1000,5000000000,2024-09-27,2031-09-25,0,10.03,simple,yearly,A/Stable,ICRA,non_psu,active,2026-10-27
+INE020B07GX4,Rec Limited,bonds,public,taxfree,1000,1500000000,2012-12-24,2027-12-19,0,7.38,simple,yearly,AAA/Stable,"CRISIL, ICRA",psu,active,2026-10-27
+INE692Q07621,Toyota Financial Services India Limited,debentures,private,taxable,100000,2000000000,2025-12-22,2027-11-18,0,7.1,simple,half_yearly,AAA/Stable,CRISIL,non_psu,suspended,2026-10-27
+INE0NSDL0011,Acme Finance Limited,debentures,private,taxfree,1000,250000000,2023-02-01,2033-06-15,0,8.5,compounding,quarterly,,,non_psu,active,2026-10-27
+INE0NSDL0029,Big Bank Limited,bonds,private,taxable,1000000,,2019-03-01,,1,,,,,,psu,active,2026-10-27
+INE0NSDL0037,Old Corp Limited,,public,,1000,,2010-01-01,2020-01-01,0,0,,on_maturity,,,,active,2026-10-27
+INE0NSDL0045,,debentures,private,taxable,1000,,2019-03-01,2030-01-01,0,9,,,,,,active,2026-10-27
+BADISIN,Bad Limited,debentures,private,taxable,1000,,2019-03-01,2030-01-01,0,9,,,,,,active,2026-10-27

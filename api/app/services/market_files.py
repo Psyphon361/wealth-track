@@ -31,6 +31,7 @@ BSE_REFERER = "https://www.bseindia.com/"
 DATA_DIR = Path(__file__).resolve().parents[2] / "data"
 SEED_SGB_FILE = "sgb_tranches.csv"
 SEED_TAX_FREE_FILE = "tax_free_bonds.csv"
+NSDL_FILE = "nsdl_securities.csv"
 FETCH_TIMEOUT = 30
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -76,6 +77,7 @@ class Sources:
     nse_ratings: bytes | str | None = None
     seed_sgb: str | None = None
     seed_tax_free: str | None = None
+    nsdl: str | None = None
     extra_errors: dict[str, str] = field(default_factory=dict)
 
 
@@ -204,7 +206,7 @@ def fetch_sources(today: date) -> Sources:
             setattr(sources, tag, data)
         except Exception as exc:  # noqa: BLE001
             sources.extra_errors[tag] = f"{type(exc).__name__}: {exc}"[:300]
-    for tag, filename in (("seed_sgb", SEED_SGB_FILE), ("seed_tax_free", SEED_TAX_FREE_FILE)):
+    for tag, filename in (("seed_sgb", SEED_SGB_FILE), ("seed_tax_free", SEED_TAX_FREE_FILE), ("nsdl", NSDL_FILE)):
         path = DATA_DIR / filename
         try:
             content = path.read_text(encoding="utf-8")

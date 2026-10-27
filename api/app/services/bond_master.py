@@ -4,13 +4,16 @@ Sources (pure parsers; malformed rows are counted in `skipped`, never raised). T
 are stored in bond_master.sources:
   [seed_sgb]      api/data/sgb_tranches.csv    authoritative SGB tranches (optional)
   [seed_tax_free] api/data/tax_free_bonds.csv  tax-free / 54EC bonds (optional)
+  [nsdl]          api/data/nsdl_securities.csv NSDL India Bond Info list, made by app.jobs.nsdl_convert (optional)
   [debt]          NSE DEBT.csv                 base list (15 columns; the ISIN column has no header)
   [nse_ratings]   NSE liveBonds-traded-on-cm   credit rating + agency (optional, enrichment only)
   [nse_sgb]       NSE sovereign-gold-bonds     issue price, joined by NSE symbol (optional)
   [bhav]          NSE UDiFF CM bhavcopy zip    GB -> sovereign gold bond (optional)
 
-Merge priority per field: seeds > debt > nse_ratings/nse_sgb > bhav; a lower source only fills
-fields that are still empty. Rating fields only ever come from nse_ratings. Social Stock Exchange
+Merge priority per field: seeds > nsdl > debt > nse_ratings/nse_sgb > bhav; a lower source only fills
+fields that are still empty. Exceptions: rating fields prefer nse_ratings (fresh daily) over nsdl;
+the name prefers seeds > debt (it carries the NSE symbol) > nsdl-generated. bond_type: seeds, then
+NSDL "Taxfree" -> tax_free, then the debt derivation, else corporate. Social Stock Exchange
 instruments are left out entirely.
 """
 
@@ -36,14 +39,17 @@ BHAV_SERIES = ("GB",)
 COLUMNS = [
     "isin", "name", "issuer", "nse_symbol", "nse_series", "face_value", "coupon_rate",
     "maturity_date", "bond_type", "issue_date", "issue_price", "rating", "rating_agency",
-    "rating_as_of", "sources",
+    "rating_as_of", "coupon_type", "interest_frequency", "issue_size", "issuer_ownership", "issue_mode",
+    "is_perpetual", "nsdl_status", "sources",
 ]  # fmt: skip
-SOURCES = ["seed_sgb", "seed_tax_free", "debt", "nse_ratings", "nse_sgb", "bhav"]  # fill order; lower index wins
+SOURCES = ["seed_sgb", "seed_tax_free", "nsdl", "debt", "nse_ratings", "nse_sgb", "bhav"]  # fill order; lower index wins
 SEED_TAGS = {"seed_sgb", "seed_tax_free"}
 # Fed by optional sources: a NULL in today's row keeps the stored value instead of clearing it.
 KEEP_COLUMNS = (
     "issue_date", "issue_price", "rating", "rating_agency", "rating_as_of",
     "face_value", "coupon_rate", "maturity_date",  # nse_ratings/seeds fill gaps in the debt row
+    "coupon_type", "interest_frequency", "issue_size", "issuer_ownership", "issue_mode", "nsdl_status",
+    "is_perpetual",
 )  # fmt: skip
 UNKNOWN_BOND_MESSAGE = "Select a bond from the list"
 _MONTH_NAMES = [m.capitalize() for m in market.MONTHS]
@@ -71,6 +77,7 @@ class BondImportResult:
     last_seen_refreshed: int = 0
     excluded: int = 0
     with_rating: int = 0
+    nsdl_only: int = 0
     bhav_date: date | None = None
     bhav_error: str | None = None
     errors: dict[str, str] = field(default_factory=dict)  # optional sources that failed or were missing
@@ -258,6 +265,53 @@ def parse_seed_tax_free(data: bytes | str) -> SourceRows:
     return result
 
 
+def nsdl_display_name(
+    issuer: str, instrument_type: str | None, coupon: Decimal | None, maturity: date | None, perpetual: bool
+) -> str:
+    """'Reliance Industries Limited 7.79% NCD Jun 2033'; perpetual paper ends 'Perpetual', unknown date omitted."""
+    parts = [issuer]
+    if coupon:
+        parts.append(f"{coupon.normalize():f}%")
+    parts.append("NCD" if instrument_type == "debentures" else "Bond")
+    if perpetual:
+        parts.append("Perpetual")
+    elif maturity:
+        parts.append(f"{_MONTH_NAMES[maturity.month - 1]} {maturity.year}")
+    return " ".join(parts)[:300]
+
+
+def parse_nsdl(data: bytes | str) -> SourceRows:
+    """api/data/nsdl_securities.csv (normalised by app.jobs.nsdl_convert). Rows get a generated name,
+    bond_type tax_free for NSDL "taxfree" (otherwise left for the debt derivation), and the rating
+    stamped with the file's as_of date."""
+    result = SourceRows()
+    for rec in market.records(data):
+        isin, issuer = market.s(rec.get("isin")), market.s(rec.get("issuer"))
+        if not market.ISIN_RE.match(isin) or not issuer:
+            result.skipped += 1
+            continue
+        coupon, maturity = _coupon(rec.get("coupon_rate")), _iso_date(rec.get("maturity_date"))
+        perpetual = market.s(rec.get("is_perpetual")) == "1"
+        rating = market.opt(rec.get("rating"), 100)
+        result.rows.append(
+            _row(
+                isin=isin, name=nsdl_display_name(issuer, market.s(rec.get("instrument_type")), coupon, maturity, perpetual),
+                issuer=issuer[:300], face_value=market.face_value(rec.get("face_value")), coupon_rate=coupon,
+                maturity_date=maturity, issue_date=_iso_date(rec.get("allotment_date")),
+                bond_type="tax_free" if market.s(rec.get("tax_category")) == "taxfree" else None,
+                rating=rating, rating_agency=market.opt(rec.get("rating_agency"), 100) if rating else None,
+                rating_as_of=_iso_date(rec.get("as_of")) if rating else None,
+                coupon_type=market.opt(rec.get("coupon_type"), 20),
+                interest_frequency=market.opt(rec.get("interest_frequency"), 20),
+                issue_size=market.decimal_value(rec.get("issue_size"), "0.01", 10**16),
+                issuer_ownership=market.opt(rec.get("issuer_ownership"), 10),
+                issue_mode=market.opt(rec.get("issue_mode"), 10), is_perpetual=perpetual,
+                nsdl_status=market.opt(rec.get("status"), 10),
+            )  # fmt: skip
+        )
+    return result
+
+
 def _json_records(data: bytes | str) -> list[dict]:
     payload = json.loads(market.text(data))
     records = payload.get("data") if isinstance(payload, dict) else payload
@@ -314,9 +368,20 @@ def merge_rows(by_source: dict[str, list[dict]], seen: dict[str, date], today: d
     for source, source_rows in by_source.items():
         for row in source_rows:
             tags[row["isin"]].add(source)
+    debt_names = {r["isin"]: r["name"] for r in by_source.get("debt", [])}
+    live_ratings = {r["isin"]: r for r in by_source.get("nse_ratings", []) if r["rating"]}
     for row in rows:
-        row["sources"] = sorted(tags[row["isin"]])
-        if today and set(row["sources"]) <= SEED_TAGS and row["maturity_date"] and row["maturity_date"] < today:
+        isin = row["isin"]
+        row["sources"] = sorted(tags[isin])
+        if not set(row["sources"]) & SEED_TAGS and isin in debt_names:
+            row["name"] = debt_names[isin]  # carries the NSE symbol; nsdl names are generated
+        if isin in live_ratings:  # fresh daily rating beats the NSDL snapshot
+            live = live_ratings[isin]
+            row["rating"], row["rating_agency"], row["rating_as_of"] = live["rating"], live["rating_agency"], live["rating_as_of"]
+        if row["bond_type"] is None:
+            row["bond_type"] = "corporate"
+        # Rows only the seeds/NSDL know about have no exchange list to drop them: a past maturity retires them.
+        if today and set(row["sources"]) <= SEED_TAGS | {"nsdl"} and row["maturity_date"] and row["maturity_date"] < today:
             row["is_active"] = False
     return rows
 
@@ -335,7 +400,7 @@ def build_rows(sources: Sources, today: date) -> tuple[list[dict], dict[str, int
     """Parse and merge. Returns (rows, parsed counts per source, skipped, errors/dates/excluded).
 
     extra["errors"] holds the bhav error (kept for the existing result shape); extra["source_errors"]
-    the other optional sources (nse_sgb, nse_ratings, seed_sgb, seed_tax_free) that failed or were missing.
+    the other optional sources (nse_sgb, nse_ratings, seed_sgb, seed_tax_free, nsdl) that failed or were missing.
     """
     parsed: dict[str, SourceRows] = {"debt": parse_debt(sources.debt)}
     seen = {"debt": today}
@@ -349,6 +414,7 @@ def build_rows(sources: Sources, today: date) -> tuple[list[dict], dict[str, int
         raise ValueError("debt file contained no usable rows")
     _optional("seed_sgb", sources.seed_sgb, parse_seed_sgb, today, source_errors, parsed, seen)
     _optional("seed_tax_free", sources.seed_tax_free, parse_seed_tax_free, today, source_errors, parsed, seen)
+    _optional("nsdl", sources.nsdl, parse_nsdl, today, source_errors, parsed, seen)
 
     # nse_ratings and nse_sgb only enrich ISINs another source already provides.
     base = [row for result in parsed.values() for row in result.rows]
@@ -405,6 +471,7 @@ def import_bonds(session: Session, sources: Sources, today: date) -> BondImportR
         last_seen_refreshed=stats.last_seen_refreshed,
         excluded=extra["excluded"],
         with_rating=sum(1 for r in rows if r["rating"]),
+        nsdl_only=sum(1 for r in rows if r["sources"] == ["nsdl"]),
         bhav_date=extra["dates"]["bhav"],
         bhav_error=extra["errors"]["bhav"],
         errors=extra["source_errors"],

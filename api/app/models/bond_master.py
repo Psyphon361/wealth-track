@@ -35,6 +35,13 @@ class BondMaster(Base):
     rating: Mapped[str | None] = mapped_column(String(100))
     rating_agency: Mapped[str | None] = mapped_column(String(100))
     rating_as_of: Mapped[date | None]
+    coupon_type: Mapped[str | None] = mapped_column(String(20))
+    interest_frequency: Mapped[str | None] = mapped_column(String(20))
+    issue_size: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    issuer_ownership: Mapped[str | None] = mapped_column(String(10))
+    issue_mode: Mapped[str | None] = mapped_column(String(10))
+    is_perpetual: Mapped[bool | None] = mapped_column(Boolean)  # NULL = unknown (no NSDL data)
+    nsdl_status: Mapped[str | None] = mapped_column(String(10))
     sources: Mapped[list[str]] = mapped_column(
         ARRAY(String(20)), server_default=text("'{}'::varchar[]"), default=list
     )

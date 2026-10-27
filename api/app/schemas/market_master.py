@@ -39,6 +39,13 @@ class BondMasterRead(BaseModel):
     rating: str | None = None
     rating_agency: str | None = None
     rating_as_of: date | None = None
+    coupon_type: str | None = None
+    interest_frequency: str | None = None
+    issue_size: Dec | None = None
+    issuer_ownership: str | None = None
+    issue_mode: str | None = None
+    is_perpetual: bool | None = None
+    nsdl_status: str | None = None
     is_active: bool
 
 
@@ -69,6 +76,7 @@ class BondImportResult(BaseModel):
     last_seen_refreshed: int = 0
     excluded: int = 0  # Social Stock Exchange instruments left out
     with_rating: int = 0
+    nsdl_only: int = 0  # rows seen only in the NSDL list
     bhav_date: date | None = None
     bhav_error: str | None = None
     errors: dict[str, str] = {}  # optional/seed sources that failed or were missing

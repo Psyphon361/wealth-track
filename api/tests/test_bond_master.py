@@ -276,7 +276,7 @@ def test_merge_priority_seed_beats_debt_and_fills_gaps():
     }
     assert skipped == 7
     assert extra["excluded"] == 1
-    assert extra["source_errors"] == {}
+    assert extra["source_errors"] == {"nsdl": "not provided"}
     rec = merged["INE020B07GX4"]
     assert rec["name"] == "REC Limited 7.38% Tax-free Dec 2027"  # seed name beats debt name
     assert rec["nse_symbol"] == "738REC27TF"  # debt fills what the seed lacks
@@ -325,6 +325,7 @@ def test_missing_optional_sources_are_reported_not_fatal():
         "seed_sgb": "not provided",
         "seed_tax_free": "not provided",
         "nse_sgb": "not provided",
+        "nsdl": "not provided",
     }
 
 
@@ -332,7 +333,7 @@ def test_broken_optional_payloads_are_recorded():
     sources = make_sources(nse_sgb=b"<html>", nse_ratings="{}", seed_sgb="isin,series_name\n", seed_tax_free="")
     rows, _, _, extra = build_rows(sources, TODAY)
     assert len(rows) == 11
-    assert set(extra["source_errors"]) == {"nse_sgb", "nse_ratings", "seed_sgb", "seed_tax_free"}
+    assert set(extra["source_errors"]) == {"nse_sgb", "nse_ratings", "seed_sgb", "seed_tax_free", "nsdl"}
 
 
 def test_merge_rows_pure_priority_and_tags():
@@ -351,11 +352,11 @@ def test_merge_rows_pure_priority_and_tags():
 
 
 def test_missing_sources_lists_tags_that_did_not_run():
-    _, _, _, extra = build_rows(_all_sources(), TODAY)
+    _, _, _, extra = build_rows(_all_sources(nsdl=read("nsdl_sample.csv")), TODAY)
     assert extra["missing_sources"] == []
     _, _, _, extra = build_rows(make_sources(nse_sgb=b"<html>"), TODAY)
-    assert extra["missing_sources"] == ["seed_sgb", "seed_tax_free", "nse_ratings", "nse_sgb"]
-    _, _, _, extra = build_rows(_all_sources(bhav=None, bhav_error="x"), TODAY)
+    assert extra["missing_sources"] == ["seed_sgb", "seed_tax_free", "nsdl", "nse_ratings", "nse_sgb"]
+    _, _, _, extra = build_rows(_all_sources(nsdl=read("nsdl_sample.csv"), bhav=None, bhav_error="x"), TODAY)
     assert extra["missing_sources"] == ["bhav"]
 
 

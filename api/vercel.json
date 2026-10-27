@@ -8,6 +8,7 @@
   ],
   "functions": {
     "app/main.py": {
+      "maxDuration": 300,
       "excludeFiles": "{.venv/**,alembic/**,alembic.ini,.env,.env.example,README.md,tests/**,requirements-dev.txt,pyproject.toml,.pytest_cache/**,**/__pycache__/**}"
     }
   }
