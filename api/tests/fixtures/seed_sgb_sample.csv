@@ -1,0 +1,6 @@
+isin,series_name,nse_symbol,issue_date,maturity_date,coupon_rate,issue_price,source,note
+IN0020200104,SGB 2020-21 Series III,SGBJUN28,2020-06-16,2028-06-16,2.5,4677,rbi,
+IN0020150085,SGB 2015-I,,2015-11-30,2023-11-30,2.75,2684,rbi,matured
+IN0020150101,SGB 2016-I,,,,,,wiki,all unknown
+NOTANISIN,SGB broken,,,,,,,
+IN0020150119,,,,,,,,missing name

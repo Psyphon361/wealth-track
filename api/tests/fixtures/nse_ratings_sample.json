@@ -1,0 +1,7 @@
+{"dec":38,"adv":71,"noChg":459,"timeStamp":"27-Oct-2026 15:15:10","data":[
+{"bond_type":null,"close":"100100","coupr":"10.03","credit_rating":"AA/Stable, AA/Stable","face_value":"1000","isin":"INE148I07UR1","ltP":"102543","maturity_date":"25-Sep-2031","rating_agency":"CRISIL, ICRA","series":"N1","symbol":"1003SCL31A"},
+{"bond_type":null,"close":"1083.51","coupr":"7.38","credit_rating":null,"face_value":"1000","isin":"INE020B07GX4","ltP":"1084","maturity_date":"19-Dec-2027","rating_agency":null,"series":"N2","symbol":"738REC27TF"},
+{"bond_type":null,"close":"1","coupr":"9.05","credit_rating":"AA/Stable","face_value":"100000","isin":"INE000000000","ltP":"1","maturity_date":"16-Jan-2036","rating_agency":"CRISIL","series":"N0","symbol":"UNKNOWN36"},
+{"bond_type":null,"coupr":"0","credit_rating":"AAA","face_value":"1","isin":"INS21BF12019","maturity_date":"31-May-2030","rating_agency":"CRISIL","series":"N0","symbol":"FUZCZP-SE"},
+{"bond_type":null,"credit_rating":"AA","isin":"BAD","series":"N0","symbol":"BAD"}
+]}

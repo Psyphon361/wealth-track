@@ -1,0 +1,6 @@
+{"timestamp":"27-Oct-2026 15:14:54","data":[
+{"symbol":"SGBDE31III","open":"14451.08","high":"14589.4","low":"14415","issue_price":"6149","ltP":"14415","qty":"1702","maturityDate":"31III","series":"GB"},
+{"symbol":"SGBJUN28","open":"14100","high":"14200","low":"14050","issue_price":"4627","ltP":"14150","qty":"900","maturityDate":"28JUN","series":"GB"},
+{"symbol":"SGBN28VIII","open":"14000","high":"14100","low":"13990","issue_price":"5127","ltP":"14020","qty":"500","maturityDate":"28VIII","series":"GB"},
+{"symbol":"NOPRICE","issue_price":null,"series":"GB"}
+]}

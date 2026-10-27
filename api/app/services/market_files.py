@@ -14,6 +14,7 @@ import zipfile
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
+from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
@@ -24,7 +25,12 @@ ETF_URL = "https://nsearchives.nseindia.com/content/equities/eq_etfseclist.csv"
 DEBT_URL = "https://nsearchives.nseindia.com/content/equities/DEBT.csv"
 NSE_BHAV_URL = "https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{date}_F_0000.csv.zip"
 BSE_BHAV_URL = "https://www.bseindia.com/download/BhavCopy/Equity/BhavCopy_BSE_CM_0_0_0_{date}_F_0000.CSV"
+NSE_SGB_URL = "https://www.nseindia.com/api/sovereign-gold-bonds"
+NSE_RATINGS_URL = "https://www.nseindia.com/api/liveBonds-traded-on-cm?type=bonds"
 BSE_REFERER = "https://www.bseindia.com/"
+DATA_DIR = Path(__file__).resolve().parents[2] / "data"
+SEED_SGB_FILE = "sgb_tranches.csv"
+SEED_TAX_FREE_FILE = "tax_free_bonds.csv"
 FETCH_TIMEOUT = 30
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -48,11 +54,16 @@ MONTHS = {
 class SourceRows:
     rows: list[dict] = field(default_factory=list)
     skipped: int = 0
+    excluded: int = 0  # recognised but deliberately left out (e.g. Social Stock Exchange)
 
 
 @dataclass
 class Sources:
-    """Raw downloaded files. bhav/bse carry the file date they were found for."""
+    """Raw downloaded files. bhav/bse carry the file date they were found for.
+
+    The bond extras (nse_sgb, nse_ratings JSON, seed CSVs) are optional; a failed or missing one is
+    recorded in `extra_errors` under its tag and never aborts the import.
+    """
 
     equity: bytes | str
     etf: bytes | str
@@ -61,6 +72,11 @@ class Sources:
     bhav_error: str | None = None
     bse: tuple[date, bytes | str] | None = None
     bse_error: str | None = None
+    nse_sgb: bytes | str | None = None
+    nse_ratings: bytes | str | None = None
+    seed_sgb: str | None = None
+    seed_tax_free: str | None = None
+    extra_errors: dict[str, str] = field(default_factory=dict)
 
 
 # --- Parsing helpers -----------------------------------------------------------
@@ -180,6 +196,22 @@ def fetch_sources(today: date) -> Sources:
         sources.bse = fetch_latest_dated(BSE_BHAV_URL, today, {"Referer": BSE_REFERER})
     except Exception as exc:  # noqa: BLE001
         sources.bse_error = f"{type(exc).__name__}: {exc}"[:300]
+    for tag, url in (("nse_sgb", NSE_SGB_URL), ("nse_ratings", NSE_RATINGS_URL)):
+        try:
+            data = fetch(url, {"Accept": "application/json"})
+            if is_html(data):
+                raise LookupError("HTML page instead of JSON")
+            setattr(sources, tag, data)
+        except Exception as exc:  # noqa: BLE001
+            sources.extra_errors[tag] = f"{type(exc).__name__}: {exc}"[:300]
+    for tag, filename in (("seed_sgb", SEED_SGB_FILE), ("seed_tax_free", SEED_TAX_FREE_FILE)):
+        path = DATA_DIR / filename
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            sources.extra_errors[tag] = f"{type(exc).__name__}: {filename} not readable"
+            continue
+        setattr(sources, tag, content)
     return sources
 
 
@@ -234,6 +266,17 @@ def is_grace_row(nse_symbol: str | None, nse_series: str | None, grace_series: t
     return nse_symbol is None or (nse_series or "") in grace_series
 
 
+def merged_tags_sql(table_name: str, missing_tags: list[str]) -> str:
+    """SQL for the ON CONFLICT value of a `sources` array: excluded tags + stored tags of missing sources."""
+    if not all(re.fullmatch(r"[a-z_]+", tag) for tag in missing_tags):
+        raise ValueError("invalid source tag")
+    keep = "ARRAY[" + ", ".join(f"'{tag}'" for tag in missing_tags) + "]::varchar[]" if missing_tags else "ARRAY[]::varchar[]"
+    return (
+        "ARRAY(SELECT DISTINCT t FROM unnest(excluded.sources || ARRAY("
+        f"SELECT x FROM unnest({table_name}.sources) x WHERE x = ANY({keep}))) t ORDER BY t)"
+    )
+
+
 @dataclass(frozen=True)
 class UpsertStats:
     inserted: int
@@ -243,10 +286,21 @@ class UpsertStats:
 
 
 def upsert_master(
-    session: Session, model, rows: list[dict], columns: list[str], grace_series: tuple[str, ...], today: date
+    session: Session,
+    model,
+    rows: list[dict],
+    columns: list[str],
+    grace_series: tuple[str, ...],
+    today: date,
+    keep_columns: tuple[str, ...] = (),
+    missing_tags: list[str] | None = None,
 ) -> UpsertStats:
     """Upsert only changed rows, refresh last_seen weekly for grace rows, deactivate unseen rows
-    (grace rows only after STALE_DAYS). Never deletes. Commits."""
+    (grace rows only after STALE_DAYS). Never deletes. Commits.
+
+    `keep_columns` come from optional sources: a NULL in the new row keeps the stored value.
+    If `missing_tags` is not None the table has a `sources` array column: the new value is this run's
+    tags plus the stored tags of sources that did not run (`missing_tags`), sorted and distinct."""
     table = model.__table__
     name = table.name
     # last_seen is written on insert only; it is refreshed separately (weekly resolution) below.
@@ -255,13 +309,18 @@ def upsert_master(
     for start in range(0, len(rows), BATCH_SIZE):
         batch = [{c: row[c] for c in columns} for row in rows[start:start + BATCH_SIZE]]
         statement = pg_insert(model).values(batch)
-        update = {c: statement.excluded[c] for c in data_columns}
+        update = {
+            c: sa.func.coalesce(statement.excluded[c], table.c[c]) if c in keep_columns else statement.excluded[c]
+            for c in data_columns
+        }
+        if missing_tags is not None:
+            update["sources"] = sa.literal_column(merged_tags_sql(name, missing_tags))
         update["updated_at"] = sa.func.now()
         statement = statement.on_conflict_do_update(
             index_elements=["isin"],
             set_=update,
             where=sa.tuple_(*[table.c[c] for c in data_columns]).is_distinct_from(
-                sa.tuple_(*[statement.excluded[c] for c in data_columns])
+                sa.tuple_(*[update[c] for c in data_columns])
             ),
         ).returning(sa.literal_column("(xmax = 0)").label("inserted"))
         for (was_inserted,) in session.execute(statement):

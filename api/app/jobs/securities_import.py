@@ -30,6 +30,9 @@ def main() -> None:
         f"unchanged={bonds.unchanged} deactivated={bonds.deactivated} "
         f"last_seen_refreshed={bonds.last_seen_refreshed}"
     )
+    print(f"bonds excluded_sse={bonds.excluded} with_rating={bonds.with_rating}")
+    for tag, error in bonds.errors.items():
+        print(f"bonds {tag}_error={error}")
     for label, error in (
         ("bhav_error", stocks.bhav_error or bonds.bhav_error),
         ("bse_error", stocks.bse_error),

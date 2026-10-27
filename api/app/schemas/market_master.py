@@ -34,6 +34,11 @@ class BondMasterRead(BaseModel):
     coupon_rate: Dec | None = None
     maturity_date: date | None = None
     bond_type: str
+    issue_date: date | None = None
+    issue_price: Dec | None = None
+    rating: str | None = None
+    rating_agency: str | None = None
+    rating_as_of: date | None = None
     is_active: bool
 
 
@@ -62,8 +67,11 @@ class BondImportResult(BaseModel):
     deactivated: int
     skipped: int
     last_seen_refreshed: int = 0
+    excluded: int = 0  # Social Stock Exchange instruments left out
+    with_rating: int = 0
     bhav_date: date | None = None
     bhav_error: str | None = None
+    errors: dict[str, str] = {}  # optional/seed sources that failed or were missing
 
 
 class MarketImportResult(BaseModel):

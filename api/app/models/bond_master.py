@@ -1,7 +1,8 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, Numeric, String, func, text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,6 +29,14 @@ class BondMaster(Base):
     maturity_date: Mapped[date | None]
     bond_type: Mapped[str] = mapped_column(
         str_enum("government", "corporate", "tax_free", "sgb", "other", name="bond_master_type")
+    )
+    issue_date: Mapped[date | None]
+    issue_price: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    rating: Mapped[str | None] = mapped_column(String(100))
+    rating_agency: Mapped[str | None] = mapped_column(String(100))
+    rating_as_of: Mapped[date | None]
+    sources: Mapped[list[str]] = mapped_column(
+        ARRAY(String(20)), server_default=text("'{}'::varchar[]"), default=list
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     last_seen: Mapped[date | None]
