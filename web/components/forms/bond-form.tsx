@@ -114,6 +114,17 @@ function metaLine(s: BondMaster): string {
   parts.push(BOND_TYPE_LABELS[s.bond_type] ?? s.bond_type);
   if (s.coupon_rate != null) parts.push(`${s.coupon_rate}%`);
   if (s.maturity_date) parts.push(`matures ${formatDate(s.maturity_date)}`);
+  if (s.rating) {
+    const uniq = Array.from(
+      new Set(
+        s.rating
+          .split(",")
+          .map((r) => r.trim())
+          .filter(Boolean),
+      ),
+    );
+    if (uniq.length) parts.push(uniq.join(", "));
+  }
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -145,11 +156,8 @@ export function BondForm({
   onSaved?: (record: Bond) => void;
   onCancel?: () => void;
 }) {
-  const { control, handleSubmit, setValue, setError, clearErrors } = useForm<
-    FormIn,
-    unknown,
-    FormOut
-  >({
+  const { control, handleSubmit, setValue, getValues, setError, clearErrors } =
+    useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
@@ -276,6 +284,13 @@ export function BondForm({
                     }
                     if (s.maturity_date) {
                       setValue("maturity_date", s.maturity_date);
+                    }
+                    if (s.bond_type === "sgb" && s.issue_price != null) {
+                      const price = String(s.issue_price);
+                      if (!getValues("face_value")) setValue("face_value", price);
+                      if (!getValues("purchase_price")) {
+                        setValue("purchase_price", price);
+                      }
                     }
                   }}
                 />

@@ -117,6 +117,11 @@ export interface BondMaster {
   maturity_date: string | null;
   bond_type: BondType;
   is_active: boolean;
+  issue_date: string | null;
+  issue_price: number | null;
+  rating: string | null;
+  rating_agency: string | null;
+  rating_as_of: string | null;
 }
 
 export interface StockInput {
