@@ -42,6 +42,7 @@ jobs:
         working-directory: api
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          OWNER_EMAIL: ${{ secrets.OWNER_EMAIL }}
         run: ../.venv/bin/alembic upgrade head
 
       - name: Show current revision

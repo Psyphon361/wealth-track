@@ -80,6 +80,8 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 18 | Stock `master_id` (optional) must exist in `stock_master` | Select a stock from the list |
 | 19 | Bond `master_id` (optional) must exist in `bond_master` | Select a bond from the list |
 | P | Payout FD cannot use `simple` | Choose a payout frequency |
+| A1 | Auth email (sign-up and login): trimmed, lower-cased, address shape, ≤ 320 chars | Enter a valid email address |
+| A2 | Sign-up password: 10–128 characters (login only requires non-empty, "Required") | Password must be at least 10 characters / Password must be at most 128 characters |
 
 MF scheme picker: the form requires a scheme in picker mode; "Not listed? Enter manually" allows free text with a null `scheme_code`. When a code is set, the server snapshots `scheme_name` from the master.
 
@@ -137,13 +139,22 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf).
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
+- Sign-in: every route except `/api/health`, `/api/cron/*`, `/api/auth/*` and OPTIONS needs `Authorization: Bearer <access token>` (401 otherwise). Holdings are per user; see §7.
 
 ### Message contract (toasts render these verbatim)
 - POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name).
 - PUT 200 → record + `message: "Changes saved"` + description.
 - DELETE **200** → `{message: "<Type> deleted", description}`.
 - Errors always: `{message, description, detail}`. 422 → "Couldn't save — check the highlighted fields" + first field error ("Principal: Must be at most ₹100 crore"), `detail` = list of {loc,msg,type}. 422 on `GET /holdings/*` → "Invalid filters" + first error. 404 → "<Type> not found" / "It may have been deleted already." 401 → "Not authorised" / "Your session may have expired. Log in again." 500 → "Something went wrong on the server" (+ error class only). Other HTTP errors → "Request failed".
-- Next.js proxy's own errors use the same shape: 401 "Not logged in", 502 "Couldn't reach the server", 503 "Server not configured", 400 "Bad request".
+- Next.js proxy's own errors use the same shape: 401 "Not logged in" / "Log in to continue." (no session cookies), 502 "Couldn't reach the server", 400 "Bad request".
+- Auth outcomes (`/api/auth/*`, details in §7):
+  - 201 signup → tokens + `user`; 200 login/refresh → tokens + `user`; 200 logout → "Logged out" / "You have been logged out."
+  - 403 signup → "Sign-ups are invite-only" / "This email isn't on the invite list."
+  - 409 signup → "An account with this email already exists" / "Log in instead."
+  - 401 login (unknown email and wrong password alike) → "Incorrect email or password" / "Check your details and try again."
+  - 429 login → "Too many attempts" / "Wait 15 minutes and try again."
+  - 422 on any `/api/auth/*` → "Check the highlighted fields" + first field error (rules A1, A2 in §2).
+  - 401 refresh, or any route with a missing/invalid/expired access token → "Not authorised" / "Your session may have expired. Log in again."
 
 ## 5. Web app
 
@@ -156,9 +167,9 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Sortable headers; 10 rows per page; no totals row.
   - Row actions: eye (disabled, "Details coming soon"; future `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
   - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
-- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`.
+- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`, `/signup` (both without the sidebar).
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
-- Password gate (`proxy.ts` + `lib/session.ts`): enabled when `APP_PASSWORD` set; `SESSION_SECRET` signs a 30-day httpOnly cookie `wt_session`; production with no password fails closed (503). Logout in the sidebar footer. Gate is off in local dev.
+- Sign-in is required everywhere, local dev included: `proxy.ts` redirects pages without the `wt_refresh` cookie to `/login?next=…`; cookies, refresh and the proxy rules are in §7. The top bar, right of the "Add asset" button, has an account menu (`web/components/user-menu.tsx`): a round avatar with the email's first letter (from `GET /api/me`) opens a dropdown with "Signed in as <email>" and "Log out".
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
 - Stock form (`components/forms/stock-form.tsx`, picker from `components/forms/master-picker.tsx`): picker by default ("Search stocks and ETFs…"; rows show name, NSE/BSE symbols, ISIN, ETF badge). Picking sets name, symbol and the exchange default; changing the exchange re-derives the symbol. "Not listed? Enter manually" switches to free text; "Search the stock list instead" switches back.
 - Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name and ISIN and pre-fills issuer, bond type, face value and maturity (all still editable).
@@ -175,7 +186,52 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 | api | `DATABASE_URL` | Neon pooled string (`postgresql://…?sslmode=require`; normalised to psycopg3) |
 | api | `API_KEY` | optional locally; required in production |
 | api | `CRON_SECRET` | production (`openssl rand -hex 32`); bearer token for `/api/cron/amfi` |
+| api | `JWT_SECRET` | required for sign-in (`openssl rand -hex 32`); signs access tokens; missing → login/refresh fail with 500 |
+| api | `ALLOWED_EMAILS` | comma-separated sign-up allowlist (case-insensitive); empty = nobody can sign up |
+| api | `OWNER_EMAIL` | read only by migration 0010 (owner of pre-auth holdings; GitHub `production` secret in CI); not used at runtime |
 | api | `CORS_ORIGINS` | default `["http://localhost:3000"]`; not needed in production (proxy) |
 | web | `API_URL` | FastAPI origin, no trailing slash, no `/api` (default http://localhost:8000) |
 | web | `API_KEY` | same value as api |
-| web | `APP_PASSWORD`, `SESSION_SECRET` | production only (`openssl rand -hex 32` for the secret) |
+
+## 7. Auth
+
+Users sign in with email and password. Every holding belongs to one user.
+
+### Data (migration 0010)
+
+- **`users`** (model `api/app/models/user.py`): id, email (unique, lower-cased, ≤ 320), password_hash (argon2id; NULL = no password set yet), is_active, last_login_at, created_at, updated_at.
+- **`refresh_tokens`** (`refresh_token.py`): id, user_id (FK, ON DELETE CASCADE), family_id (shared by every token rotated from one sign-in), token_hash (SHA-256; the raw token is never stored), expires_at, revoked_at, replaced_at, created_at.
+- **`login_attempts`** (`login_attempt.py`): id, email, attempted_at, succeeded. Feeds the rate limit.
+- **Holdings:** `fixed_deposits`, `recurring_deposits`, `stocks`, `bonds`, `mutual_funds` each have `user_id` (NOT NULL, FK → users, ON DELETE CASCADE).
+- Master tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) stay global, with no `user_id`.
+
+### Scoping
+
+- Every holdings route (`/assets/*`, `/holdings/*`, `/portfolio`, `/dashboard`) reads and writes only the signed-in user's rows. Another user's id gives the usual 404 (e.g. "Fixed deposit not found").
+- Master routes (`/master/*`) are global but need sign-in.
+- Cron routes and `/health` are unchanged (no user).
+
+### Endpoints (`/api`)
+
+- `POST /auth/signup` `{email, password}` → 201. Email must be on `ALLOWED_EMAILS` (else 403); an existing email gives 409. Creates the user and signs in.
+- `POST /auth/login` `{email, password}` → 200. Unknown email and wrong password give the same 401. Rehashes the password if the hash parameters changed.
+- `POST /auth/refresh` `{refresh_token}` → 200 with a new pair (old token rotated).
+- `POST /auth/logout` `{refresh_token}` → 200 "Logged out", whether or not the token is known. Revokes the token's whole family.
+- `GET /auth/me` (Bearer) → `{id, email}`.
+- Token response: `{access_token, access_expires_at, refresh_token, refresh_expires_at, user: {id, email}}`.
+
+### Tokens and limits
+
+- **Access token:** JWT, HS256 signed with `JWT_SECRET`, valid 15 minutes. Claims: `sub` (user id), `email`, `typ: access`, `iat`, `exp`. Checked on every request; an inactive user gets 401.
+- **Refresh token:** opaque random string, valid 30 days, stored hashed. Every use rotates it. Reusing a rotated token within 60 s returns a fresh pair (covers parallel requests). Reusing it after 60 s revokes the whole family (assumed theft) and returns 401. Unknown, expired, revoked or inactive → 401.
+- **Rate limit:** 5 failed logins for one email within 15 minutes → 429 for that email. Successful logins do not count.
+- **Passwords:** argon2id. Sign-up requires 10–128 characters (rule A2 in §2).
+
+### Web
+
+- Cookies `wt_access` (15 min) and `wt_refresh` (30 days): httpOnly, SameSite=Lax, path `/`, Secure in production. Set by the login and signup server actions (`web/app/actions/auth.ts`) from the API response; the browser never reads the tokens.
+- `web/proxy.ts`: pages without `wt_refresh` redirect to `/login?next=<path>`. `/login` and `/signup` with a `wt_refresh` cookie redirect to `/`. `/api/*` without `wt_refresh` returns 401 "Not logged in".
+- `web/app/api/[...path]/route.ts`: sends `Authorization: Bearer` from `wt_access`. It refreshes proactively when the access token is missing, unreadable or expires within 30 s, and otherwise refreshes once on an upstream 401 and retries. Refreshed cookies go on the response. If refresh fails, it returns 401 "Not authorised" and clears both cookies. It also maps `GET /api/me` to `/api/auth/me`.
+- The browser cannot call `/api/auth/*` directly: the route handler returns 404 for it (auth goes through the server actions only).
+- `/login` and `/signup` are the only auth pages. `next` is honoured only for same-origin relative paths. Log out (account menu in the top bar) revokes the refresh family and clears both cookies, then goes to `/login`.
+- The login and sign-up password fields have a show/hide (eye) toggle.
