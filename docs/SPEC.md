@@ -8,8 +8,8 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 
 | Type (`{type}` slug) | Table | Fields |
 |---|---|---|
-| Fixed Deposit (`fd`) | `fixed_deposits` | bank, label?, principal, rate (% p.a.), start_date, tenure_years, tenure_months, tenure_days, compounding (`monthly`\|`quarterly`\|`half_yearly`\|`yearly`\|`simple`, default quarterly), payout_type (`cumulative`\|`payout`) |
-| Recurring Deposit (`rd`) | `recurring_deposits` | bank, label?, monthly_instalment, rate, start_date, tenure_years, tenure_months, tenure_days, compounding (default quarterly) |
+| Fixed Deposit (`fd`) | `fixed_deposits` | bank, issuer_id? (FK → `fd_issuer_master`, ON DELETE SET NULL), label?, principal, rate (% p.a.), start_date, tenure_years, tenure_months, tenure_days, compounding (`monthly`\|`quarterly`\|`half_yearly`\|`yearly`\|`simple`, default quarterly), payout_type (`cumulative`\|`payout`) |
+| Recurring Deposit (`rd`) | `recurring_deposits` | bank, issuer_id? (FK → `fd_issuer_master`, ON DELETE SET NULL), label?, monthly_instalment, rate, start_date, tenure_years, tenure_months, tenure_days, compounding (default quarterly) |
 | Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date, master_id? (FK → `stock_master`, ON DELETE SET NULL) |
 | Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value (per unit; nullable in DB for old rows, required on input), purchase_price (per unit), purchase_date, ytm (% p.a.), maturity_date, master_id? (FK → `bond_master`, ON DELETE SET NULL) |
 | Mutual Fund (`mf`) | `mutual_funds` | scheme_code? (FK → `mf_master.scheme_code`), scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), purchase_date |
@@ -55,6 +55,24 @@ One master table per asset class; they are never merged (keeps each table's colu
 - **Holdings link:** stock payloads accept `master_id` (→ `stock_master`), bond payloads accept `master_id` (→ `bond_master`); the server snapshots name and symbol (stock: NSE symbol if exchange is NSE, else BSE symbol) or name and ISIN (bond). Stock/bond holdings keep what the user sent for issuer, face value, maturity and bond type.
 - **Cron:** `GET /api/cron/securities` (bearer `CRON_SECRET`), Vercel `0 14 * * *` UTC (19:30 IST). Runs both imports; response is `{stocks: {...}, bonds: {...}}`. CLI: `python -m app.jobs.securities_import`.
 
+### Master data (FD/RD issuers)
+
+- **`fd_issuer_master`** (global, no `user_id`; model `api/app/models/fd_issuer_master.py`, migration 0011; service `api/app/services/fd_issuers.py`, whose module docstring lists the sources): id, code UNIQUE, name, short_name?, category, regulator?, reg_no?, dicgc_insured (`true` when matched, else NULL), accepts_deposits, merged_into_id? (self FK, ON DELETE SET NULL), merged_on?, is_active, last_seen, sources (internal tags), updated_at. Trigram index on lower(name).
+- **Categories:** `public_sector`, `private_sector`, `small_finance`, `foreign`, `regional_rural`, `local_area`, `payments`, `state_coop`, `district_coop`, `urban_coop` (banks, from the Razorpay type: PSB, Private, SFB, Foreign, RRB, LAB, PB, SCB, DCCB, S-UCB/O-UCB), `nbfc`, `hfc`, `post_office`.
+- **Codes:** banks use the Razorpay IFSC bank key (e.g. `BARB`); NBFCs `NBFC:<slug>`, HFCs `HFC:<slug>`; India Post `POST`.
+- **accepts_deposits:** false for payments banks (`payments`), RBI (`RBIN`) and the General Post Office (`GPOX`), which Razorpay lists as public-sector banks. NBFC/HFC rows: false only for `not_permitted`; `permitted` and `prior_approval` are true.
+- **Sources** (tags in `sources`; each optional, a failure is recorded and never aborts the others):
+  - `razorpay`: razorpay/ifsc `banks.json` (latest GitHub release, with the release download URL as fallback) for type, and `banknames.json` (master branch) for names. Bank rows. MIT licensed.
+  - `dicgc`: DICGC "list of active insured banks" xlsx. The link is scraped weekly from https://www.dicgc.org.in/insured-banks and the file is parsed with the standard library (no new dependency). Sets `dicgc_insured = true` on matched banks. Exact normalised name or override matches first (any DICGC sheet). Then a conservative fuzzy match, only for co-op banks and RRBs, only within the matching DICGC sheet (UCBs, State Co-op Banks, DCCBs, RRB): similarity ratio ≥ 0.92, margin over the next candidate ≥ 0.05, and unique (two banks claiming one name are both rejected).
+  - `seed_banks`: `api/data/fd_issuer_bank_aliases.csv` (90 rows): short names, 17 mergers (`merged_into_code`, `merged_on`; merged banks are inactive and point at the surviving bank), 20 DICGC name overrides. Seed codes may be banks.json keys or IFSC prefixes.
+  - `seed_nbfc`: `api/data/fd_issuers_nbfc_hfc.csv`: 16 deposit-taking NBFCs and 11 HFCs (`deposit_status` permitted / prior_approval / not_permitted), each with a cited source column (bankzop NBFC directory, RBI NBFC list, NHB list of HFCs). Refreshed by hand.
+  - `fixed`: India Post (`POST`, `post_office`), always present.
+- **Upsert and activity:** rows are upserted only when something changed, never deleted. Bank rows missing from a successful Razorpay run deactivate after a 30-day grace (`STALE_DAYS`); NBFC/HFC rows deactivate as soon as they leave the seed. If Razorpay fails, bank rows are not touched.
+- **Holdings link:** FD and RD payloads accept `issuer_id` (nullable). The server snapshots `bank` = `short_name`, or `name` when there is no short name (≤ 200 chars). An unknown id or an issuer with `accepts_deposits` false is a 422 on `issuer_id` (§2 rule 20). Merged and inactive issuers are still accepted, so old holdings stay valid. Manual entries keep `issuer_id` null and the typed bank text.
+- **Search order** (`GET /master/fd-issuer`, §4): the query must be ≥ 2 characters. Every token must match name, short name or code (case-insensitive). Deposit-taking issuers only; merged and inactive ones are included so old holdings stay findable. Order: category (`public_sector`, `private_sector`, `small_finance`, `foreign`, `nbfc`, `hfc`, `post_office`, `regional_rural`, `local_area`, `state_coop`, `urban_coop`, `district_coop`, then any other), then trigram similarity of name to the query, then name, then id.
+- **Known gaps:** Unity Small Finance Bank is only in Razorpay's `banknames.json` (not `banks.json`), so it is not listed; enter it manually. Razorpay RRB names are pre-amalgamation. NBFC and HFC `reg_no` is empty (CoR numbers not obtained; RBI files block automated access and the NHB page has none).
+- **Cron:** `GET /api/cron/issuers` (§4), weekly. CLI: `python -m app.jobs.issuers_import`.
+
 ## 2. Validation rules (API and forms, identical wording)
 
 Base: required text non-empty ("Required"); numbers must parse ("Enter a valid number"); amounts/rates/quantities > 0 ("Must be greater than 0"); quantity whole ("Must be a whole number").
@@ -79,11 +97,14 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 17 | MF `scheme_code` (optional) must exist in `mf_master` | Select a scheme from the list |
 | 18 | Stock `master_id` (optional) must exist in `stock_master` | Select a stock from the list |
 | 19 | Bond `master_id` (optional) must exist in `bond_master` | Select a bond from the list |
+| 20 | FD/RD `issuer_id` (optional) must exist in `fd_issuer_master` and accept deposits | Select a bank or issuer from the list |
 | P | Payout FD cannot use `simple` | Choose a payout frequency |
 | A1 | Auth email (sign-up and login): trimmed, lower-cased, address shape, ≤ 320 chars | Enter a valid email address |
 | A2 | Sign-up password: 10–128 characters (login only requires non-empty, "Required") | Password must be at least 10 characters / Password must be at most 128 characters |
 
 MF scheme picker: the form requires a scheme in picker mode; "Not listed? Enter manually" allows free text with a null `scheme_code`. When a code is set, the server snapshots `scheme_name` from the master.
+
+FD/RD issuer picker: the form requires an issuer in picker mode (rule 20); "Not listed? Enter manually" switches to free text, where bank is required ("Required") and `issuer_id` is null.
 
 No minimum amounts beyond > 0 (user decision). Cross-field errors are attached to a field: tenure → `tenure_years`, payout frequency → `compounding`, price range → `purchase_price`, maturity rules → `maturity_date`. Read models accept existing rows even if they'd fail new create-time rules.
 
@@ -117,8 +138,11 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET /master/stock/{id}` → one stock or ETF; 404 "Stock not found" / "The requested resource doesn't exist."
 - `GET /master/bond?q=&limit=20` → active bonds from `bond_master`, same search rules.
 - `GET /master/bond/{id}` → one bond; 404 "Bond not found" / "The requested resource doesn't exist."
+- `GET /master/fd-issuer?q=&limit=20` → deposit-taking banks, NBFCs, HFCs and India Post from `fd_issuer_master`; `limit` 1–50. `q` ≥ 2 characters (else `[]`); search and ranking rules in §1.
+- `GET /master/fd-issuer/{id}` → one issuer (with `merged_into` when set); 404 "Issuer not found" / "The requested resource doesn't exist."
 - `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
 - `GET /cron/securities` → runs the stock and bond master imports (see Master data). Same bearer auth; Vercel Cron `0 14 * * *` UTC. Returns `{stocks: {...}, bonds: {...}}`.
+- `GET /cron/issuers` → runs the FD/RD issuer master import (§1) and returns its counts. Same bearer auth; Vercel Cron `0 3 * * 1` UTC (Mondays 08:30 IST, weekly). 502 "Couldn't fetch the issuer files" when both the Razorpay and DICGC sources fail.
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
 - `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf: latest NAV, 4 dp, and its date; null when no NAV). The NAV lookup is one extra query over held schemes only.
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
@@ -173,6 +197,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
 - Stock form (`components/forms/stock-form.tsx`, picker from `components/forms/master-picker.tsx`): picker by default ("Search stocks and ETFs…"; rows show name, NSE/BSE symbols, ISIN, ETF badge). Picking sets name, symbol and the exchange default; changing the exchange re-derives the symbol. "Not listed? Enter manually" switches to free text; "Search the stock list instead" switches back.
 - Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name and ISIN and pre-fills issuer, bond type, face value and maturity (all still editable).
+- FD and RD forms (`components/forms/fd-form.tsx`, `rd-form.tsx`): "Bank / issuer" picker (shared `components/forms/issuer-picker.tsx`, a server search over `/api/master/fd-issuer`; rows show the short name or name, the category, "DICGC insured" and "Merged into" when set). Picking sets `issuer_id` and copies the short name (or name) into Bank. "Not listed? Enter manually" switches to free text ("Search the bank list instead" switches back). New holdings open in picker mode; existing holdings without an issuer link open in manual mode. Editing loads the linked issuer from `/master/fd-issuer/{id}`, and falls back to the stored bank text if that fails.
 - Edit dialog for stocks/bonds shows the linked security (fetched from `/master/stock/{id}` or `/master/bond/{id}`).
 - MF Average NAV auto-fill (`components/forms/use-nav-autofill.ts`): once a scheme and purchase date are set, Average NAV fills from `/api/master/mf/{scheme_code}/nav` with the hint "NAV on {date} · AMFI". It stays editable and never overwrites a value the user typed. Errors show the API message as a muted hint.
 - Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.

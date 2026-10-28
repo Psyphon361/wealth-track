@@ -33,7 +33,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic upgrade h
 DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
 ```
 
-`alembic current` should print `0010 (head)`. Repeat this step whenever a new migration is added.
+`alembic current` should print `0011 (head)`. Repeat this step whenever a new migration is added.
 
 ## 4. API project (FastAPI)
 
@@ -65,7 +65,7 @@ curl -i https://<api-project>.vercel.app/api/dashboard # 401 Unauthorized
 
 ## 6. Load MF master data
 
-The MF scheme picker needs `mf_schemes` and `mf_nav_latest` filled. Run the import once; after that the daily cron keeps them current.
+The MF scheme picker needs `mf_master` and `mf_nav_latest` filled. Run the import once; after that the daily cron keeps them current.
 
 Either locally, from `api/` (use the production **direct** connection string):
 
@@ -80,6 +80,24 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://<api-project>.vercel.app/ap
 ```
 
 The import takes about 15–20 s.
+
+## 6b. Load the FD/RD bank and issuer master
+
+The FD/RD bank picker needs `fd_issuer_master` filled (migration 0011 creates the table). Run the import once; after that the weekly cron keeps it current (Vercel `0 3 * * 1` UTC, Mondays 08:30 IST). It needs no new environment variables: it uses `CRON_SECRET` for the endpoint and public files (Razorpay on GitHub, the DICGC website). The NBFC/HFC list is a committed seed (`api/data/fd_issuers_nbfc_hfc.csv`).
+
+Either locally, from `api/` (use the production **direct** connection string):
+
+```bash
+DATABASE_URL='<production direct connection string>' .venv/bin/python -m app.jobs.issuers_import
+```
+
+Or trigger the cron endpoint once against the deployed API:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" https://<api-project>.vercel.app/api/cron/issuers
+```
+
+On macOS, a local run needs `SSL_CERT_FILE` set, as for the AMFI import (see Troubleshooting).
 
 ## 7. Smoke test
 
@@ -114,7 +132,7 @@ Fallback: the manual `alembic upgrade head` in step 3 still works.
 Sign-in replaces the shared password. Migration `0010` adds users, refresh tokens and login attempts, and `user_id` on every holdings table. Do these steps in order:
 
 1. **Set the secrets.** API project: `JWT_SECRET` and `ALLOWED_EMAILS` (your email). GitHub `production` environment: `OWNER_EMAIL` (your email).
-2. **Push to `main`.** The Action runs `alembic upgrade head` on prod, so the database reaches `0010`. Existing holdings are assigned to the `OWNER_EMAIL` user, which is created without a password. The migration fails with a clear error if holdings exist and `OWNER_EMAIL` is unset.
+2. **Push to `main`.** The Action runs `alembic upgrade head` on prod, so the database reaches `0011` (`0010` adds auth, `0011` the FD/RD issuer master). Existing holdings are assigned to the `OWNER_EMAIL` user, which is created without a password. The migration fails with a clear error if holdings exist and `OWNER_EMAIL` is unset.
    - On a database with no holdings the migration does not create the owner. Use `create` in step 3 instead of `set-password`.
 3. **Set your password locally.** Use the production **pooled** connection string from `api/` (prod credentials stay with you). The command prompts for the password:
 

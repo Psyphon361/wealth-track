@@ -22,6 +22,7 @@
 
 - Bond master enrichment (committed, not pushed: `49eeb0c`, `79f548f`, `c14bd87`): `bond_master` merged by ISIN from seed files (SGB tranches, tax-free bonds), NSDL India Bond Info list (committed CSV, refreshed manually via `app.jobs.nsdl_convert`), NSE DEBT, NSE ratings and SGB JSON, and bhavcopy GB. New columns: issue date/price, rating + agency, coupon type, interest frequency, issue size, ownership, issue mode, perpetual, NSDL status (migrations 0008, 0009). Social Stock Exchange instruments excluded. SPEC §1 has the details and the refresh procedure.
 - Pending, uncommitted: web bond picker shows ratings (`web/components/forms/bond-form.tsx`, `web/lib/types.ts`).
+- FD/RD issuer master (uncommitted and not pushed at time of writing; migration 0011): `fd_issuer_master` from the Razorpay IFSC bank list (categories, DICGC insured flag matched from the DICGC xlsx), short names and 17 mergers from a seed, 16 NBFCs and 11 HFCs from a cited seed, India Post. FD/RD forms have a bank/issuer picker (`issuer_id`; server snapshots `bank`); weekly cron `/api/cron/issuers`. Dev import (2026-10-28): 1,379 issuers: urban_coop 852, district_coop 319, regional_rural 53, state_coop 31, public_sector 28 (incl. merged), foreign 27, private 22, nbfc 16, small_finance 11, hfc 11, payments 6, local_area 2, post_office 1; DICGC matched 852. API tests: 272 passing. SPEC §1, §2, §4, §5.
 - Auth step 1 (email and password sign-in, invite-only sign-up, one owner per holding; commits `ca3b832`, `a331552`; web auth W1 and these docs are uncommitted at time of writing). Users, refresh tokens and login attempts; migration `0010` (holdings `user_id`); every holdings route is scoped to the signed-in user; master routes need sign-in. Web sign-in and sign-up pages (password fields with a show/hide eye toggle), account menu in the top bar (email avatar, Log out), httpOnly cookies `wt_access` and `wt_refresh`, token refresh in the route handler. The old `APP_PASSWORD` gate is gone from the code. SPEC §7. API tests: 243 passing.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -36,11 +37,12 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Data
 
-- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. Migration head 0010 (auth; sign in with an account created by `app.jobs.users create`).
+- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0011 (FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
 - Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
 
+- FD/RD issuers: Unity Small Finance Bank is not listed (enter it manually); Razorpay RRB names are pre-amalgamation; NBFC/HFC `reg_no` is empty (SPEC §1).
 - Holdings details page (eye icon) not built yet.
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
