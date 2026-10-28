@@ -13,6 +13,9 @@ class FixedDeposit(TimestampedMixin, Base):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     bank: Mapped[str] = mapped_column(String(200))
+    issuer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fd_issuer_master.id", ondelete="SET NULL"), index=True
+    )
     label: Mapped[str | None] = mapped_column(String(200))
     principal: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     rate: Mapped[Decimal] = mapped_column(Numeric(6, 3))

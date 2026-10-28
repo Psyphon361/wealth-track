@@ -274,6 +274,7 @@ class _Tenure(BaseModel):
 
 class FixedDepositBase(BaseModel):
     bank: Required
+    issuer_id: int | None = None
     label: Optional
     principal: Dec
     rate: Dec
@@ -313,6 +314,7 @@ class FixedDepositRead(FixedDepositBase, _Read):
 
 class RecurringDepositBase(BaseModel):
     bank: Required
+    issuer_id: int | None = None
     label: Optional
     monthly_instalment: Dec
     rate: Dec

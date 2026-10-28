@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.schemas.market_master import BondMasterRead, StockMasterRead
+from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.services import amfi, bond_master, nav_history, stock_master
+from app.services import amfi, bond_master, fd_issuers, nav_history, stock_master
 
 router = APIRouter(prefix="/master", tags=["master"], dependencies=[Depends(current_user)])
 
@@ -75,7 +75,30 @@ def get_bond(master_id: int, db: Session = Depends(get_db)):
     return bond
 
 
-@router.get("/mf/{scheme_code}/nav", response_model=MFNavOnDate)
+@router.get("/fd-issuer", response_model=list[FdIssuerRead])
+def search_fd_issuer(
+    q: str = Query(default=""),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return fd_issuers.search_issuers(db, q, limit)
+
+
+@router.get("/fd-issuer/{issuer_id}", response_model=FdIssuerRead)
+def get_fd_issuer(issuer_id: int, db: Session = Depends(get_db)):
+    issuer = fd_issuers.get_issuer(db, issuer_id)
+    if issuer is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Issuer not found",
+                "description": "The requested resource doesn't exist.",
+            },
+        )
+    return issuer
+
+
+@router.get("/mf/{scheme_code}/nav",response_model=MFNavOnDate)
 def get_mf_nav(
     scheme_code: int,
     on_date: date = Query(alias="date"),

@@ -82,6 +82,51 @@ class BondImportResult(BaseModel):
     errors: dict[str, str] = {}  # optional/seed sources that failed or were missing
 
 
+class FdIssuerRef(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class FdIssuerRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    code: str
+    name: str
+    short_name: str | None = None
+    category: str
+    regulator: str | None = None
+    reg_no: str | None = None
+    dicgc_insured: bool | None = None
+    accepts_deposits: bool
+    merged_into: FdIssuerRef | None = None
+    merged_on: date | None = None
+    is_active: bool
+
+
+class FdIssuerImportResult(BaseModel):
+    total: int
+    inserted: int
+    updated: int
+    unchanged: int
+    deactivated: int
+    last_seen_refreshed: int = 0
+    merge_links_updated: int = 0
+    skipped: int = 0
+    by_category: dict[str, int]
+    by_source: dict[str, int]
+    dicgc_names: int = 0
+    dicgc_matched: int = 0
+    dicgc_unmatched: int = 0
+    dicgc_unclaimed: int = 0
+    unmatched_names: dict[str, list[str]] = {}
+    unclaimed_names: list[str] = []
+    errors: dict[str, str] = {}  # sources that failed or were missing
+    notes: list[str] = []
+
+
 class MarketImportResult(BaseModel):
     stocks: StockImportResult
     bonds: BondImportResult

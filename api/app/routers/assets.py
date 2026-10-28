@@ -8,7 +8,7 @@ from app.db import Base, get_db
 from app.deps import current_user
 from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock, User
 from app.schemas.messages import Outcome
-from app.services import amfi, bond_master, stock_master
+from app.services import amfi, bond_master, fd_issuers, stock_master
 
 router = APIRouter(prefix="/assets")
 
@@ -61,6 +61,9 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         data = body.model_dump()
         if data.get("scheme_code") is not None:
             data["scheme_name"] = amfi.require_scheme(db, data["scheme_code"]).name[:200]
+        if data.get("issuer_id") is not None:
+            issuer = fd_issuers.require_issuer(db, data["issuer_id"])
+            data["bank"] = (issuer.short_name or issuer.name)[:200]
         master_id = data.get("master_id")
         if master_id is not None and slug == "stock":
             stock = stock_master.require_stock_master(db, master_id)

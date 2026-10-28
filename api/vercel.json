@@ -4,7 +4,8 @@
   "git": { "deploymentEnabled": { "main": false } },
   "crons": [
     { "path": "/api/cron/amfi", "schedule": "30 16 * * *" },
-    { "path": "/api/cron/securities", "schedule": "0 14 * * *" }
+    { "path": "/api/cron/securities", "schedule": "0 14 * * *" },
+    { "path": "/api/cron/issuers", "schedule": "0 3 * * 1" }
   ],
   "functions": {
     "app/main.py": {

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.db import get_db
 from app.schemas.mf_scheme import AmfiImportResult
-from app.schemas.market_master import MarketImportResult
-from app.services import amfi, bond_master, market_files, stock_master
+from app.schemas.market_master import FdIssuerImportResult, MarketImportResult
+from app.services import amfi, bond_master, fd_issuers, market_files, stock_master
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -47,3 +47,13 @@ def refresh_securities(db: Session = Depends(get_db)):
         "stocks": asdict(stock_master.import_stocks(db, sources, today)),
         "bonds": asdict(bond_master.import_bonds(db, sources, today)),
     }
+
+
+@router.get(
+    "/issuers", response_model=FdIssuerImportResult, dependencies=[Depends(require_cron_secret)]
+)
+def refresh_issuers(db: Session = Depends(get_db)):
+    sources = fd_issuers.fetch_sources()
+    if {"razorpay", "dicgc"} <= sources.errors.keys():  # both remote sources unreachable
+        raise HTTPException(status_code=502, detail="Couldn't fetch the issuer files")
+    return asdict(fd_issuers.import_issuers(db, sources, date.today()))
