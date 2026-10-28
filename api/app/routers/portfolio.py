@@ -8,6 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import current_user
+from app.models.user import User
 from app.models.mf_master import MFNavLatest
 from app.models.mutual_fund import MutualFund
 from app.routers.assets import REGISTRY
@@ -48,9 +50,11 @@ def _item(record: Any, read_schema: type, computed: dict[str, Any]) -> dict[str,
     return item
 
 
-def _fetch_navs(bind: Any) -> dict[int, tuple[Decimal, date]]:
-    """Latest NAV for only the schemes held, in a single query."""
-    held = select(MutualFund.scheme_code).where(MutualFund.scheme_code.is_not(None))
+def _fetch_navs(bind: Any, user_id: int) -> dict[int, tuple[Decimal, date]]:
+    """Latest NAV for only the schemes this user holds, in a single query."""
+    held = select(MutualFund.scheme_code).where(
+        MutualFund.scheme_code.is_not(None), MutualFund.user_id == user_id
+    )
     stmt = select(MFNavLatest).where(MFNavLatest.scheme_code.in_(held))
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         return {r.scheme_code: (r.nav, r.nav_date) for r in session.scalars(stmt).all()}
@@ -91,34 +95,38 @@ def build_groups(
     return groups
 
 
-def load_groups(db: Session, today: date | None = None) -> list[dict[str, Any]]:
+def load_groups(db: Session, user_id: int, today: date | None = None) -> list[dict[str, Any]]:
     bind = db.get_bind()
 
     def fetch(model: Any) -> list[Any]:
         # Own session per table so the 5 queries share one network round trip.
         with Session(bind, autoflush=False, expire_on_commit=False) as session:
-            return list(session.scalars(select(model).order_by(model.id)).all())
+            stmt = select(model).where(model.user_id == user_id).order_by(model.id)
+            return list(session.scalars(stmt).all())
 
     with ThreadPoolExecutor(max_workers=len(REGISTRY) + 1) as pool:
         futures = {
             slug: pool.submit(fetch, model) for slug, (model, _c, _r) in REGISTRY.items()
         }
-        nav_future = pool.submit(_fetch_navs, bind)
+        nav_future = pool.submit(_fetch_navs, bind, user_id)
         records = {slug: future.result() for slug, future in futures.items()}
         navs = nav_future.result()
     return build_groups(records, today or date.today(), navs)
 
 
-def load_group(db: Session, slug: str, today: date | None = None) -> dict[str, Any]:
+def load_group(
+    db: Session, slug: str, user_id: int, today: date | None = None
+) -> dict[str, Any]:
     """Fetch and value a single asset type (MF adds one NAV query, run concurrently)."""
     model = REGISTRY[slug][0]
+    stmt = select(model).where(model.user_id == user_id).order_by(model.id)
     if slug == "mf":
         with ThreadPoolExecutor(max_workers=1) as pool:
-            nav_future = pool.submit(_fetch_navs, db.get_bind())
-            records = list(db.scalars(select(model).order_by(model.id)).all())
+            nav_future = pool.submit(_fetch_navs, db.get_bind(), user_id)
+            records = list(db.scalars(stmt).all())
             navs = nav_future.result()
     else:
-        records = list(db.scalars(select(model).order_by(model.id)).all())
+        records = list(db.scalars(stmt).all())
         navs = {}
     groups = build_groups({slug: records}, today or date.today(), navs)
     return next(g for g in groups if g["type"] == slug)
@@ -155,10 +163,10 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @router.get("/portfolio", response_model=PortfolioResponse)
-def get_portfolio(db: Session = Depends(get_db)):
-    return {"groups": load_groups(db)}
+def get_portfolio(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return {"groups": load_groups(db, user.id)}
 
 
 @router.get("/dashboard", response_model=DashboardResponse)
-def get_dashboard(db: Session = Depends(get_db)):
-    return build_dashboard(load_groups(db))
+def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    return build_dashboard(load_groups(db, user.id))

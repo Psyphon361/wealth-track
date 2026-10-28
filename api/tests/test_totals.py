@@ -58,9 +58,9 @@ def test_dashboard_excludes_matured():
 def test_holdings_summary_excludes_matured(monkeypatch):
     groups = build_groups(_records(), TODAY)
     fd_group = _group(groups, "fd")
-    monkeypatch.setattr(holdings, "load_group", lambda db, slug: fd_group)
+    monkeypatch.setattr(holdings, "load_group", lambda db, slug, user_id: fd_group)
     out = holdings._run(
-        None, "fd", q=None, sort="current_value", dir="desc", page=1, multi={}
+        None, 1, "fd", q=None, sort="current_value", dir="desc", page=1, multi={}
     )
     assert out["total"] == 2  # matured still listed
     summary = out["summary"]

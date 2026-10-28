@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import current_user
 from app.schemas.market_master import BondMasterRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
 from app.services import amfi, bond_master, nav_history, stock_master
 
-router = APIRouter(prefix="/master", tags=["master"])
+router = APIRouter(prefix="/master", tags=["master"], dependencies=[Depends(current_user)])
 
 
 @router.get("/mf", response_model=list[MFSchemeRead])

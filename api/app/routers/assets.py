@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app import schemas
 from app.db import Base, get_db
-from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock
+from app.deps import current_user
+from app.models import Bond, FixedDeposit, MutualFund, RecurringDeposit, Stock, User
 from app.schemas.messages import Outcome
 from app.services import amfi, bond_master, stock_master
 
@@ -30,8 +31,8 @@ ASSET_LABELS = {
 }
 
 
-def _get_or_404(db: Session, model: type[Base], item_id: int):
-    obj = db.get(model, item_id)
+def _get_or_404(db: Session, model: type[Base], item_id: int, user_id: int):
+    obj = db.scalars(select(model).where(model.id == item_id, model.user_id == user_id)).first()
     if obj is None:
         raise HTTPException(status_code=404, detail="Not found")
     return obj
@@ -72,24 +73,35 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         return data
 
     @sub.get("", response_model=list[read])
-    def list_items(db: Session = Depends(get_db)):
-        return db.scalars(select(model).order_by(model.id)).all()
+    def list_items(db: Session = Depends(get_db), user: User = Depends(current_user)):
+        return db.scalars(
+            select(model).where(model.user_id == user.id).order_by(model.id)
+        ).all()
 
     @sub.post("", response_model=result, status_code=201)
-    def create_item(body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
-        obj = model(**_values(db, body))
+    def create_item(
+        body: create,  # type: ignore[valid-type]
+        db: Session = Depends(get_db),
+        user: User = Depends(current_user),
+    ):
+        obj = model(**_values(db, body), user_id=user.id)
         db.add(obj)
         db.commit()
         db.refresh(obj)
         return _with_message(obj, f"{label} added")
 
     @sub.get("/{item_id}", response_model=read)
-    def get_item(item_id: int, db: Session = Depends(get_db)):
-        return _get_or_404(db, model, item_id)
+    def get_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+        return _get_or_404(db, model, item_id, user.id)
 
     @sub.put("/{item_id}", response_model=result)
-    def replace_item(item_id: int, body: create, db: Session = Depends(get_db)):  # type: ignore[valid-type]
-        obj = _get_or_404(db, model, item_id)
+    def replace_item(
+        item_id: int,
+        body: create,  # type: ignore[valid-type]
+        db: Session = Depends(get_db),
+        user: User = Depends(current_user),
+    ):
+        obj = _get_or_404(db, model, item_id, user.id)
         for key, value in _values(db, body).items():
             setattr(obj, key, value)
         db.commit()
@@ -97,8 +109,10 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         return _with_message(obj, "Changes saved")
 
     @sub.delete("/{item_id}", response_model=Outcome)
-    def delete_item(item_id: int, db: Session = Depends(get_db)):
-        obj = _get_or_404(db, model, item_id)
+    def delete_item(
+        item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
+    ):
+        obj = _get_or_404(db, model, item_id, user.id)
         name = _holding_name(obj)
         db.delete(obj)
         db.commit()

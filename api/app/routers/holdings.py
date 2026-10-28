@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import current_user
+from app.models.user import User
 from app.routers.portfolio import _q, load_group
 from app.schemas.holdings import HoldingsResponse
 
@@ -105,6 +107,7 @@ def _sort_value(item: dict[str, Any], key: str, text_keys: set[str]) -> Any:
 
 def _run(
     db: Session,
+    user_id: int,
     slug: str,
     *,
     q: str | None,
@@ -119,7 +122,7 @@ def _run(
     maturity_to: date | None = None,
 ) -> dict[str, Any]:
     cfg = CONFIG[slug]
-    rows: list[dict[str, Any]] = load_group(db, slug)["items"]
+    rows: list[dict[str, Any]] = load_group(db, slug, user_id)["items"]
     needle = (q or "").strip().lower()
     selected = {k: set(v) for k, v in multi.items() if v}
     m_from = maturity_from.isoformat() if maturity_from else None
@@ -222,9 +225,10 @@ def get_fd_holdings(
     dir: Dir = "desc",
     page: Page = 1,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     return _run(
-        db, "fd", q=q, sort=sort, dir=dir, page=page,
+        db, user.id, "fd",q=q, sort=sort, dir=dir, page=page,
         multi={"bank": bank, "payout_type": payout_type, "compounding": compounding, "status": status},
         range_field="rate", range_min=rate_min, range_max=rate_max,
         maturity_from=maturity_from, maturity_to=maturity_to,
@@ -244,9 +248,10 @@ def get_rd_holdings(
     dir: Dir = "desc",
     page: Page = 1,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     return _run(
-        db, "rd", q=q, sort=sort, dir=dir, page=page,
+        db, user.id, "rd",q=q, sort=sort, dir=dir, page=page,
         multi={"bank": bank, "status": status},
         range_field="rate", range_min=rate_min, range_max=rate_max,
         maturity_from=maturity_from, maturity_to=maturity_to,
@@ -262,9 +267,10 @@ def get_stock_holdings(
     dir: Dir = "desc",
     page: Page = 1,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     return _run(
-        db, "stock", q=q, sort=sort, dir=dir, page=page,
+        db, user.id, "stock",q=q, sort=sort, dir=dir, page=page,
         multi={"exchange": exchange, "broker": broker},
     )  # fmt: skip
 
@@ -284,9 +290,10 @@ def get_bond_holdings(
     dir: Dir = "desc",
     page: Page = 1,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     return _run(
-        db, "bond", q=q, sort=sort, dir=dir, page=page,
+        db, user.id, "bond",q=q, sort=sort, dir=dir, page=page,
         multi={"bond_type": bond_type, "issuer": issuer, "platform": platform, "status": status},
         range_field="ytm", range_min=ytm_min, range_max=ytm_max,
         maturity_from=maturity_from, maturity_to=maturity_to,
@@ -302,8 +309,9 @@ def get_mf_holdings(
     dir: Dir = "desc",
     page: Page = 1,
     db: Session = Depends(get_db),
+    user: User = Depends(current_user),
 ):
     return _run(
-        db, "mf", q=q, sort=sort, dir=dir, page=page,
+        db, user.id, "mf",q=q, sort=sort, dir=dir, page=page,
         multi={"category": category, "platform": platform},
     )  # fmt: skip
