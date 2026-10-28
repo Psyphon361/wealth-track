@@ -1,0 +1,91 @@
+code,short_name,merged_into_code,merged_on,dicgc_name,source,note
+ABBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+AUBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+BARB,Bank of Baroda,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+BARC,,,,BARCLAYS BANK P. L. C,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+BBKM,Bank of Bahrain and Kuwait,,,BANK OF BAHRAIN AND KUWAIT B. S. C,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+BCEY,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+BDBL,Bandhan Bank,,,BANDHAN BANK LILMITED,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,DICGC sheet spells LILMITED
+BKID,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+BNPA,BNP Paribas,,,B N P PARIBAS,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+BOFA,Bank of America,,,"BANK OF AMERICA , NATIONAL ASSOCIATION.",https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+BOTM,MUFG Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CBIN,Central Bank of India,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CHAS,JPMorgan Chase Bank,,,"JPMORGAN CHASE BANK, N. A.",https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+CITI,Citibank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CIUB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CLBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CNRB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CRLY,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+CSBK,CSB Bank,,,CSB Bank Limited,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,Razorpay name is the former Catholic Syrian Bank; DICGC lists CSB Bank Limited
+DBSS,DBS Bank India,,,DBS BANK INDIA LIMITED,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,Razorpay name is Development Bank of Singapore; DICGC lists DBS BANK INDIA LIMITED
+DCBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+DEUT,Deutsche Bank,,,DEUTSCHE BANK (ASIA),https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+DLXB,,,,DHANALAKSHMI BANK LTD.,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,Razorpay Dhanlaxmi vs DICGC DHANALAKSHMI (same bank assumed)
+EBIL,Emirates NBD,,,Emirates NBD Bank (P.J.S.C),https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+ESMF,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json,ESAF Small Finance Bank; Razorpay banks.json key is ESAF but IFSC prefix and banknames.json code is ESMF
+ESFB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+FDRL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+HDFC,HDFC Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+HSBC,HSBC,,,THE HONGKONG & SHANGHAI BANKING COPORATION LTD.,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,DICGC sheet spells COPORATION
+IBKL,IDBI Bank,,,IDBI BANK LTD,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,Razorpay name is just IDBI
+ICIC,ICICI Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+IDFB,IDFC FIRST Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+IDIB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+INDB,IndusInd Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+IOBA,Indian Overseas Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+JAKA,J&K Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+JSFB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+KARB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+KOEX,KEB Hana Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json,Razorpay banks.json key is KBHB but IFSC prefix and banknames.json code is KOEX
+KKBK,Kotak Mahindra Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+KVBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+MAHB,Bank of Maharashtra,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+MHCB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+NESF,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,not found in DICGC active insured banks sheet (small finance banks)
+NOSC,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+NTBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+PSIB,Punjab & Sind Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+PUNB,PNB,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+QNBX,Qatar National Bank,,,Qatar National Bank (Q.P.S.C.),https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+RABO,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,not found in DICGC active insured banks sheet (foreign banks)
+RATN,RBL Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SBIN,SBI,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SBLD,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SCBL,Standard Chartered,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SHBK,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SMCB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json,Shivalik Small Finance Bank; Razorpay banks.json key is SHIX but IFSC prefix and banknames.json code is SMCB
+SIBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SMBC,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+SOGE,,,,SOCIETE GENERALE PARIS(FRANCE),https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+STCB,SBM Bank India,,,SBM Bank (India) Ltd.,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,
+SURY,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+TMBL,TMB,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+UBIN,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+UCBA,UCO Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+UJVN,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json,Ujjivan Small Finance Bank; Razorpay banks.json key is USFB but IFSC prefix and banknames.json code is UJVN
+UTIB,Axis Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+UTKS,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+YESB,Yes Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
+UNBA,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json,Unity Small Finance Bank; present in banknames.json only (not banks.json)
+AGVX,,,,"ASSAM GRAMIN VIKAS BANK, GUWAHATI",https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,RRB; Razorpay spells Vikash; same bank assumed
+KLGB,,,,KERALA GRAMEENA BANK,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,RRB; Razorpay says Gramin vs DICGC Grameena (same bank assumed)
+PUGX,,,,PUNJAB GRAMIN BANK KAPURTHALA,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,RRB; DICGC adds KAPURTHALA (same bank assumed)
+XJKG,,,,Jammu and Kashmir Grameen Bank,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,"RRB; Razorpay ""J&K Grameen Bank"" vs DICGC full name (same bank assumed)"
+VIJB,,BARB,2019-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Vijaya_Bank,Vijaya Bank merged into Bank of Baroda
+BKDN,,BARB,2019-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Dena_Bank,Dena Bank merged into Bank of Baroda
+ORBC,,PUNB,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Oriental_Bank_of_Commerce,Oriental Bank of Commerce merged into Punjab National Bank
+UTBI,,PUNB,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/United_Bank_of_India,United Bank of India merged into Punjab National Bank
+SYNB,,CNRB,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Syndicate_Bank,Syndicate Bank merged into Canara Bank
+ANDB,,UBIN,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Andhra_Bank,Andhra Bank merged into Union Bank of India
+CORP,,UBIN,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Corporation_Bank,Corporation Bank merged into Union Bank of India; date per Wikipedia text on the Andhra Bank/Union Bank merger (completed 1 April 2020)
+ALLA,,IDIB,2020-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Allahabad_Bank,Allahabad Bank merged into Indian Bank
+LAVB,,DBSS,2020-11-27,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Lakshmi_Vilas_Bank,Laxmi Vilas Bank merged into DBS Bank India
+VYSA,,KKBK,2015-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/ING_Vysya_Bank,"ING Vysya Bank merged into Kotak Mahindra Bank; date = RBI approval of merger on 1 Apr 2015 per Wikipedia, which also says the process completed 15 May 2016 (unconfirmed which is the legal effective date)"
+SBBJ,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/State_Bank_of_Bikaner_%26_Jaipur | https://en.wikipedia.org/wiki/State_Bank_of_India,State Bank of Bikaner and Jaipur merged into State Bank of India; SBI page says merger completed April 2017; bank page infobox shows end date 31 Mar 2017
+SBHY,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/State_Bank_of_Hyderabad | https://en.wikipedia.org/wiki/State_Bank_of_India,State Bank of Hyderabad merged into State Bank of India; SBI page says merger completed April 2017; bank page infobox shows end date 31 Mar 2017
+SBMY,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/State_Bank_of_Mysore | https://en.wikipedia.org/wiki/State_Bank_of_India,State Bank of Mysore merged into State Bank of India; SBI page says merger completed April 2017; bank page infobox shows end date 31 Mar 2017
+STBP,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/State_Bank_of_Patiala | https://en.wikipedia.org/wiki/State_Bank_of_India,State Bank of Patiala merged into State Bank of India; SBI page says merger completed April 2017; bank page infobox shows defunct 2017
+SBTR,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/State_Bank_of_Travancore | https://en.wikipedia.org/wiki/State_Bank_of_India,State Bank of Travancore merged into State Bank of India; SBI page says merger completed April 2017; bank page infobox shows end date 31 Mar 2017
+BMBL,,SBIN,2017-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://en.wikipedia.org/wiki/Bharatiya_Mahila_Bank,Bharatiya Mahila Bank merged into State Bank of India
+FSFB,,AUBL,2024-04-01,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banknames.json | https://www.au.bank.in/au-small-finance-bank-and-fincare-small-finance-bank-merger,Fincare Small Finance Bank merged into AU Small Finance Bank; effective date per AU SFB; Razorpay banks.json key is FINF
