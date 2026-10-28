@@ -30,6 +30,12 @@ export const PAYOUT_FREQUENCY_ERROR = "Choose a payout frequency";
 export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
+export const EMAIL_ERROR = "Enter a valid email address";
+export const PASSWORD_MIN = 10;
+export const PASSWORD_MAX = 128;
+export const PASSWORD_MIN_ERROR = "Password must be at least 10 characters";
+export const PASSWORD_MAX_ERROR = "Password must be at most 128 characters";
+export const PASSWORD_REQUIRED_ERROR = "Required";
 export const MAX_TENURE_YEARS = 10;
 export const MAX_BOND_YEARS = 50;
 

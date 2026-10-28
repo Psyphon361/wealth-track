@@ -2,12 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, LayoutDashboard, LogOut, Wallet } from "lucide-react";
-import { logout } from "@/app/actions/auth";
+import { Briefcase, LayoutDashboard, Wallet } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
@@ -22,7 +20,7 @@ const NAV = [
   { href: "/portfolio", label: "Portfolio", icon: Briefcase },
 ];
 
-export function AppSidebar({ showLogout }: { showLogout: boolean }) {
+export function AppSidebar() {
   const pathname = usePathname();
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -64,20 +62,6 @@ export function AppSidebar({ showLogout }: { showLogout: boolean }) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        {showLogout ? (
-          <form action={logout}>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton type="submit" tooltip="Log out">
-                  <LogOut />
-                  <span>Log out</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </form>
-        ) : null}
-      </SidebarFooter>
       <SidebarRail />
     </Sidebar>
   );

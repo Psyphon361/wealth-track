@@ -11,6 +11,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { UserMenu } from "@/components/user-menu";
 import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { ASSET_SLUGS, getAssetEntry } from "@/lib/asset-catalog";
@@ -67,8 +68,9 @@ export function SiteHeader() {
           })}
         </BreadcrumbList>
       </Breadcrumb>
-      <div className="ml-auto shrink-0">
+      <div className="ml-auto flex shrink-0 items-center gap-2">
         <AddMenu />
+        <UserMenu />
       </div>
     </header>
   );

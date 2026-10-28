@@ -1,11 +1,12 @@
 import { Suspense } from "react";
-import { safeNext } from "@/lib/session";
-import { LoginForm } from "./login-form";
+import { login } from "@/app/actions/auth";
+import { safeNext } from "@/lib/auth";
+import { AuthForm } from "../auth-form";
 
 async function Form({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
   const params = await searchParams;
   const raw = params.next;
-  return <LoginForm next={safeNext(typeof raw === "string" ? raw : null)} />;
+  return <AuthForm mode="login" action={login} next={safeNext(typeof raw === "string" ? raw : null)} />;
 }
 
 export default function LoginPage({ searchParams }: PageProps<"/login">) {

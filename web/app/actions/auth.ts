@@ -3,46 +3,92 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
-  SESSION_COOKIE,
-  SESSION_MAX_AGE_SECONDS,
-  createSessionToken,
-  gateMode,
-  passwordMatches,
+  REFRESH_COOKIE,
+  apiAuthFetch,
+  clearAuthCookies,
   safeNext,
-} from "@/lib/session";
+  setAuthCookies,
+  type TokenResponse,
+} from "@/lib/auth";
 
-export type LoginState = { error: string | null };
+export type AuthState = {
+  message: string | null;
+  description: string | null;
+  fieldErrors?: { email?: string; password?: string };
+};
 
-export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
-  const mode = gateMode();
-  if (mode === "disabled") redirect("/");
-  const password = process.env.APP_PASSWORD;
-  const secret = process.env.SESSION_SECRET;
-  if (mode === "misconfigured" || !password || !secret) {
-    return { error: "Server auth is not configured." };
-  }
+const INITIAL_OK: AuthState = { message: null, description: null };
 
-  const input = formData.get("password");
+async function submit(path: "login" | "signup", formData: FormData): Promise<AuthState> {
+  const email = formData.get("email");
+  const password = formData.get("password");
   const next = formData.get("next");
-  const ok = typeof input === "string" && (await passwordMatches(input, password));
-  if (!ok) {
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    return { error: "Incorrect password." };
+
+  let res: Response;
+  try {
+    res = await apiAuthFetch(path, {
+      email: typeof email === "string" ? email.trim() : "",
+      password: typeof password === "string" ? password : "",
+    });
+  } catch {
+    return {
+      message: "Couldn't reach the server",
+      description: "Check your connection and try again.",
+    };
   }
 
-  const store = await cookies();
-  store.set(SESSION_COOKIE, await createSessionToken(secret), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SECONDS,
-  });
+  let data: unknown = null;
+  try {
+    data = await res.json();
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const body = (data ?? {}) as {
+      message?: string;
+      description?: string;
+      detail?: unknown;
+    };
+    const fieldErrors: NonNullable<AuthState["fieldErrors"]> = {};
+    if (res.status === 422 && Array.isArray(body.detail)) {
+      for (const item of body.detail as { loc?: unknown[]; msg?: string }[]) {
+        const field = item.loc?.[1];
+        if ((field === "email" || field === "password") && item.msg && !fieldErrors[field]) {
+          fieldErrors[field] = item.msg;
+        }
+      }
+    }
+    return {
+      message: body.message ?? null,
+      description: body.description ?? null,
+      fieldErrors: Object.keys(fieldErrors).length > 0 ? fieldErrors : undefined,
+    };
+  }
+
+  setAuthCookies(await cookies(), data as TokenResponse);
   redirect(safeNext(typeof next === "string" ? next : null));
+  return INITIAL_OK;
+}
+
+export async function login(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  return submit("login", formData);
+}
+
+export async function signup(_prev: AuthState, formData: FormData): Promise<AuthState> {
+  return submit("signup", formData);
 }
 
 export async function logout(): Promise<void> {
   const store = await cookies();
-  store.delete(SESSION_COOKIE);
+  const refresh = store.get(REFRESH_COOKIE)?.value;
+  if (refresh) {
+    try {
+      await apiAuthFetch("logout", { refresh_token: refresh });
+    } catch {
+      // Cookies are cleared regardless.
+    }
+  }
+  clearAuthCookies(store);
   redirect("/login");
 }
