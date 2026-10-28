@@ -65,6 +65,7 @@ export const MF_CATEGORY_LABELS: Record<MFCategory, string> = {
 // Input types (request bodies)
 
 export interface FixedDepositInput {
+  issuer_id: number | null;
   bank: string;
   label: string | null;
   principal: number;
@@ -79,6 +80,7 @@ export interface FixedDepositInput {
 }
 
 export interface RecurringDepositInput {
+  issuer_id: number | null;
   bank: string;
   label: string | null;
   monthly_instalment: number;
@@ -89,6 +91,52 @@ export interface RecurringDepositInput {
   tenure_days: number;
   compounding: Compounding;
   notes: string | null;
+}
+
+export type FdIssuerCategory =
+  | "public_sector"
+  | "private_sector"
+  | "small_finance"
+  | "foreign"
+  | "regional_rural"
+  | "local_area"
+  | "payments"
+  | "state_coop"
+  | "district_coop"
+  | "urban_coop"
+  | "nbfc"
+  | "hfc"
+  | "post_office";
+
+export const FD_ISSUER_CATEGORY_LABELS: Record<FdIssuerCategory, string> = {
+  public_sector: "Public sector bank",
+  private_sector: "Private bank",
+  small_finance: "Small finance bank",
+  foreign: "Foreign bank",
+  regional_rural: "Regional rural bank",
+  local_area: "Local area bank",
+  payments: "Payments bank",
+  state_coop: "State co-op bank",
+  district_coop: "District co-op bank",
+  urban_coop: "Urban co-op bank",
+  nbfc: "NBFC",
+  hfc: "Housing finance co.",
+  post_office: "India Post",
+};
+
+export interface FdIssuer {
+  id: number;
+  code: string;
+  name: string;
+  short_name: string | null;
+  category: FdIssuerCategory;
+  regulator: string | null;
+  reg_no: string | null;
+  dicgc_insured: boolean | null;
+  accepts_deposits: boolean;
+  merged_into: { id: number; name: string } | null;
+  merged_on: string | null;
+  is_active: boolean;
 }
 
 export interface StockMaster {

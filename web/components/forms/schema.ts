@@ -30,6 +30,7 @@ export const PAYOUT_FREQUENCY_ERROR = "Choose a payout frequency";
 export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
+export const ISSUER_REQUIRED_ERROR = "Select a bank or issuer from the list";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;

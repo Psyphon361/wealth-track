@@ -148,7 +148,7 @@ export function MasterPicker<T>({
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
       {trigger}
-      <PopoverContent align="start" className="w-[32rem] max-w-[90vw] p-0">
+      <PopoverContent align="start" className="w-(--anchor-width) max-w-none p-0">
         <Command shouldFilter={false}>
           <CommandInput
             value={query}

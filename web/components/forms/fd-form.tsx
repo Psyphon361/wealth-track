@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -10,16 +10,26 @@ import {
   type FixedDeposit,
   type FixedDepositInput,
 } from "@/lib/types";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { FormShell } from "./form-shell";
 import {
   DateField,
+  FormError,
   NotesField,
   SelectField,
   TextField,
   toOptions,
 } from "./fields";
 import {
+  IssuerModeToggle,
+  IssuerPicker,
+  issuerMain,
+  useIssuerMeta,
+} from "./issuer-picker";
+import {
   FD_RATE_ERROR,
+  ISSUER_REQUIRED_ERROR,
+  MAX_TEXT,
   FD_TENURE_ERROR,
   PAYOUT_FREQUENCY_ERROR,
   TENURE_ERROR,
@@ -30,7 +40,6 @@ import {
   optionalText,
   payoutEnum,
   rateNumber,
-  requiredText,
   startDateString,
   tenureIsPositive,
   tenureOk,
@@ -41,7 +50,12 @@ import { useAssetSave } from "./use-asset-form";
 
 const schema = z
   .object({
-    bank: requiredText,
+    master_mode: z.enum(["picker", "manual"]),
+    issuer_id: z.number().nullable(),
+    bank: z
+      .string()
+      .trim()
+      .max(MAX_TEXT, `Must be at most ${MAX_TEXT} characters`),
     label: optionalText,
     principal: moneyNumber,
     rate: rateNumber(15, FD_RATE_ERROR),
@@ -52,6 +66,19 @@ const schema = z
     compounding: compoundingEnum,
     payout_type: payoutEnum,
     notes: notesText,
+  })
+  .superRefine((v, ctx) => {
+    if (v.master_mode === "picker") {
+      if (v.issuer_id === null) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["issuer_id"],
+          message: ISSUER_REQUIRED_ERROR,
+        });
+      }
+    } else if (v.bank === "") {
+      ctx.addIssue({ code: "custom", path: ["bank"], message: "Required" });
+    }
   })
   .refine(tenureIsPositive, {
     message: TENURE_ERROR,
@@ -77,6 +104,8 @@ const PAYOUT_OPTIONS = toOptions(PAYOUT_TYPE_LABELS);
 
 function toDefaults(r?: FixedDeposit): FormIn {
   return {
+    master_mode: !r || r.issuer_id != null ? "picker" : "manual",
+    issuer_id: r?.issuer_id ?? null,
     bank: r?.bank ?? "",
     label: r?.label ?? "",
     principal: r ? String(r.principal) : "",
@@ -100,11 +129,27 @@ export function FdForm({
   onSaved?: (record: FixedDeposit) => void;
   onCancel?: () => void;
 }) {
-  const { saving, save } = useAssetSave("fd", record, onSaved);
-  const { control, handleSubmit, setValue, getValues } = useForm<FormIn, unknown, FormOut>({
+    const { control, handleSubmit, setValue, getValues, setError, clearErrors } = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const { saving, save } = useAssetSave("fd", record, onSaved, (issues) => {
+    for (const i of issues) {
+      if (i.field === "issuer_id") {
+        setError("issuer_id", { type: "server", message: i.message });
+      }
+    }
+  });
+  const mode = useWatch({ control, name: "master_mode" });
+  const bankText = useWatch({ control, name: "bank" });
+  const [meta, setMeta] = useIssuerMeta(record?.issuer_id ?? null);
+
+  function switchMode(next: "picker" | "manual") {
+    setValue("master_mode", next);
+    setValue("issuer_id", null);
+    setMeta(null);
+    clearErrors(["issuer_id", "bank"]);
+  }
   const payoutType = useWatch({ control, name: "payout_type" });
   const isPayout = payoutType === "payout";
   useEffect(() => {
@@ -113,7 +158,11 @@ export function FdForm({
     }
   }, [isPayout, getValues, setValue]);
   const onSubmit = handleSubmit((values) => {
-    const payload: FixedDepositInput = values;
+    const { master_mode, ...rest } = values;
+    const payload: FixedDepositInput = {
+      ...rest,
+      issuer_id: master_mode === "manual" ? null : values.issuer_id,
+    };
     return save(payload);
   });
 
@@ -124,7 +173,41 @@ export function FdForm({
       editing={!!record}
       onCancel={onCancel}
     >
-      <TextField control={control} name="bank" label="Bank" required />
+      <div className="flex flex-col gap-1.5 sm:col-span-2">
+        {mode === "picker" ? (
+          <Controller
+            control={control}
+            name="issuer_id"
+            render={({ field, fieldState }) => (
+              <Field data-invalid={fieldState.invalid} className="gap-1.5">
+                <FieldLabel
+                  htmlFor="issuer_id"
+                  className="text-xs font-normal text-muted-foreground"
+                >
+                  Bank / issuer
+                </FieldLabel>
+                <IssuerPicker
+                  id="issuer_id"
+                  hasValue={field.value !== null}
+                  meta={meta}
+                  bankText={bankText}
+                  invalid={fieldState.invalid}
+                  onBlur={field.onBlur}
+                  onSelect={(s) => {
+                    setMeta(s);
+                    field.onChange(s.id);
+                    setValue("bank", issuerMain(s));
+                  }}
+                />
+                <FormError error={fieldState.error} />
+              </Field>
+            )}
+          />
+        ) : (
+          <TextField control={control} name="bank" label="Bank" required />
+        )}
+        <IssuerModeToggle mode={mode} onChange={switchMode} />
+      </div>
       <TextField control={control} name="label" label="Label" />
       <TextField
         control={control}
