@@ -121,6 +121,7 @@ class FdIssuerImportResult(BaseModel):
     dicgc_matched: int = 0
     dicgc_unmatched: int = 0
     dicgc_unclaimed: int = 0
+    dicgc_only: int = 0
     unmatched_names: dict[str, list[str]] = {}
     unclaimed_names: list[str] = []
     errors: dict[str, str] = {}  # sources that failed or were missing

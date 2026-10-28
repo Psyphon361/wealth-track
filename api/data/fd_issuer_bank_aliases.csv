@@ -42,7 +42,7 @@ KKBK,Kotak Mahindra Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/mast
 KVBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
 MAHB,Bank of Maharashtra,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
 MHCB,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
-NESF,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,not found in DICGC active insured banks sheet (small finance banks)
+NESF,,,,Slice Small Finance Bank Limited,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json | https://en.wikipedia.org/wiki/North_East_Small_Finance_Bank | https://www.dicgc.org.in/sites/default/files/2026-10/19.10.2026-list-of-active-insured-banks.xlsx,North East Small Finance Bank was renamed Slice Small Finance Bank after the 2024 merger; DICGC lists the new name (same bank assumed)
 NOSC,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
 NTBL,,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,
 PSIB,Punjab & Sind Bank,,,,https://raw.githubusercontent.com/razorpay/ifsc/master/src/banks.json,

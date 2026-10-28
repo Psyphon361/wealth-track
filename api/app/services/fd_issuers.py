@@ -14,6 +14,7 @@ neither touched nor deactivated; bank rows missing from a successful razorpay ru
 after a grace period (STALE_DAYS), curated NBFC rows as soon as they leave the seed.
 """
 
+import hashlib
 import json
 import re
 import urllib.parse
@@ -81,11 +82,24 @@ FUZZY_GENERIC_WORDS = {
     "BANK", "CO", "COOP", "OPERATIVE", "COOPERATIVE", "SAHAKARI", "NAGARI", "URBAN", "DISTRICT",
     "CENTRAL", "STATE", "LTD", "LIMITED", "THE", "AND",
 }  # fmt: skip
+# DICGC sheet -> category, for insured banks no Razorpay row claims (DICGC-only issuers)
+DICGC_SHEET_CATEGORY = {
+    "UCBs": "urban_coop", "State Co-op Banks": "state_coop", "DCCBs": "district_coop",
+    "RRB": "regional_rural", "LABs": "local_area", "Small Finance Banks": "small_finance",
+    "Payment Banks": "payments", "Public Sector Banks": "public_sector",
+    "Private Sector Banks": "private_sector", "Foreign Banks": "foreign",
+}  # fmt: skip
+DICGC_CODE_PREFIX = "DICGC:"
+CODE_MAX = 40
 FUZZY_MIN_RATIO = 0.92
 FUZZY_MIN_MARGIN = 0.05
 _MAIN_NS ="{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 _REL_ID = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-_DROP_WORDS = {"THE", "LTD", "LIMITED"}
+# "Limited" in English and regional spellings (Marathi, Kannada): dropped before matching
+_DROP_WORDS = {
+    "THE", "LTD", "LIMITED", "MARYADIT", "MARYADITH", "NIYAMITA", "NIYAMITHA", "NIYAMIT",
+}  # fmt: skip
+_WORD_ALIASES = {"BK": "BANK", "SAH": "SAHAKARI"}
 _COOP = re.compile(r"\bCO[\s.\-]*OP(?:ERATIVE)?\b")
 _DICGC_HREF = re.compile(
     r"""href=["']([^"']*""" + re.escape(DICGC_FILE_SUFFIX) + r""")["']""", re.IGNORECASE
@@ -117,12 +131,13 @@ class IssuerImportResult:
     dicgc_names: int
     dicgc_matched: int
     dicgc_unmatched: int  # active bank rows without a DICGC match
-    dicgc_unclaimed: int  # DICGC names no bank row claimed
+    dicgc_unclaimed: int  # DICGC names no bank row claimed and that could not become an issuer
     unmatched_names: dict[str, list[str]]  # unmatched public/private/small finance banks
     unclaimed_names: list[str]
     errors: dict[str, str]
     notes: list[str]
     dicgc_exact: int = 0  # of dicgc_matched, matched by exact name or override (the rest are fuzzy)
+    dicgc_only: int = 0  # DICGC names turned into their own issuer rows
 
 
 @dataclass
@@ -137,6 +152,8 @@ class Built:
     unmatched_names: dict[str, list[str]] = field(default_factory=dict)
     unclaimed_names: list[str] = field(default_factory=list)
     dicgc_unclaimed: int = 0
+    dicgc_only: int = 0
+    dicgc_only_rows: list[dict] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
@@ -156,7 +173,61 @@ def normalize_name(name: str) -> str:
     text = name.upper().replace("&", " AND ")
     text = _COOP.sub("COOP", text)
     text = re.sub(r"[^A-Z0-9 ]", " ", text)
-    return " ".join(t for t in text.split() if t not in _DROP_WORDS)
+    return " ".join(_WORD_ALIASES.get(t, t) for t in text.split() if t not in _DROP_WORDS)
+
+
+_WORD = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+_COOP_DISPLAY = re.compile(r"\bCo-Op(erative)?\b")
+
+
+def clean_display_name(name: str) -> str:
+    """DICGC name for display: entities decoded, trailing , ; . dropped, spaces collapsed, title-cased."""
+    text = name.replace("&amp;", "&")
+    text = " ".join(text.split()).strip(" ,;.")
+    text = _WORD.sub(lambda m: m.group().capitalize(), text)
+    text = _COOP_DISPLAY.sub(lambda m: "Co-op" + (m.group(1) or "").lower(), text)
+    return text[:300]
+
+
+def dicgc_code(name: str) -> str | None:
+    """Stable issuer code from a DICGC name alone: DICGC:<slug>, at most CODE_MAX characters.
+
+    The slug is the normalised name lower-cased with non-alphanumerics as '-'. A slug that does not
+    fit is cut and gets a short hash of the full normalised name, so the code never depends on
+    which other names are in the list. None when the name has no letters or digits."""
+    key = normalize_name(name)
+    slug = re.sub(r"[^a-z0-9]+", "-", key.lower()).strip("-")
+    if not slug:
+        return None
+    room = CODE_MAX - len(DICGC_CODE_PREFIX)
+    if len(slug) <= room:
+        return DICGC_CODE_PREFIX + slug
+    digest = hashlib.sha1(key.encode()).hexdigest()[:6]
+    return f"{DICGC_CODE_PREFIX}{slug[: room - 7].rstrip('-')}-{digest}"
+
+
+def dicgc_only_rows(dicgc: list[tuple[str, str]], claimed: set[str]) -> tuple[list[dict], list[str]]:
+    """(issuer rows, names skipped) for every DICGC name whose normalised key is not in `claimed`."""
+    first: dict[str, tuple[str, str]] = {}
+    for sheet, name in dicgc:
+        first.setdefault(normalize_name(name), (sheet, name))
+    rows: list[dict] = []
+    skipped: list[str] = []
+    for key, (sheet, name) in sorted(first.items()):
+        if key in claimed:
+            continue
+        category = DICGC_SHEET_CATEGORY.get(sheet)
+        code = dicgc_code(name)
+        if category is None or code is None:
+            skipped.append(name)
+            continue
+        rows.append(
+            _row(
+                code=code, name=clean_display_name(name), category=category, regulator="RBI",
+                dicgc_insured=True, accepts_deposits=category != "payments", sources=["dicgc"],
+            )  # fmt: skip
+        )
+    return rows, skipped
 
 
 # --- Parsers (pure; malformed rows are counted or noted, never raised) ---------------
@@ -421,9 +492,10 @@ def _match_dicgc(
             built.unmatched_names.setdefault(row["category"], []).append(row["name"])
         if code in overrides:
             built.notes.append(f"dicgc_name override for {code} not found in the DICGC list")
-    unclaimed = sorted(name for key, names in by_norm.items() if key not in claimed for name in names)
-    built.dicgc_unclaimed = len(unclaimed)
-    built.unclaimed_names = unclaimed[:UNCLAIMED_LIMIT]
+    built.dicgc_only_rows, skipped = dicgc_only_rows(dicgc, claimed)
+    built.dicgc_only = len(built.dicgc_only_rows)
+    built.dicgc_unclaimed = len(skipped)
+    built.unclaimed_names = sorted(skipped)[:UNCLAIMED_LIMIT]
     built.dicgc_names = len(by_norm)
 
 
@@ -466,6 +538,7 @@ def build_rows(sources: IssuerSources, today: date) -> Built:
     elif "razorpay" not in built.errors:
         built.errors["razorpay"] = "files not available"
     rows.extend(bank_rows.values())
+    rows.extend(built.dicgc_only_rows)
 
     if sources.seed_nbfc is not None:
         try:
@@ -630,6 +703,18 @@ def _upsert(session: Session, built: Built, today: date) -> tuple[int, int, int,
                 *([sa.bindparam("cutoff", value=cutoff, type_=sa.Date)] if grace else []),
             )
         ).rowcount
+    if "dicgc" in built.ran:  # DICGC-only issuers exist only through the list; a failed fetch skips this
+        deactivated += session.execute(
+            sa.text(
+                f"UPDATE {name} SET is_active = false, updated_at = now() "
+                "WHERE is_active AND code LIKE :prefix AND code <> ALL(:codes)"
+            ).bindparams(
+                sa.bindparam("prefix", value=DICGC_CODE_PREFIX + "%", type_=sa.String),
+                sa.bindparam(
+                    "codes", value=[r["code"] for r in built.dicgc_only_rows], type_=ARRAY(sa.String)
+                ),
+            )
+        ).rowcount
     session.commit()
     return inserted, updated, deactivated, last_seen_refreshed, merge_links
 
@@ -663,6 +748,7 @@ def import_issuers(session: Session, sources: IssuerSources, today: date) -> Iss
         errors=built.errors,
         notes=built.notes,
         dicgc_exact=built.dicgc_exact,
+        dicgc_only=built.dicgc_only,
     )
 
 
@@ -697,7 +783,11 @@ def search_issuers(session: Session, q: str, limit: int = 20) -> list[FdIssuerMa
     if len(q.strip()) < 2:
         return []
     limit = max(1, min(limit, 50))
-    statement = sa.select(FdIssuerMaster).where(FdIssuerMaster.accepts_deposits)
+    statement = sa.select(FdIssuerMaster).where(
+        FdIssuerMaster.accepts_deposits,
+        # DICGC-only rows that went inactive were matched to a bank row (or left the list)
+        sa.or_(FdIssuerMaster.is_active, ~FdIssuerMaster.code.startswith(DICGC_CODE_PREFIX, autoescape=True)),
+    )
     for token in q.split():
         statement = statement.where(
             sa.or_(

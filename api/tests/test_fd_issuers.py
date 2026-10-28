@@ -177,6 +177,9 @@ def test_razorpay_rejects_unexpected_shape():
         ("Johnson &amp; Co", "JOHNSON AND CO"),
         ("Johnson & Co", "JOHNSON AND CO"),
         ("  Bank,  of   India. ", "BANK OF INDIA"),
+        ("Ahmednagar Shahar Sahakari Bank Maryadit", "AHMEDNAGAR SHAHAR SAHAKARI BANK"),
+        ("AHMEDNAGAR SHAHAR SAH. BK. LTD.", "AHMEDNAGAR SHAHAR SAHAKARI BANK"),
+        ("Xyz Nagari Sahakari Bank Niyamita", "XYZ NAGARI SAHAKARI BANK"),
     ],
 )
 def test_normalize_name(raw, expected):
@@ -234,8 +237,10 @@ def test_build_rows_matches_dicgc_uses_overrides_and_merges():
     assert set(rows["SBIN"]["sources"]) == {"razorpay", "dicgc", "seed_banks"}
     assert built.dicgc_names == 6
     assert built.unmatched_names == {"small_finance": ["Ujjivan Small Finance Bank"]}
-    assert built.dicgc_unclaimed == 2
-    assert built.unclaimed_names == ["Some Other Foreign Bank", "Unclaimed & Co Urban Bank"]
+    assert built.dicgc_unclaimed == 0  # unclaimed names become DICGC-only issuers
+    assert built.dicgc_only == 2
+    assert rows["DICGC:unclaimed-and-co-urban-bank"]["name"] == "Unclaimed & Co Urban Bank"
+    assert rows["DICGC:some-other-foreign-bank"]["category"] == "foreign"
     # merged bank only in banknames: inserted inactive with the category of the bank it merged into
     assert rows["ANDB"]["is_active"] is False
     assert rows["ANDB"]["merged_into_code"] == "SBIN"
@@ -366,6 +371,79 @@ def test_fuzzy_dicgc_stays_in_its_sheet_and_claims_once():
         {"AAAA": "Pragati Urban Bank", "BBBB": "Pragathi Bank"}, ["PRAGATI DISTRICT BANK"]
     )
     assert rows["AAAA"]["dicgc_insured"] is None and rows["BBBB"]["dicgc_insured"] is None
+
+
+# --- DICGC-only issuers ------------------------------------------------------------------
+
+
+def test_dicgc_code_is_a_stable_slug_of_the_normalised_name():
+    assert fd_issuers.dicgc_code("Abhyudaya Co-op. Bank Ltd") == "DICGC:abhyudaya-coop-bank"
+    # same normalised name, different punctuation: same code
+    assert fd_issuers.dicgc_code("ABHYUDAYA CO-OP BANK LIMITED;") == "DICGC:abhyudaya-coop-bank"
+    assert fd_issuers.dicgc_code("  ;;  ") is None
+
+
+def test_dicgc_code_truncation_adds_a_hash_and_does_not_collide():
+    first = "Shri Chhatrapati Rajarshi Shahu Urban Co-op Bank Aurangabad"
+    second = "Shri Chhatrapati Rajarshi Shahu Urban Co-op Bank Jalna"
+    a, b = fd_issuers.dicgc_code(first), fd_issuers.dicgc_code(second)
+    assert len(a) <= 40 and len(b) <= 40
+    assert a.startswith("DICGC:shri-chhatrapati-rajarshi") and a != b
+    assert a == fd_issuers.dicgc_code(first)  # stable across calls
+    short = fd_issuers.dicgc_code("Tiny Bank")
+    assert short == "DICGC:tiny-bank"  # fits: no hash
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("NASHIK ROAD - DEOLALI VYAPARI SAHAKARI BANK LTD;", "Nashik Road - Deolali Vyapari Sahakari Bank Ltd"),
+        ("DR. PUNJABRAO DESHMUKH URBAN CO-OP. BANK LTD;", "Dr. Punjabrao Deshmukh Urban Co-op. Bank Ltd"),
+        ("Johnson &amp; Co  Bank ,", "Johnson & Co Bank"),
+        ("THE BHANDARA URBAN CO-OPERATIVE BANK LTD; BHANDARA", "The Bhandara Urban Co-operative Bank Ltd; Bhandara"),
+        ("WOMEN'S CO-OP BANK LTD.", "Women's Co-op Bank Ltd"),
+        ("JPMORGAN CHASE BANK, N. A.", "Jpmorgan Chase Bank, N. A"),
+    ],
+)
+def test_clean_display_name(raw, expected):
+    assert fd_issuers.clean_display_name(raw) == expected
+
+
+def test_dicgc_only_rows_map_sheet_to_category_and_payments_take_no_deposits():
+    sheets = {
+        "UCBs": "urban_coop", "State Co-op Banks": "state_coop", "DCCBs": "district_coop",
+        "RRB": "regional_rural", "LABs": "local_area", "Small Finance Banks": "small_finance",
+        "Payment Banks": "payments", "Public Sector Banks": "public_sector",
+        "Private Sector Banks": "private_sector", "Foreign Banks": "foreign",
+    }  # fmt: skip
+    dicgc = [(sheet, f"Bank of {i}") for i, sheet in enumerate(sheets)] + [("Odd Sheet", "Stray Bank")]
+    rows, skipped = fd_issuers.dicgc_only_rows(dicgc, claimed={"BANK OF 0"})
+    assert skipped == ["Stray Bank"]
+    assert {r["category"] for r in rows} == set(sheets.values()) - {"urban_coop"}
+    for row in rows:
+        assert row["dicgc_insured"] is True and row["regulator"] == "RBI" and row["sources"] == ["dicgc"]
+        assert row["is_active"] is True
+        assert row["accepts_deposits"] is (row["category"] != "payments")
+    assert fd_issuers.DICGC_SHEET_CATEGORY.keys() == sheets.keys()
+
+
+def test_build_rows_adds_dicgc_only_issuers_with_payments_not_accepting_deposits():
+    dicgc = make_xlsx({"Payment Banks": ["Airtel Payments Bank Limited"], "UCBs": ["Abhyudaya Co-op Bank Ltd"]})
+    built = build_rows(sources(dicgc_xlsx=dicgc), TODAY)
+    rows = by_code(built.rows)
+    assert built.dicgc_only == 1 and built.dicgc_unclaimed == 0
+    assert rows["DICGC:airtel-payments-bank"]["accepts_deposits"] is False
+    assert rows["DICGC:airtel-payments-bank"]["name"] == "Airtel Payments Bank Limited"
+    assert "DICGC:abhyudaya-coop-bank" not in rows  # claimed by the Razorpay row
+
+
+def test_dicgc_failure_creates_no_dicgc_only_rows_and_does_not_mark_dicgc_ran():
+    built = build_rows(sources(dicgc_xlsx=b"not a zip"), TODAY)
+    assert "dicgc" not in built.ran and "dicgc" in built.errors
+    assert built.dicgc_only == 0
+    assert not any(r["code"].startswith("DICGC:") for r in built.rows)
+    missing = build_rows(sources(dicgc_xlsx=None), TODAY)
+    assert "dicgc" not in missing.ran and not any(r["code"].startswith("DICGC:") for r in missing.rows)
 
 
 # --- require_issuer / assets -------------------------------------------------------------
