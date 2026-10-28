@@ -11,6 +11,7 @@ from app.models.base import TimestampedMixin, str_enum
 class MutualFund(TimestampedMixin, Base):
     __tablename__ = "mutual_funds"
 
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     scheme_name: Mapped[str] = mapped_column(String(200))
     scheme_code: Mapped[int | None] = mapped_column(
         ForeignKey("mf_master.scheme_code", ondelete="SET NULL")

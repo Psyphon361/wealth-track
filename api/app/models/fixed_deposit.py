@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import Numeric, String
+from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -11,6 +11,7 @@ from app.models.base import COMPOUNDING_VALUES, TimestampedMixin, str_enum
 class FixedDeposit(TimestampedMixin, Base):
     __tablename__ = "fixed_deposits"
 
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     bank: Mapped[str] = mapped_column(String(200))
     label: Mapped[str | None] = mapped_column(String(200))
     principal: Mapped[Decimal] = mapped_column(Numeric(14, 2))

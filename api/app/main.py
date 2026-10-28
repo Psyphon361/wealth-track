@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, cron, holdings, master, portfolio
+from app.routers import assets, auth, cron, holdings, master, portfolio
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -60,7 +60,9 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
         description = f"{label}: {first['msg']}" if label else str(first["msg"])
     is_filter_query = request.method == "GET" and request.url.path.startswith("/api/holdings/")
     is_nav_lookup = request.method == "GET" and request.url.path.endswith("/nav")
-    if is_nav_lookup:
+    if request.url.path.startswith("/api/auth/"):
+        message = "Check the highlighted fields"
+    elif is_nav_lookup:
         message = "Invalid date"
     elif is_filter_query:
         message = "Invalid filters"
@@ -145,6 +147,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+api_router.include_router(auth.router)
 api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
 api_router.include_router(holdings.router)

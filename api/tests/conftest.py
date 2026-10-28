@@ -6,6 +6,8 @@ from types import SimpleNamespace
 # Importing app modules must never connect; the engine is lazy, this is only a safety net.
 os.environ.setdefault("DATABASE_URL", "postgresql://dummy:dummy@localhost:1/dummy")
 
+import pytest  # noqa: E402
+
 _STAMP = datetime(2025, 1, 1)
 _ids = iter(range(1, 10_000))
 
@@ -50,3 +52,42 @@ def make_bond(**kw):
     )  # fmt: skip
     fields.update(kw)
     return _base(**fields)
+
+
+@pytest.fixture
+def auth_engine():
+    """In-memory SQLite holding only the auth tables."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.pool import StaticPool
+
+    from app.db import Base
+    from app.models.login_attempt import LoginAttempt
+    from app.models.refresh_token import RefreshToken
+    from app.models.user import User
+
+    engine = create_engine(
+        "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(
+        engine, tables=[User.__table__, RefreshToken.__table__, LoginAttempt.__table__]
+    )
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+def auth_settings(monkeypatch):
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "jwt_secret", "test-secret-test-secret-test-secret-123")
+    monkeypatch.setattr(settings, "allowed_emails", ["invited@example.com"])
+    monkeypatch.setattr(settings, "api_key", None)
+    return settings
+
+
+@pytest.fixture
+def db_session(auth_engine, auth_settings):
+    from sqlalchemy.orm import sessionmaker
+
+    with sessionmaker(bind=auth_engine, expire_on_commit=False)() as session:
+        yield session
