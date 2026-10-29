@@ -177,6 +177,7 @@ function Calendar({
         },
         ...components,
       }}
+      fixedWeeks
       {...props}
     />
   )
