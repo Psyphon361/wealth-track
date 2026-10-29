@@ -49,14 +49,6 @@ export function AddMenu() {
 
   if (hidden) return null;
 
-  const current = pathname.startsWith("/portfolio/")
-    ? pathname.slice("/portfolio/".length).split("/")[0]
-    : null;
-  const ordered = [...ASSET_CATALOG].sort(
-    (a, b) => Number(b.type === current) - Number(a.type === current),
-  );
-  const contextual = ordered.some((a, i) => i === 0 && a.type === current);
-
   function renderItem(entry: (typeof ASSET_CATALOG)[number]) {
     return (
       <DropdownMenuItem
@@ -85,18 +77,14 @@ export function AddMenu() {
         <TooltipContent side="bottom">Add asset (N)</TooltipContent>
       </Tooltip>
       <DropdownMenuContent align="end" className="w-52">
-        {contextual ? (
-          <DropdownMenuGroup>{ordered.map(renderItem)}</DropdownMenuGroup>
-        ) : (
-          ASSET_GROUPS.map((group) => (
-            <Fragment key={group}>
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>{group}</DropdownMenuLabel>
-                {ordered.filter((a) => a.group === group).map(renderItem)}
-              </DropdownMenuGroup>
-            </Fragment>
-          ))
-        )}
+        {ASSET_GROUPS.map((group) => (
+          <Fragment key={group}>
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{group}</DropdownMenuLabel>
+              {ASSET_CATALOG.filter((a) => a.group === group).map(renderItem)}
+            </DropdownMenuGroup>
+          </Fragment>
+        ))}
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/add" />}>
           <LayoutGrid />

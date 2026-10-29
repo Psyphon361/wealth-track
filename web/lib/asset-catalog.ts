@@ -41,17 +41,17 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
     group: "Market-linked",
   },
   {
-    type: "mf",
-    title: "Mutual funds",
-    hint: "Units at average NAV",
-    icon: PieChart,
-    group: "Market-linked",
-  },
-  {
     type: "bond",
     title: "Bonds",
     hint: "Govt, corporate, tax-free, SGB",
     icon: ScrollText,
+    group: "Market-linked",
+  },
+  {
+    type: "mf",
+    title: "Mutual funds",
+    hint: "Units at average NAV",
+    icon: PieChart,
     group: "Market-linked",
   },
 ];
