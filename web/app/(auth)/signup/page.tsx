@@ -1,12 +1,22 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
 import { signup } from "@/app/actions/auth";
-import { safeNext } from "@/lib/auth";
+import { AUTH_ERROR_COOKIE, parseAuthError, safeNext } from "@/lib/auth";
 import { AuthForm } from "../auth-form";
 
 async function Form({ searchParams }: Pick<PageProps<"/signup">, "searchParams">) {
   const params = await searchParams;
   const raw = params.next;
-  return <AuthForm mode="signup" action={signup} next={safeNext(typeof raw === "string" ? raw : null)} />;
+  const store = await cookies();
+  const initialError = parseAuthError(store.get(AUTH_ERROR_COOKIE)?.value);
+  return (
+    <AuthForm
+      mode="signup"
+      action={signup}
+      next={safeNext(typeof raw === "string" ? raw : null)}
+      initialError={initialError}
+    />
+  );
 }
 
 export default function SignupPage({ searchParams }: PageProps<"/signup">) {

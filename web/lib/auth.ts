@@ -1,6 +1,8 @@
 // Server-only helpers (cookies, API auth calls). Do not import from client components.
 export const ACCESS_COOKIE = "wt_access";
 export const REFRESH_COOKIE = "wt_refresh";
+export const OAUTH_COOKIE = "wt_oauth";
+export const AUTH_ERROR_COOKIE = "wt_auth_error";
 export const ACCESS_MAX_AGE_SECONDS = 15 * 60;
 export const REFRESH_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
@@ -79,4 +81,18 @@ export async function apiAuthFetch(path: string, body: unknown): Promise<Respons
     cache: "no-store",
     redirect: "manual",
   });
+}
+
+export type AuthError = { message: string; description: string | null };
+
+/** Parses the short-lived wt_auth_error cookie value (set by the Google OAuth routes). */
+export function parseAuthError(raw: string | undefined): AuthError | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as { message?: unknown; description?: unknown };
+    if (typeof v.message !== "string" || !v.message) return null;
+    return { message: v.message, description: typeof v.description === "string" ? v.description : null };
+  } catch {
+    return null;
+  }
 }

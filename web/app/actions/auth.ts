@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import {
+  AUTH_ERROR_COOKIE,
   REFRESH_COOKIE,
   apiAuthFetch,
   clearAuthCookies,
@@ -77,6 +78,10 @@ export async function login(_prev: AuthState, formData: FormData): Promise<AuthS
 
 export async function signup(_prev: AuthState, formData: FormData): Promise<AuthState> {
   return submit("signup", formData);
+}
+
+export async function clearAuthError(): Promise<void> {
+  (await cookies()).delete(AUTH_ERROR_COOKIE);
 }
 
 export async function logout(): Promise<void> {

@@ -17,6 +17,10 @@ export function proxy(request: NextRequest) {
     );
   }
 
+  if (pathname === "/auth/google/start" || pathname === "/auth/google/callback") {
+    return NextResponse.next();
+  }
+
   const isAuthPage =
     pathname === "/login" ||
     pathname.startsWith("/login/") ||
