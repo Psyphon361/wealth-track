@@ -47,7 +47,8 @@ def make_bond(**kw):
     fields = dict(
         name="Test Bond", isin=None, issuer="Issuer", bond_type="corporate",
         platform=None, quantity=10, face_value=Decimal("1000"),
-        purchase_price=Decimal("1000"), purchase_date=date(2025, 10, 24),
+        purchase_price=Decimal("1000"), invested_amount=Decimal("10000"),
+        purchase_date=date(2025, 10, 24),
         ytm=Decimal("8"), maturity_date=date(2026, 10, 24),
     )  # fmt: skip
     fields.update(kw)

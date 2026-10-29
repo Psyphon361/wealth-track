@@ -385,6 +385,7 @@ class BondBase(BaseModel):
     # Nullable: rows created before face_value existed have no value.
     face_value: Dec | None = None
     purchase_price: Dec
+    invested_amount: Dec
     purchase_date: date
     ytm: Dec
     maturity_date: date
@@ -393,8 +394,9 @@ class BondBase(BaseModel):
 class BondCreate(_Create, BondBase):
     isin: Isin
     quantity: Quantity
-    face_value: Money
+    face_value: Money | None = None
     purchase_price: Money
+    invested_amount: Money
     purchase_date: TradeDate
     ytm: YtmRate
     maturity_date: PastDate
@@ -405,11 +407,12 @@ class BondCreate(_Create, BondBase):
             _field_error(self, "maturity_date", "Maturity date must be after the purchase date")
         if self.maturity_date > self.purchase_date + relativedelta(years=50):
             _field_error(self, "maturity_date", "Maturity must be within 50 years of purchase")
-        if not self.face_value * Decimal("0.5") <= self.purchase_price <= self.face_value * Decimal("1.5"):
+        tolerance = self.quantity * Decimal("0.005") + Decimal("0.01")
+        if abs(self.quantity * self.purchase_price - self.invested_amount) > tolerance:
             _field_error(
                 self,
-                "purchase_price",
-                "Purchase price should be between 50% and 150% of face value",
+                "invested_amount",
+                "Total invested must equal quantity × purchase price",
             )
         return self
 

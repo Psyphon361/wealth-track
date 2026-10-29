@@ -125,7 +125,7 @@ def value_rd(rd: Any, today: date | None = None) -> dict[str, Any]:
 
 def value_bond(bond: Any, today: date | None = None) -> dict[str, Any]:
     today = today or date.today()
-    invested = bond.quantity * Decimal(bond.purchase_price)
+    invested = Decimal(bond.invested_amount)
     t = _year_fraction(bond.purchase_date, min(today, bond.maturity_date))
     current = float(invested) * (1 + float(bond.ytm) / 100) ** t
     return _result(

@@ -25,6 +25,7 @@ class Bond(TimestampedMixin, Base):
     quantity: Mapped[int]
     face_value: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     purchase_price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    invested_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     purchase_date: Mapped[date]
     ytm: Mapped[Decimal] = mapped_column(Numeric(6, 3))
     maturity_date: Mapped[date]
