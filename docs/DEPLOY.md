@@ -120,6 +120,19 @@ curl -H "Authorization: Bearer $CRON_SECRET" https://<api-project>.vercel.app/ap
 
 On macOS, a local run needs `SSL_CERT_FILE` set, as for the AMFI import (see Troubleshooting).
 
+## Copy holdings dev → prod (one-off)
+
+Copies one user's FD, RD, stock, bond and MF holdings between databases. Run from `api/` after the target user exists (sign-up) and the target masters are loaded (sections 6, 6b and the securities import). Connection strings come from the environment only and are never printed.
+
+```bash
+# dry run (writes nothing); SOURCE_DATABASE_URL defaults to DATABASE_URL in api/.env
+TARGET_DATABASE_URL='<production direct connection string>' \
+  .venv/bin/python -m app.jobs.copy_holdings --email you@example.com [--target-email other@example.com]
+# then the same command with --apply (one transaction; rolls back on any error)
+```
+
+Master links are re-linked by ISIN (stocks, bonds), issuer code (FD/RD) and scheme code (MF); a holding with no match is copied with the link cleared and listed as "unmatched link". Rows already in the target (same business fields) are skipped, so a second run copies nothing.
+
 ## 7. Smoke test
 
 1. Open the web URL → you are redirected to `/login`.

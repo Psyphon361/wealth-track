@@ -38,6 +38,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/bond_master.py  bond_master import merged by ISIN from seeds, NSDL, NSE DEBT, NSE ratings/SGB JSON and bhavcopy GB (sources listed in its docstring); bond_type derivation
   app/jobs/amfi_import.py  CLI: `python -m app.jobs.amfi_import` runs the same import
   app/services/fd_issuers.py  fd_issuer_master import (Razorpay IFSC banks, DICGC insured flag, seed files; sources in its docstring), issuer search and require_issuer for FD/RD
+  app/jobs/copy_holdings.py  one-off CLI: copies one user's holdings from SOURCE_DATABASE_URL to TARGET_DATABASE_URL, re-linking masters by ISIN/issuer code/scheme_code (dry run unless --apply)
   app/jobs/securities_import.py  CLI: `python -m app.jobs.securities_import` runs the stock and bond master imports
   app/jobs/issuers_import.py  CLI: `python -m app.jobs.issuers_import` runs the FD/RD issuer master import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
