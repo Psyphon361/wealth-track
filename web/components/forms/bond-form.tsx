@@ -347,17 +347,6 @@ export function BondForm({
                     if (s.maturity_date) {
                       setValue("maturity_date", s.maturity_date);
                     }
-                    const price = s.issue_price ?? s.face_value;
-                    if (price != null && !getValues("purchase_price")) {
-                      markEdited("price");
-                      setValue("purchase_price", String(price), {
-                        shouldValidate: true,
-                        shouldDirty: true,
-                      });
-                    }
-                    if (s.coupon_rate != null && !getValues("ytm")) {
-                      setValue("ytm", String(s.coupon_rate));
-                    }
                     if (
                       s.issue_date &&
                       s.issue_date <= todayISO() &&
