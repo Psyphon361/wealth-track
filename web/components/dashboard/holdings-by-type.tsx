@@ -21,11 +21,6 @@ export function HoldingsByType({ data }: { data: DashboardResponse }) {
 
   return (
     <Card size="sm" className="gap-0 py-0">
-      <div className="px-4 pt-3 pb-2">
-        <h2 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
-          Holdings by type
-        </h2>
-      </div>
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
