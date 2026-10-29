@@ -72,7 +72,7 @@ export const mfConfig: GridConfig<MutualFundItem> = {
       r.nav == null ? (
         <span className="text-muted-foreground">—</span>
       ) : (
-        <div className="text-right leading-tight">
+        <div className="leading-tight">
           <div className="num whitespace-nowrap">{nav.format(r.nav)}</div>
           {r.nav_date ? (
             <div className="text-[11px] whitespace-nowrap text-muted-foreground">

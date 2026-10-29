@@ -18,26 +18,6 @@ export const STATUS_LABELS: Record<HoldingStatus, string> = {
   matured: "Matured",
 };
 
-/** Column ids that hold figures or actions and are right-aligned. */
-export const RIGHT_ALIGNED = new Set([
-  "principal",
-  "monthly_instalment",
-  "rate",
-  "ytm",
-  "quantity",
-  "avg_buy_price",
-  "face_value",
-  "purchase_price",
-  "units",
-  "avg_nav",
-  "nav",
-  "invested",
-  "current_value",
-  "gain",
-  "gain_pct",
-  "actions",
-]);
-
 const dash = <span className="text-muted-foreground">—</span>;
 
 function StatusBadge({ status }: { status: HoldingStatus }) {
@@ -70,7 +50,6 @@ export function createColumnKit<TRow extends HoldingRow>(
           column={column}
           table={table}
           title={labels[id]}
-          align={RIGHT_ALIGNED.has(id) ? "right" : undefined}
         />
       );
     };
@@ -157,7 +136,7 @@ export function createColumnKit<TRow extends HoldingRow>(
       },
     });
 
-  /** Non-sortable, right-aligned column with a custom cell. */
+  /** Non-sortable column with a custom cell. */
   const display = (
     id: string,
     render: (row: TRow) => ReactNode,
@@ -167,10 +146,7 @@ export function createColumnKit<TRow extends HoldingRow>(
       enableSorting: false,
       header: () => (
         <div
-          className={cn(
-            "text-[11px] font-medium tracking-wider text-muted-foreground uppercase",
-            RIGHT_ALIGNED.has(id) && "text-right",
-          )}
+          className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase"
         >
           {labels[id]}
         </div>

@@ -22,12 +22,10 @@ export function ColumnHeader<TRow extends RowData, TValue>({
   column,
   table,
   title,
-  align,
 }: {
   column: Column<Features, TRow, TValue>;
   table: Table<Features, TRow>;
   title: string;
-  align?: "right";
 }) {
   const dir = column.getIsSorted();
 
@@ -51,7 +49,6 @@ export function ColumnHeader<TRow extends RowData, TValue>({
       onClick={cycle}
       className={cn(
         "-mx-2 h-7 gap-1 px-2 text-[11px] font-medium tracking-wider text-muted-foreground uppercase hover:text-foreground",
-        align === "right" && "flex-row-reverse",
         dir !== false && "text-foreground",
       )}
     >

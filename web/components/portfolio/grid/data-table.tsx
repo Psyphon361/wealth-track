@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/table";
 import type { HoldingRow, HoldingsResponse, SortDir } from "@/lib/types";
 import { sortAria } from "./column-header";
-import { RIGHT_ALIGNED } from "./configs/shared";
 import { gridFeatures } from "./features";
 import { Pagination } from "./pagination";
 import { Toolbar } from "./toolbar";
@@ -206,7 +205,6 @@ export function HoldingsGrid<TRow extends HoldingRow>({
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id} className="hover:bg-transparent">
                 {group.headers.map((header) => {
-                  const right = RIGHT_ALIGNED.has(header.column.id);
                   return (
                     <TableHead
                       key={header.id}
@@ -215,10 +213,7 @@ export function HoldingsGrid<TRow extends HoldingRow>({
                           ? sortAria(header.column.getIsSorted())
                           : undefined
                       }
-                      className={
-                        "h-9 text-[11px] tracking-wider text-muted-foreground uppercase" +
-                        (right ? " text-right" : "")
-                      }
+                      className="h-9 text-[11px] tracking-wider text-muted-foreground uppercase"
                     >
                       {header.isPlaceholder ? null : (
                         <table.FlexRender header={header} />
@@ -252,12 +247,8 @@ export function HoldingsGrid<TRow extends HoldingRow>({
               rows.map((row) => (
                 <TableRow key={row.id}>
                   {row.getVisibleCells().map((cell) => {
-                    const right = RIGHT_ALIGNED.has(cell.column.id);
                     return (
-                      <TableCell
-                        key={cell.id}
-                        className={right ? "text-right" : undefined}
-                      >
+                      <TableCell key={cell.id}>
                         <table.FlexRender cell={cell} />
                       </TableCell>
                     );
