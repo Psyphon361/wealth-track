@@ -14,8 +14,13 @@ class Settings(BaseSettings):
     jwt_secret: str | None = None
     allowed_emails: Annotated[list[str], NoDecode] = []
     owner_email: str | None = None
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
 
-    @field_validator("api_key", "cron_secret", "jwt_secret", "owner_email")
+    @field_validator(
+        "api_key", "cron_secret", "jwt_secret", "owner_email",
+        "google_client_id", "google_client_secret",
+    )  # fmt: skip
     @classmethod
     def empty_api_key_is_none(cls, value: str | None) -> str | None:
         return value or None
