@@ -13,7 +13,7 @@ import { formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ASSET_TYPE_LABELS, type DashboardResponse } from "@/lib/types";
 
-const head = "h-9 text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
+const head = "h-9 text-[12px] font-medium tracking-wider text-muted-foreground uppercase";
 
 export function HoldingsByType({ data }: { data: DashboardResponse }) {
   const totalCount = data.by_type.reduce((s, r) => s + r.count, 0);
