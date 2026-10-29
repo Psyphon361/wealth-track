@@ -214,9 +214,13 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 | api | `JWT_SECRET` | required for sign-in (`openssl rand -hex 32`); signs access tokens; missing → login/refresh fail with 500 |
 | api | `ALLOWED_EMAILS` | comma-separated sign-up allowlist (case-insensitive); empty = nobody can sign up |
 | api | `OWNER_EMAIL` | read only by migration 0010 (owner of pre-auth holdings; GitHub `production` secret in CI); not used at runtime |
+| api | `GOOGLE_CLIENT_ID` | Google sign-in (OAuth client, type Web application); with the secret below, else `/auth/google` → 503 |
+| api | `GOOGLE_CLIENT_SECRET` | Google sign-in; used only for the server-side code exchange |
 | api | `CORS_ORIGINS` | default `["http://localhost:3000"]`; not needed in production (proxy) |
 | web | `API_URL` | FastAPI origin, no trailing slash, no `/api` (default http://localhost:8000) |
 | web | `API_KEY` | same value as api |
+| web | `GOOGLE_CLIENT_ID` | Google sign-in; same client ID as the api. Unset → the Google button returns "isn't configured" |
+| web | `APP_ORIGIN` | optional public origin (e.g. `https://app.example.com`) used for the Google redirect URI; default is the request origin |
 
 ## 7. Auth
 
@@ -224,7 +228,7 @@ Users sign in with email and password. Every holding belongs to one user.
 
 ### Data (migration 0010)
 
-- **`users`** (model `api/app/models/user.py`): id, email (unique, lower-cased, ≤ 320), password_hash (argon2id; NULL = no password set yet), is_active, last_login_at, created_at, updated_at.
+- **`users`** (model `api/app/models/user.py`): id, email (unique, lower-cased, ≤ 320), password_hash (argon2id; NULL = no password set yet), google_sub (unique, nullable; migration 0012; Google's stable user id), is_active, last_login_at, created_at, updated_at.
 - **`refresh_tokens`** (`refresh_token.py`): id, user_id (FK, ON DELETE CASCADE), family_id (shared by every token rotated from one sign-in), token_hash (SHA-256; the raw token is never stored), expires_at, revoked_at, replaced_at, created_at.
 - **`login_attempts`** (`login_attempt.py`): id, email, attempted_at, succeeded. Feeds the rate limit.
 - **Holdings:** `fixed_deposits`, `recurring_deposits`, `stocks`, `bonds`, `mutual_funds` each have `user_id` (NOT NULL, FK → users, ON DELETE CASCADE).
@@ -240,6 +244,7 @@ Users sign in with email and password. Every holding belongs to one user.
 
 - `POST /auth/signup` `{email, password}` → 201. Email must be on `ALLOWED_EMAILS` (else 403); an existing email gives 409. Creates the user and signs in.
 - `POST /auth/login` `{email, password}` → 200. Unknown email and wrong password give the same 401. Rehashes the password if the hash parameters changed.
+- `POST /auth/google` `{code, code_verifier, redirect_uri}` → 200 token response. Called server-side by the web callback only (see "Sign in with Google"). Field errors are 422 with "Required", "Invalid code verifier" or "Invalid redirect URI".
 - `POST /auth/refresh` `{refresh_token}` → 200 with a new pair (old token rotated).
 - `POST /auth/logout` `{refresh_token}` → 200 "Logged out", whether or not the token is known. Revokes the token's whole family.
 - `GET /auth/me` (Bearer) → `{id, email}`.
@@ -249,8 +254,27 @@ Users sign in with email and password. Every holding belongs to one user.
 
 - **Access token:** JWT, HS256 signed with `JWT_SECRET`, valid 15 minutes. Claims: `sub` (user id), `email`, `typ: access`, `iat`, `exp`. Checked on every request; an inactive user gets 401.
 - **Refresh token:** opaque random string, valid 30 days, stored hashed. Every use rotates it. Reusing a rotated token within 60 s returns a fresh pair (covers parallel requests). Reusing it after 60 s revokes the whole family (assumed theft) and returns 401. Unknown, expired, revoked or inactive → 401.
-- **Rate limit:** 5 failed logins for one email within 15 minutes → 429 for that email. Successful logins do not count.
+- **Rate limit:** 5 failed logins for one email within 15 minutes → 429 for that email. Successful logins do not count. Google sign-ins are not counted at all.
 - **Passwords:** argon2id. Sign-up requires 10–128 characters (rule A2 in §2).
+
+### Sign in with Google
+
+- The "Continue with Google" button (`web/app/(auth)/auth-form.tsx`, on `/login` and `/signup`) links to `GET /auth/google/start?next=<path>`.
+- **Start** (`web/app/auth/google/start/route.ts`): creates a random `state` and PKCE `code_verifier`, stores both with `next` in the httpOnly cookie `wt_oauth` (path `/auth/google`, 10 min), and redirects to Google: scope `openid email profile`, `prompt=select_account`, `code_challenge_method=S256`. Redirect URI: `<APP_ORIGIN or request origin>/auth/google/callback`.
+- **Callback** (`web/app/auth/google/callback/route.ts`): fails if Google returned `error`, or if `code`/`state` is missing or `state` does not match the cookie. Otherwise it calls `POST /api/auth/google` server-side with `{code, code_verifier, redirect_uri}`. On success it sets `wt_access` and `wt_refresh` as for password sign-in and redirects to `next`. It always clears `wt_oauth`. Browsers never call the endpoint directly.
+- **API** (`api/app/services/google_auth.py`, `POST /auth/google`): exchanges the code at Google's token endpoint with `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and the verifier. It verifies the ID token against Google's JWKS (RS256; `aud` = `GOOGLE_CLIENT_ID`; `iss` = `accounts.google.com`; `exp`, 30 s leeway) and requires `email_verified` to be true.
+- **Account resolution:** same `google_sub` → sign in. Else an existing user with the same email → link it (sets `google_sub`; refused if the account is already linked to another Google identity). Else an email on `ALLOWED_EMAILS` → create the user with no password. Else 403. A deactivated account gets 401 "Incorrect email or password". Success returns the same token pair as the other endpoints.
+- Google-only accounts have no password. Set one with `cd api && .venv/bin/python -m app.jobs.users set-password --email <email>`.
+- `web/proxy.ts` lets `/auth/google/start` and `/auth/google/callback` through without a session.
+- Errors: the web renders the API `message` and `description`, or the fallback below. The callback passes them to `/login` in the httpOnly cookie `wt_auth_error` (path `/`, 60 s), which the login and signup pages show inline. A network failure to the API shows "Couldn't reach the server".
+
+| Status | Message | Description | When |
+|---|---|---|---|
+| 503 | Google sign-in isn't configured | Use your email and password for now. | `GOOGLE_CLIENT_ID` (web) or `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (api) unset |
+| 401 | Google sign-in failed | Try again, or log in with your email. | State mismatch or missing cookie; code exchange or ID token check fails; account linked to another Google identity; database conflict. Also the web fallback. |
+| 403 | Google email not verified | Verify your email with Google, then try again. | Google reports `email_verified` false |
+| 403 | Sign-ups are invite-only | This email isn't on the invite list. | New Google email not in `ALLOWED_EMAILS` (same text as email sign-up) |
+| 401 | Incorrect email or password | Check your details and try again. | Deactivated account (same text as email sign-in) |
 
 ### Web
 

@@ -1,12 +1,19 @@
-# HANDOFF — session resume notes (2026-10-28)
+# HANDOFF — session resume notes (2026-10-29)
 
 Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers what those don't: how the last session worked, what it learned the hard way, and what's next. Verify against the code before acting; update this file when you finish a chunk of work.
 
 ## Where things stand
 - `origin/main` is at `779595d`. Three local commits are unpushed: `49eeb0c`, `79f548f`, `c14bd87` (bond master enrichment). Push only when the user says so. The web bond picker rating change is uncommitted (`web/components/forms/bond-form.tsx`, `web/lib/types.ts`); review and commit it separately.
-- Dev DB migration head is `0011` (FD/RD issuer master, on top of auth `0010`). Prod is still `0007` until the push runs the GitHub Action. Production (Vercel web + api, Neon `production` branch) is on migration `0007`. Prod masters are populated by the 2026-10-26 securities import (`GET /api/cron/securities` on Vercel, all sources fetched with no errors): `stock_master` 5,765 rows (equity 2,629, etf 355, NSE bhavcopy SME 467, BSE 5,013), `bond_master` 6,205 (debt 6,162, bhavcopy SGB 43); bhavcopy and BSE file date 2026-10-23. `CRON_SECRET` set; AMFI master loaded (14,412 schemes / 8,821 active). Daily crons: securities 14:00 UTC (19:30 IST), AMFI 16:30 UTC (22:00 IST).
+- Dev DB migration head is `0012` (Google sign-in, on top of FD/RD issuer master `0011` and auth `0010`). Prod is still `0007` until the push runs the GitHub Action. Production (Vercel web + api, Neon `production` branch) is on migration `0007`. Prod masters are populated by the 2026-10-26 securities import (`GET /api/cron/securities` on Vercel, all sources fetched with no errors): `stock_master` 5,765 rows (equity 2,629, etf 355, NSE bhavcopy SME 467, BSE 5,013), `bond_master` 6,205 (debt 6,162, bhavcopy SGB 43); bhavcopy and BSE file date 2026-10-23. `CRON_SECRET` set; AMFI master loaded (14,412 schemes / 8,821 active). Daily crons: securities 14:00 UTC (19:30 IST), AMFI 16:30 UTC (22:00 IST).
 - Migration head was `0007` at the start of the 2026-10-26 session (now `0009`, see above). Neon `dev` branch: the master tables are populated: `stock_master` 5,765 rows (5,384 stock + 381 etf), `bond_master` 34,284 (after the 2026-10-27 enrichment), `mf_master` 14,412. All 5 holdings tables were emptied on 2026-10-25 at the user's request (backup JSON was in that session's scratchpad, temporary). Master/market tables kept. The user may enter real holdings again — rule 5 in AGENTS.md still applies.
 - API tests: `cd api && .venv/bin/python -m pytest -q` (243 passing). Add a test with every bug fix (user decision: no full suite).
+
+## Built on 2026-10-29 (Google sign-in, auth step 2)
+- Committed locally, not pushed: API `45fd893` (migration `0012` `users.google_sub`, `app/services/google_auth.py`, `POST /api/auth/google`, `api/tests/test_google_auth.py`, `pyjwt[crypto]` for RS256) and web `3c17ac3` (`app/auth/google/start` and `callback` route handlers, `lib/auth.ts` cookies, Google button in `auth-form.tsx`, `web/.env.example`). These docs are uncommitted at time of writing; review and commit them separately. API tests: 299 passing.
+- Design and error texts: SPEC §7 "Sign in with Google". Setup checklist: DEPLOY §5b.
+- Not tested with a real Google client. The user creates the OAuth client, sets the env vars and runs the flow. Do not sign in as the owner account from a session (AGENTS probe rule); a probe account needs an allowlisted email added as a Google test user.
+- Migration `0012` is additive (nullable column and unique constraint), so the prod push is safe for the old API code. Set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in the Vercel projects before using it on prod; until then the button says "isn't configured".
+- Known UX gap: when the session is invalid, pages show "Not authorised" with Retry instead of redirecting to `/login`.
 
 ## Built on 2026-10-28 (FD/RD issuer master)
 - Uncommitted and not pushed at time of writing; review and commit separately. Backend: migration `0011` (table `fd_issuer_master`, nullable `issuer_id` FK on `fixed_deposits` and `recurring_deposits`), model, `app/services/fd_issuers.py`, `app/jobs/issuers_import.py`, `/api/master/fd-issuer*`, `/api/cron/issuers`, `api/tests/test_fd_issuers.py`. Web: `components/forms/issuer-picker.tsx`, FD and RD forms, `schema.ts`, `lib/types.ts`. Details in SPEC §1, §2, §4, §5.
@@ -54,7 +61,7 @@ Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers wh
 4. Prune NAV history of unheld schemes (daily cron, 7-day grace on `fetched_at`) — deferred by user (SPEC §1).
 5. Integrations decisions still open with the user: NSE EOD files (grey-area ToS), CAS upload vs broker API, paid data or free only, price history depth, Account Aggregator.
 6. Commit and push the pending bond rating picker change (after review and browser check).
-7. Auth step 2: Google sign-in. Auth step 3: password reset and email verification (needs an email provider; ask the user which one).
+7. Auth step 2 (Google sign-in) is built; test the real flow with the user once the OAuth client exists (DEPLOY §5b). Auth step 3: password reset and email verification (needs an email provider; ask the user which one).
 
 ## How the user works (and how the last session ran)
 - Orchestrator + builders (see `CLAUDE.md` and `~/.claude/CLAUDE.md`): main session plans, briefs, reviews, verifies in the browser, commits; builders (Sonnet, effort medium) edit; Haiku for docs/chores; max 3 builders in parallel; check usage before dispatching.

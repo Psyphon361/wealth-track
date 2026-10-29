@@ -33,7 +33,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic upgrade h
 DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
 ```
 
-`alembic current` should print `0011 (head)`. Repeat this step whenever a new migration is added.
+`alembic current` should print `0012 (head)`. Repeat this step whenever a new migration is added.
 
 ## 4. API project (FastAPI)
 
@@ -45,6 +45,7 @@ DATABASE_URL='<production direct connection string>' .venv/bin/alembic current
    - `JWT_SECRET` = the second secret from step 2 (signs access tokens; sign-in fails without it).
    - `ALLOWED_EMAILS` = comma-separated emails allowed to sign up (invite list), e.g. `you@example.com`.
    - `CRON_SECRET` = a new value from `openssl rand -hex 32` (bearer token for the daily AMFI cron).
+   - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` = from the Google client (section 5b). Without them the Google button says "isn't configured".
 4. Deploy. The function region is pinned to `iad1` by `api/vercel.json` (next to Neon us-east).
 5. Check (replace with your API URL):
 
@@ -61,7 +62,27 @@ curl -i https://<api-project>.vercel.app/api/dashboard # 401 Unauthorized
    - `API_KEY` = same value as the API project.
    - `API_URL` = `https://<api-project>.vercel.app` (no trailing slash, no `/api`).
    - The old password-gate variables `APP_PASSWORD` and `SESSION_SECRET` are no longer read. Remove them as the last step of the Auth rollout.
+   - `GOOGLE_CLIENT_ID` = the same client ID as the API project (no secret here). Optional `APP_ORIGIN` = `https://wealth-track-nu.vercel.app`, so the redirect URI does not depend on which deployment URL is used.
 4. Deploy. Then **Settings → Functions → Function Region** → `Washington, D.C. (iad1)` and redeploy, so the proxy sits next to the API.
+
+## 5b. Google sign-in setup (one-time)
+
+Optional. Email and password sign-in works without it. Steps in the Google Cloud Console:
+
+1. **OAuth consent screen:** user type **External**; app name `Wealth Tracker`; your support email; scopes `openid`, `email`, `profile` (no other scopes).
+2. **Publishing status:** in **Testing** mode only the listed test users can sign in, so add each allowlisted email (`ALLOWED_EMAILS`) as a test user. Or click **Publish app**.
+3. **Credentials → Create credentials → OAuth client ID:** application type **Web application**. Under **Authorised redirect URIs** add exactly:
+   - `http://localhost:3000/auth/google/callback`
+   - `https://wealth-track-nu.vercel.app/auth/google/callback`
+
+   Any other origin (for example a preview deployment URL) needs its own redirect URI. No JavaScript origins are needed.
+4. Copy the **client ID** and **client secret**, then set:
+   - `api/.env` (local): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+   - `web/.env.local` (local): `GOOGLE_CLIENT_ID`. Leave `APP_ORIGIN` unset locally. Restart `npm run dev` after editing it.
+   - Vercel API project: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, then redeploy.
+   - Vercel web project: `GOOGLE_CLIENT_ID` (and `APP_ORIGIN`, see section 5), then redeploy.
+
+The API needs the client secret; the web only needs the client ID. The API database must be at `0012` (migration adds `users.google_sub`; the Action does this on push).
 
 ## 6. Load MF master data
 
@@ -132,7 +153,7 @@ Fallback: the manual `alembic upgrade head` in step 3 still works.
 Sign-in replaces the shared password. Migration `0010` adds users, refresh tokens and login attempts, and `user_id` on every holdings table. Do these steps in order:
 
 1. **Set the secrets.** API project: `JWT_SECRET` and `ALLOWED_EMAILS` (your email). GitHub `production` environment: `OWNER_EMAIL` (your email).
-2. **Push to `main`.** The Action runs `alembic upgrade head` on prod, so the database reaches `0011` (`0010` adds auth, `0011` the FD/RD issuer master). Existing holdings are assigned to the `OWNER_EMAIL` user, which is created without a password. The migration fails with a clear error if holdings exist and `OWNER_EMAIL` is unset.
+2. **Push to `main`.** The Action runs `alembic upgrade head` on prod, so the database reaches `0012` (`0010` adds auth, `0011` the FD/RD issuer master, `0012` Google sign-in). Existing holdings are assigned to the `OWNER_EMAIL` user, which is created without a password. The migration fails with a clear error if holdings exist and `OWNER_EMAIL` is unset.
    - On a database with no holdings the migration does not create the owner. Use `create` in step 3 instead of `set-password`.
 3. **Set your password locally.** Use the production **pooled** connection string from `api/` (prod credentials stay with you). The command prompts for the password:
 
@@ -158,6 +179,9 @@ cd api && DATABASE_URL='<production pooled connection string>' .venv/bin/python 
 | Sign-in or refresh returns 500 | `JWT_SECRET` missing in the API project |
 | Sign-up says "Sign-ups are invite-only" | Email not in `ALLOWED_EMAILS` (API project) |
 | Owner gets "Incorrect email or password" after the rollout | No password set yet: run `set-password` (Auth rollout step 3) |
+| "Google sign-in isn't configured" | `GOOGLE_CLIENT_ID` missing in the web project, or `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` missing in the API project (section 5b) |
+| Google shows `redirect_uri_mismatch` | The redirect URI in the Google client does not exactly match `<origin>/auth/google/callback` (section 5b) |
+| "Google email not verified" | The Google account's email is not verified |
 | Pages load but data shows "Upstream API unreachable" (502) | `API_URL` wrong or API project not deployed |
 | Data requests return 401 after logging in | `API_KEY` differs between the two projects |
 | API errors mentioning the database | `DATABASE_URL` wrong, not the pooled string, or migrations not run on production (step 3) |

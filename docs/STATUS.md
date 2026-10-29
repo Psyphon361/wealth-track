@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-10-28)
+# STATUS — handoff notes (last updated 2026-10-29)
 
 ## Done (all committed on `main`)
 
@@ -24,6 +24,7 @@
 - Pending, uncommitted: web bond picker shows ratings (`web/components/forms/bond-form.tsx`, `web/lib/types.ts`).
 - FD/RD issuer master (uncommitted and not pushed at time of writing; migration 0011): `fd_issuer_master` from the Razorpay IFSC bank list (categories, DICGC insured flag matched from the DICGC xlsx), short names and 17 mergers from a seed, 16 NBFCs and 11 HFCs from a cited seed, India Post. FD/RD forms have a bank/issuer picker (`issuer_id`; server snapshots `bank`); weekly cron `/api/cron/issuers`. Dev import (2026-10-28): 1,379 issuers: urban_coop 852, district_coop 319, regional_rural 53, state_coop 31, public_sector 28 (incl. merged), foreign 27, private 22, nbfc 16, small_finance 11, hfc 11, payments 6, local_area 2, post_office 1; DICGC matched 852. API tests: 272 passing. SPEC §1, §2, §4, §5.
 - Auth step 1 (email and password sign-in, invite-only sign-up, one owner per holding; commits `ca3b832`, `a331552`; web auth W1 and these docs are uncommitted at time of writing). Users, refresh tokens and login attempts; migration `0010` (holdings `user_id`); every holdings route is scoped to the signed-in user; master routes need sign-in. Web sign-in and sign-up pages (password fields with a show/hide eye toggle), account menu in the top bar (email avatar, Log out), httpOnly cookies `wt_access` and `wt_refresh`, token refresh in the route handler. The old `APP_PASSWORD` gate is gone from the code. SPEC §7. API tests: 243 passing.
+- Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Not yet tested with a real Google client (the user creates it).
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -37,7 +38,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Data
 
-- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0011 (FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
+- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0012 (Google sign-in; 0011 FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
 - Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
@@ -51,12 +52,13 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - The NSDL list is refreshed by hand (monthly suggested). Until the next refresh, new issues are missing from the bond list.
 - `tax_free` in `bond_master` depends on the seed file (106 bonds) and the NSDL "Taxfree" flag; `stock_master` has no tax_free detection.
 - Bond rating in the picker is pending (uncommitted web change).
+- Session errors: when the session is invalid, pages show "Not authorised" with Retry instead of redirecting to `/login` (the proxy only checks the cookie's presence).
 - Some NSE ETF names in `stock_master` are raw codes (e.g. "NIPINDETFNIFTYBEES").
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
 ## Next (auth)
 
-- Auth step 2: Google sign-in.
+- Auth step 2 is built. Next: the user creates the Google OAuth client (DEPLOY §5b) and tests the real flow; fix whatever it shows.
 - Auth step 3: password reset and email verification (needs an email provider; not chosen yet).
 
 ## Deferred (not started)
