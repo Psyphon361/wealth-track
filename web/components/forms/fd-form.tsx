@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Controller, useForm, useFormState, useWatch } from "react-hook-form";
+import { useEffect } from "react";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
@@ -10,9 +10,7 @@ import {
   type FixedDeposit,
   type FixedDepositInput,
 } from "@/lib/types";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { formatDate } from "@/lib/format";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { FormShell } from "./form-shell";
 import {
   DateField,
@@ -35,10 +33,7 @@ import {
   FD_TENURE_ERROR,
   PAYOUT_FREQUENCY_ERROR,
   TENURE_ERROR,
-  addPeriodISO,
   compoundingEnum,
-  diffPeriodISO,
-  isValidISODate,
   maxFutureDateISO,
   moneyNumber,
   notesText,
@@ -50,7 +45,7 @@ import {
   tenureOk,
   tenurePart,
 } from "./schema";
-import { TenurePicker } from "./tenure-picker";
+import { TenureField } from "./tenure-field";
 import { useAssetSave } from "./use-asset-form";
 
 const schema = z
@@ -164,63 +159,6 @@ export function FdForm({
       setValue("compounding", "quarterly");
     }
   }, [isPayout, getValues, setValue]);
-  const [tenureMode, setTenureMode] = useState<"duration" | "maturity">(
-    "duration",
-  );
-  const startDate = useWatch({ control, name: "start_date" });
-  const maturityDate = useWatch({ control, name: "maturity_date" });
-  const tYears = useWatch({ control, name: "tenure_years" });
-  const tMonths = useWatch({ control, name: "tenure_months" });
-  const tDays = useWatch({ control, name: "tenure_days" });
-  const { errors } = useFormState({ control });
-  const tenureError = [errors.tenure_years, errors.tenure_months, errors.tenure_days].find(
-    (e) => typeof e?.message === "string",
-  );
-  const years = Number(tYears) || 0;
-  const months = Number(tMonths) || 0;
-  const days = Number(tDays) || 0;
-  const tenureTotal = years + months + days;
-  const startOk = isValidISODate(startDate);
-
-  function switchTenureMode(next: "duration" | "maturity") {
-    if (next === tenureMode) return;
-    if (next === "maturity") {
-      setValue(
-        "maturity_date",
-        startOk && tenureTotal > 0
-          ? addPeriodISO(startDate, years, months, days)
-          : "",
-      );
-    }
-    setTenureMode(next);
-  }
-
-  useEffect(() => {
-    if (tenureMode !== "maturity") return;
-    if (!isValidISODate(maturityDate)) return;
-    const d = diffPeriodISO(startDate, maturityDate);
-    const opts = { shouldDirty: true };
-    setValue("tenure_years", String(d.years), opts);
-    setValue("tenure_months", String(d.months), opts);
-    setValue("tenure_days", String(d.days), opts);
-    void trigger(["tenure_years", "tenure_months", "tenure_days"]);
-  }, [tenureMode, maturityDate, startDate, setValue, trigger]);
-
-  const hasTenureError = !!tenureError;
-  useEffect(() => {
-    if (hasTenureError) {
-      void trigger(["tenure_years", "tenure_months", "tenure_days"]);
-    }
-  }, [tYears, tMonths, tDays, hasTenureError, trigger]);
-
-  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  const tenureText = [
-    years ? plural(years, "year") : "",
-    months ? plural(months, "month") : "",
-    days ? plural(days, "day") : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
 
   const onSubmit = handleSubmit((values) => {
     const { master_mode, ...withMaturity } = values;
@@ -315,67 +253,7 @@ export function FdForm({
         options={PAYOUT_OPTIONS}
         required
       />
-      <div className="flex flex-col gap-1.5 sm:col-span-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">Tenure</span>
-          <ToggleGroup
-            value={[tenureMode]}
-            onValueChange={(v) => {
-              if (v[0]) switchTenureMode(v[0] as "duration" | "maturity");
-            }}
-            variant="outline"
-            size="sm"
-            spacing={0}
-            className="h-6"
-          >
-            <ToggleGroupItem value="duration" className="h-6 px-2 text-xs">
-              Duration
-            </ToggleGroupItem>
-            <ToggleGroupItem value="maturity" className="h-6 px-2 text-xs">
-              Maturity date
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        {tenureMode === "duration" ? (
-          <>
-            <TenurePicker
-              hideLabel
-              control={control}
-              names={{
-                years: "tenure_years",
-                months: "tenure_months",
-                days: "tenure_days",
-              }}
-            />
-            {startOk && tenureTotal > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Matures on{" "}
-                <span className="num">
-                  {formatDate(addPeriodISO(startDate, years, months, days))}
-                </span>
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <DateField
-              control={control}
-              name="maturity_date"
-              label="Maturity date"
-              required
-            />
-            {tenureTotal > 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Tenure: {tenureText}
-              </p>
-            ) : null}
-            <FieldError
-              errors={tenureError ? [{ message: String(tenureError.message) }] : []}
-              className="text-xs text-destructive"
-            />
-          </>
-        )}
-      </div>
+      <TenureField control={control} setValue={setValue} trigger={trigger} />
       <div className="sm:col-span-2">
         <NotesField control={control} name="notes" />
       </div>

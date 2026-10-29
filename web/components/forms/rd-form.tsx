@@ -41,7 +41,7 @@ import {
   tenureOk,
   tenurePart,
 } from "./schema";
-import { TenurePicker } from "./tenure-picker";
+import { TenureField } from "./tenure-field";
 import { useAssetSave } from "./use-asset-form";
 
 const schema = z
@@ -59,6 +59,7 @@ const schema = z
     tenure_years: tenurePart,
     tenure_months: tenurePart,
     tenure_days: tenurePart,
+    maturity_date: z.string(),
     compounding: compoundingEnum,
     notes: notesText,
   })
@@ -101,6 +102,7 @@ function toDefaults(r?: RecurringDeposit): FormIn {
     tenure_years: String(r?.tenure_years ?? 0),
     tenure_months: String(r?.tenure_months ?? 0),
     tenure_days: String(r?.tenure_days ?? 0),
+    maturity_date: "",
     compounding: r?.compounding ?? "quarterly",
     notes: r?.notes ?? "",
   };
@@ -115,7 +117,7 @@ export function RdForm({
   onSaved?: (record: RecurringDeposit) => void;
   onCancel?: () => void;
 }) {
-  const { control, handleSubmit, setValue, setError, clearErrors } = useForm<
+  const { control, handleSubmit, setValue, setError, clearErrors, trigger } = useForm<
     FormIn,
     unknown,
     FormOut
@@ -141,9 +143,11 @@ export function RdForm({
     clearErrors(["issuer_id", "bank"]);
   }
   const onSubmit = handleSubmit((values) => {
-    const { master_mode, ...rest } = values;
+    const { master_mode, ...withMaturity } = values;
+    const rest: Partial<typeof withMaturity> = { ...withMaturity };
+    delete rest.maturity_date;
     const payload: RecurringDepositInput = {
-      ...rest,
+      ...(rest as Omit<typeof withMaturity, "maturity_date">),
       issuer_id: master_mode === "manual" ? null : values.issuer_id,
     };
     return save(payload);
@@ -224,16 +228,7 @@ export function RdForm({
         options={COMPOUNDING_OPTIONS}
         required
       />
-      <div className="sm:col-span-2">
-        <TenurePicker
-          control={control}
-          names={{
-            years: "tenure_years",
-            months: "tenure_months",
-            days: "tenure_days",
-          }}
-        />
-      </div>
+      <TenureField control={control} setValue={setValue} trigger={trigger} />
       <div className="sm:col-span-2">
         <NotesField control={control} name="notes" />
       </div>
