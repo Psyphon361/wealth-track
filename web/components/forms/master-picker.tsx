@@ -58,6 +58,7 @@ export function MasterPicker<T>({
   const [results, setResults] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
   const requestId = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -147,8 +148,14 @@ export function MasterPicker<T>({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      {trigger}
-      <PopoverContent align="start" className="w-(--anchor-width) max-w-none p-0">
+      <div ref={fieldRef} className="w-full">
+        {trigger}
+      </div>
+      <PopoverContent
+        anchor={fieldRef}
+        align="start"
+        className="w-(--anchor-width) max-w-none p-0"
+      >
         <Command shouldFilter={false}>
           <CommandInput
             value={query}
