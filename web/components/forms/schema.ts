@@ -92,6 +92,33 @@ export function addPeriodISO(
   return addDaysISO(addMonthsISO(iso, years * 12 + months), days);
 }
 
+/**
+ * Inverse of addPeriodISO: largest whole months k with addMonthsISO(start, k) <= end,
+ * then the remaining days. Zeros if end <= start or a date is invalid.
+ */
+export function diffPeriodISO(
+  start: string,
+  end: string,
+): { years: number; months: number; days: number } {
+  const zero = { years: 0, months: 0, days: 0 };
+  const s = parseISO(start);
+  const e = parseISO(end);
+  if (!s || !e || end <= start) return zero;
+  let k = (e[0] - s[0]) * 12 + (e[1] - s[1]);
+  while (k > 0 && addMonthsISO(start, k) > end) k--;
+  const rest = addMonthsISO(start, k);
+  const days = Math.round(
+    (Date.UTC(e[0], e[1] - 1, e[2]) -
+      Date.UTC(
+        Number(rest.slice(0, 4)),
+        Number(rest.slice(5, 7)) - 1,
+        Number(rest.slice(8, 10)),
+      )) /
+      86400000,
+  );
+  return { years: Math.floor(k / 12), months: k % 12, days };
+}
+
 export function todayISO(): string {
   const n = new Date();
   return fmtISO(n.getFullYear(), n.getMonth() + 1, n.getDate());

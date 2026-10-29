@@ -38,9 +38,12 @@ const UNITS = [
 export function TenurePicker<TIn extends FieldValues, TOut>({
   control,
   names,
+  hideLabel,
 }: {
   control: Control<TIn, unknown, TOut>;
   names: TenureNames<TIn>;
+  /** Parent renders its own "Tenure" label row. */
+  hideLabel?: boolean;
 }) {
   const { errors } = useFormState({ control });
   const messages = [names.years, names.months, names.days].map((n) => {
@@ -50,9 +53,11 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
 
   return (
     <Field data-invalid={messages.some(Boolean)}>
-      <FieldLabel className="text-xs font-normal text-muted-foreground">
-        Tenure
-      </FieldLabel>
+      {hideLabel ? null : (
+        <FieldLabel className="text-xs font-normal text-muted-foreground">
+          Tenure
+        </FieldLabel>
+      )}
       <div className="grid grid-cols-3 gap-3">
         {UNITS.map((u) => {
           const name = names[u.key];
