@@ -102,7 +102,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 5. **The Neon `dev` branch may contain the user's real holdings** (it was emptied on 2026-10-25, but the user enters real data there). When testing: create probe rows with unique names, and modify/delete ONLY rows you created, by exact id or by matching your probe name. Never bulk-delete, never "clean up" rows you didn't create.
 6. **Never touch the user's running dev servers** (ports 3000/8000). Use spare ports (8010+, 3010+) for your own test servers and stop them when done.
 7. **Secrets**: never print or commit `api/.env`, connection strings, API keys, passwords. Production credentials are handled by the user only.
-8. Dark theme only; compact, minimal style; Geist fonts; `num` utility (Geist Mono + tabular-nums) for figures; gain/loss colours via `text-gain` / `text-loss`.
+8. Dark theme only; compact, minimal style; Geist fonts; `num` utility (Geist sans + tabular-nums) for figures; gain/loss colours via `text-gain` / `text-loss`.
 
 ## Gotchas
 
