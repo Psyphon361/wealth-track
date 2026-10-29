@@ -53,20 +53,21 @@ export function UserMenu() {
       >
         {email.charAt(0).toUpperCase()}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-auto min-w-0 max-w-64">
         <DropdownMenuGroup>
-          <DropdownMenuLabel className="flex flex-col gap-0.5">
-            <span className="text-xs font-normal text-muted-foreground">
-              Signed in as
-            </span>
-            <span className="truncate text-sm text-foreground" title={email}>
-              {email}
-            </span>
+          <DropdownMenuLabel
+            className="truncate px-2 py-1 text-xs font-normal text-muted-foreground"
+            title={email}
+          >
+            {email}
           </DropdownMenuLabel>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => startTransition(() => logout())}>
-          <LogOut />
+        <DropdownMenuItem
+          className="gap-1.5 py-1 text-xs"
+          onClick={() => startTransition(() => logout())}
+        >
+          <LogOut className="size-3.5" />
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
