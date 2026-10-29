@@ -32,15 +32,14 @@ export function useAssetSave<R extends RecordFields>(
 
   async function save(payload: unknown): Promise<void> {
     setSaving(true);
-    const toastId = notify.saving();
     try {
       const saved = record
         ? await apiPut<R>(`/assets/${type}/${record.id}`, payload)
         : await apiPost<R>(`/assets/${type}`, payload);
-      notify.success(saved as Partial<ApiMessage>, toastId);
+      notify.success(saved as Partial<ApiMessage>);
       onSaved?.(saved);
     } catch (e) {
-      notify.error(e, toastId);
+      notify.error(e);
       const issues = fieldIssues(e);
       if (issues.length) onFieldIssues?.(issues);
     } finally {
