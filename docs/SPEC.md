@@ -11,7 +11,7 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 | Fixed Deposit (`fd`) | `fixed_deposits` | bank, issuer_id? (FK → `fd_issuer_master`, ON DELETE SET NULL), label?, principal, rate (% p.a.), start_date, tenure_years, tenure_months, tenure_days, compounding (`monthly`\|`quarterly`\|`half_yearly`\|`yearly`\|`simple`, default quarterly), payout_type (`cumulative`\|`payout`) |
 | Recurring Deposit (`rd`) | `recurring_deposits` | bank, issuer_id? (FK → `fd_issuer_master`, ON DELETE SET NULL), label?, monthly_instalment, rate, start_date, tenure_years, tenure_months, tenure_days, compounding (default quarterly) |
 | Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date, master_id? (FK → `stock_master`, ON DELETE SET NULL) |
-| Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value (per unit; nullable in DB for old rows, required on input), purchase_price (per unit), purchase_date, ytm (% p.a.), maturity_date, master_id? (FK → `bond_master`, ON DELETE SET NULL) |
+| Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value? (per unit; nullable; not a form input, saved from the bond master on pick when available), purchase_price (per unit), invested_amount (total invested; NOT NULL; migration 0013, backfilled as quantity × purchase_price), purchase_date, ytm (% p.a.), maturity_date, master_id? (FK → `bond_master`, ON DELETE SET NULL) |
 | Mutual Fund (`mf`) | `mutual_funds` | scheme_code? (FK → `mf_master.scheme_code`), scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), purchase_date |
 
 Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4). Enums are VARCHAR + CHECK (not native PG enums).
@@ -90,7 +90,7 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 10 | RD: start + 6 months ≤ maturity ≤ start + 10 years | RD tenure must be between 6 months and 10 years |
 | 11 | Tenure parts: years 0–10, months 0–11, days 0–30; total > 0 | Years/Months/Days must be between 0 and N; Tenure must be greater than zero |
 | 12 | Bond maturity > purchase, and ≤ purchase + 50 years | Maturity date must be after the purchase date / Maturity must be within 50 years of purchase |
-| 13 | Bond purchase_price within 50%–150% of face_value | Purchase price should be between 50% and 150% of face value |
+| 13 | Bond `invested_amount` must equal quantity × purchase_price: \|quantity × price − total\| ≤ quantity × 0.005 + 0.01 (field `invested_amount`) | Total invested must equal quantity × purchase price |
 | 14 | ISIN (optional): uppercased, `^[A-Z]{2}[A-Z0-9]{9}[0-9]$` | ISIN must be 12 characters, e.g. INE002A01018 |
 | 15 | Symbol (optional): uppercased, `^[A-Z0-9&-]{1,20}$` | Symbol: letters, digits, & or -, up to 20 characters |
 | 16 | Text ≤ 200 chars (names, bank, label, issuer, broker, platform, scheme); notes ≤ 1000 | Must be at most N characters |
@@ -106,7 +106,7 @@ MF scheme picker: the form requires a scheme in picker mode; "Not listed? Enter 
 
 FD/RD issuer picker: the form requires an issuer in picker mode (rule 20); "Not listed? Enter manually" switches to free text, where bank is required ("Required") and `issuer_id` is null.
 
-No minimum amounts beyond > 0 (user decision). Cross-field errors are attached to a field: tenure → `tenure_years`, payout frequency → `compounding`, price range → `purchase_price`, maturity rules → `maturity_date`. Read models accept existing rows even if they'd fail new create-time rules.
+No minimum amounts beyond > 0 (user decision). Cross-field errors are attached to a field: tenure → `tenure_years`, payout frequency → `compounding`, invested total → `invested_amount`, maturity rules → `maturity_date`. Read models accept existing rows even if they'd fail new create-time rules.
 
 ## 3. Valuation (server side, `valuation.py`)
 
@@ -116,7 +116,7 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **FD cumulative**: invested = principal; current = P × (1 + r/n)^(n·t), `simple` → P × (1 + r·t); t from start to min(today, maturity).
 - **FD payout** (`payout_type = payout`; `compounding` holds the payout frequency): invested = current = principal; `interest_received` = P × r/n × completed payout periods (period ends every 12/n months after start, ≤ min(today, maturity)); if matured, plus the final partial period up to maturity (total = simple interest over the tenure). gain = interest_received.
 - **RD**: instalments on start + k months while date < maturity and ≤ today (assumed paid on time); invested = count × instalment; current = Σ each instalment compounded (same rule) to min(today, maturity).
-- **Bond**: invested = quantity × purchase_price; current = invested × (1 + ytm/100)^t, t from purchase to min(today, maturity). face_value is display-only.
+- **Bond**: invested = `invested_amount` (the stored total); current = invested × (1 + ytm/100)^t, t from purchase to min(today, maturity). face_value is display-only.
 - **Stock**: invested = qty × avg_buy_price; current = invested (no price API yet).
 - **MF**: invested = units × avg_nav. If `scheme_code` is set and the scheme has a row in `mf_nav_latest`, current = units × latest NAV (used even if stale); otherwise (manual entry, or no NAV) current = invested.
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested). Outputs rounded to 2 dp.
@@ -196,7 +196,9 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - Sign-in is required everywhere, local dev included: `proxy.ts` redirects pages without the `wt_refresh` cookie to `/login?next=…`; cookies, refresh and the proxy rules are in §7. The top bar, right of the "Add asset" button, has an account menu (`web/components/user-menu.tsx`): a round avatar with the email's first letter (from `GET /api/me`) opens a dropdown with "Signed in as <email>" and "Log out".
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
 - Stock form (`components/forms/stock-form.tsx`, picker from `components/forms/master-picker.tsx`): picker by default ("Search stocks and ETFs…"; rows show name, NSE/BSE symbols, ISIN, ETF badge). Picking sets name, symbol and the exchange default; changing the exchange re-derives the symbol. "Not listed? Enter manually" switches to free text; "Search the stock list instead" switches back.
-- Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name and ISIN and pre-fills issuer, bond type, face value and maturity (all still editable).
+- Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name, ISIN, issuer, bond type and maturity date (always), and fills purchase price (issue price, else face value), YTM (coupon rate) and purchase date (issue date, if not in the future) only when those are empty. All stay editable.
+- Bond amounts: enter any two of Quantity, Purchase price per unit and Total invested; the third is calculated (price = total ÷ quantity, 2 dp; total = quantity × price; quantity = total ÷ price, rounded to a whole number). Pure helper `web/lib/bond-amounts.ts`, unit tests `web/lib/bond-amounts.test.ts` (`cd web && npm test`). Face value is not an input.
+- FD tenure: the FD form takes either Duration (years, months, days) or a Maturity date ("Duration / Maturity date" toggle). A maturity date is converted to years, months and days; the same §2 rules apply.
 - FD and RD forms (`components/forms/fd-form.tsx`, `rd-form.tsx`): "Bank / issuer" picker (shared `components/forms/issuer-picker.tsx`, a server search over `/api/master/fd-issuer`; rows show the short name or name, the category, "DICGC insured" and "Merged into" when set). Picking sets `issuer_id` and copies the short name (or name) into Bank. "Not listed? Enter manually" switches to free text ("Search the bank list instead" switches back). New holdings open in picker mode; existing holdings without an issuer link open in manual mode. Editing loads the linked issuer from `/master/fd-issuer/{id}`, and falls back to the stored bank text if that fails.
 - Edit dialog for stocks/bonds shows the linked security (fetched from `/master/stock/{id}` or `/master/bond/{id}`).
 - MF Average NAV auto-fill (`components/forms/use-nav-autofill.ts`): once a scheme and purchase date are set, Average NAV fills from `/api/master/mf/{scheme_code}/nav` with the hint "NAV on {date} · AMFI". It stays editable and never overwrites a value the user typed. Errors show the API message as a muted hint.
