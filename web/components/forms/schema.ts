@@ -19,8 +19,8 @@ export const RD_TENURE_ERROR =
   "RD tenure must be between 6 months and 10 years";
 export const TENURE_ERROR = "Tenure must be greater than zero";
 export const MATURITY_RANGE_ERROR = "Maturity must be within 50 years of purchase";
-export const PRICE_RANGE_ERROR =
-  "Purchase price should be between 50% and 150% of face value";
+export const BOND_AMOUNT_MISMATCH_ERROR =
+  "Total invested must equal quantity × purchase price";
 export const FD_RATE_ERROR = "Interest rate must be between 0 and 15%";
 export const YTM_ERROR = "YTM must be between 0 and 30%";
 export const ISIN_ERROR = "ISIN must be 12 characters, e.g. INE002A01018";
@@ -151,11 +151,6 @@ export function maturityWithinLimit(
 ): boolean {
   if (!isValidISODate(purchase) || !isValidISODate(maturity)) return true;
   return maturity <= addMonthsISO(purchase, MAX_BOND_YEARS * 12);
-}
-
-export function priceWithinRange(price: number, face: number): boolean {
-  if (!Number.isFinite(price) || !Number.isFinite(face)) return true;
-  return price >= face * 0.5 - 1e-9 && price <= face * 1.5 + 1e-9;
 }
 
 // ---- Zod pieces ----

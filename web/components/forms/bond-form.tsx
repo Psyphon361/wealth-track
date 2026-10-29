@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiGet } from "@/lib/api";
+import {
+  bondAmountsConsistent,
+  deriveBondAmount,
+  type BondAmountField,
+} from "@/lib/bond-amounts";
 import { formatDate } from "@/lib/format";
 import {
   BOND_TYPE_LABELS,
@@ -24,12 +29,12 @@ import {
 } from "./fields";
 import { MasterPicker } from "./master-picker";
 import {
+  BOND_AMOUNT_MISMATCH_ERROR,
   BOND_REQUIRED_ERROR,
   MATURITY_RANGE_ERROR,
   MAX_BOND_YEARS,
   MAX_ISIN,
   MAX_TEXT,
-  PRICE_RANGE_ERROR,
   YTM_ERROR,
   addMonthsISO,
   bondTypeEnum,
@@ -42,10 +47,10 @@ import {
   notesText,
   optionalText,
   positiveInteger,
-  priceWithinRange,
   rateNumber,
   requiredText,
   startDateString,
+  todayISO,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
 
@@ -62,8 +67,9 @@ const schema = z
     bond_type: bondTypeEnum,
     platform: optionalText,
     quantity: positiveInteger,
-    face_value: moneyNumber,
+    face_value: z.number().nullable(),
     purchase_price: moneyNumber,
+    invested_amount: moneyNumber,
     purchase_date: startDateString,
     ytm: rateNumber(30, YTM_ERROR),
     maturity_date: dateString,
@@ -96,15 +102,30 @@ const schema = z
     message: MATURITY_RANGE_ERROR,
     path: ["maturity_date"],
   })
-  .refine((v) => priceWithinRange(v.purchase_price, v.face_value), {
-    message: PRICE_RANGE_ERROR,
-    path: ["purchase_price"],
-  });
+  .refine(
+    (v) => bondAmountsConsistent(v.quantity, v.purchase_price, v.invested_amount),
+    {
+      message: BOND_AMOUNT_MISMATCH_ERROR,
+      path: ["invested_amount"],
+    },
+  );
 
 type FormIn = z.input<typeof schema>;
 type FormOut = z.output<typeof schema>;
 
 const BOND_TYPE_OPTIONS = toOptions(BOND_TYPE_LABELS);
+
+const FORM_TO_AMOUNT: Record<string, BondAmountField> = {
+  quantity: "quantity",
+  purchase_price: "price",
+  invested_amount: "total",
+};
+
+function toNum(s: unknown): number | null {
+  if (typeof s !== "string" || s.trim() === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
 const LINK_BUTTON =
   "w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline";
@@ -138,8 +159,9 @@ function toDefaults(r?: Bond): FormIn {
     bond_type: r?.bond_type ?? "government",
     platform: r?.platform ?? "",
     quantity: r ? String(r.quantity) : "",
-    face_value: r?.face_value != null ? String(r.face_value) : "",
+    face_value: r?.face_value ?? null,
     purchase_price: r ? String(r.purchase_price) : "",
+    invested_amount: r ? String(r.invested_amount) : "",
     purchase_date: r?.purchase_date ?? "",
     ytm: r ? String(r.ytm) : "",
     maturity_date: r?.maturity_date ?? "",
@@ -174,6 +196,47 @@ export function BondForm({
   const maturityLimit = isValidISODate(purchaseDate)
     ? addMonthsISO(purchaseDate, MAX_BOND_YEARS * 12)
     : undefined;
+  const qtyStr = useWatch({ control, name: "quantity" });
+  const priceStr = useWatch({ control, name: "purchase_price" });
+  const totalStr = useWatch({ control, name: "invested_amount" });
+  // The two amounts the user edited most recently (oldest first).
+  const edited = useRef<BondAmountField[]>(
+    record ? ["quantity", "price"] : [],
+  );
+  const lastKey = useRef(`${qtyStr}|${priceStr}|${totalStr}`);
+
+  function markEdited(field: BondAmountField) {
+    edited.current = [
+      ...edited.current.filter((f) => f !== field),
+      field,
+    ].slice(-2);
+  }
+
+  useEffect(() => {
+    const key = `${qtyStr}|${priceStr}|${totalStr}`;
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    const d = deriveBondAmount(
+      { quantity: toNum(qtyStr), price: toNum(priceStr), total: toNum(totalStr) },
+      edited.current,
+    );
+    if (!d) return;
+    const name =
+      d.field === "quantity"
+        ? "quantity"
+        : d.field === "price"
+          ? "purchase_price"
+          : "invested_amount";
+    const next = String(d.value);
+    if (getValues(name) === next) return;
+    lastKey.current = `${
+      name === "quantity" ? next : qtyStr
+    }|${name === "purchase_price" ? next : priceStr}|${
+      name === "invested_amount" ? next : totalStr
+    }`;
+    setValue(name, next, { shouldValidate: true, shouldDirty: true });
+  }, [qtyStr, priceStr, totalStr, getValues, setValue]);
+
   // Master details for the summary line (selected, or fetched when editing).
   const [meta, setMeta] = useState<BondMaster | null>(null);
 
@@ -212,6 +275,7 @@ export function BondForm({
       quantity: values.quantity,
       face_value: values.face_value,
       purchase_price: values.purchase_price,
+      invested_amount: values.invested_amount,
       purchase_date: values.purchase_date,
       ytm: values.ytm,
       maturity_date: values.maturity_date,
@@ -279,18 +343,27 @@ export function BondForm({
                     setValue("isin", s.isin);
                     if (s.issuer) setValue("issuer", s.issuer);
                     setValue("bond_type", s.bond_type);
-                    if (s.face_value != null) {
-                      setValue("face_value", String(s.face_value));
-                    }
+                    setValue("face_value", s.face_value);
                     if (s.maturity_date) {
                       setValue("maturity_date", s.maturity_date);
                     }
-                    if (s.bond_type === "sgb" && s.issue_price != null) {
-                      const price = String(s.issue_price);
-                      if (!getValues("face_value")) setValue("face_value", price);
-                      if (!getValues("purchase_price")) {
-                        setValue("purchase_price", price);
-                      }
+                    const price = s.issue_price ?? s.face_value;
+                    if (price != null && !getValues("purchase_price")) {
+                      markEdited("price");
+                      setValue("purchase_price", String(price), {
+                        shouldValidate: true,
+                        shouldDirty: true,
+                      });
+                    }
+                    if (s.coupon_rate != null && !getValues("ytm")) {
+                      setValue("ytm", String(s.coupon_rate));
+                    }
+                    if (
+                      s.issue_date &&
+                      s.issue_date <= todayISO() &&
+                      !getValues("purchase_date")
+                    ) {
+                      setValue("purchase_date", s.issue_date);
                     }
                   }}
                 />
@@ -327,32 +400,40 @@ export function BondForm({
         required
       />
       <TextField control={control} name="platform" label="Platform" />
-      <TextField
-        control={control}
-        name="quantity"
-        label="Quantity"
-        inputMode="numeric"
-        decimals={0}
-        required
-      />
-      <TextField
-        control={control}
-        name="face_value"
-        label="Face value per unit"
-        adornment="₹"
-        inputMode="decimal"
-        decimals={2}
-        required
-      />
-      <TextField
-        control={control}
-        name="purchase_price"
-        label="Purchase price per unit"
-        adornment="₹"
-        inputMode="decimal"
-        decimals={2}
-        required
-      />
+      <div
+        className="contents"
+        onInputCapture={(e) => {
+          const f = FORM_TO_AMOUNT[(e.target as HTMLInputElement).name];
+          if (f) markEdited(f);
+        }}
+      >
+        <TextField
+          control={control}
+          name="quantity"
+          label="Quantity"
+          inputMode="numeric"
+          decimals={0}
+          required
+        />
+        <TextField
+          control={control}
+          name="purchase_price"
+          label="Purchase price per unit"
+          adornment="₹"
+          inputMode="decimal"
+          decimals={2}
+          required
+        />
+        <TextField
+          control={control}
+          name="invested_amount"
+          label="Total invested"
+          adornment="₹"
+          inputMode="decimal"
+          decimals={2}
+          required
+        />
+      </div>
       <DateField
         control={control}
         name="purchase_date"
