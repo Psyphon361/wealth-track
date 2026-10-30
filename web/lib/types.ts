@@ -328,7 +328,11 @@ export type StockItem = Stock &
   };
 export type BondItem = Bond & ComputedFields;
 export type MutualFundItem = MutualFund &
-  ComputedFields & { nav: number | null; nav_date: string | null };
+  ComputedFields & {
+    nav: number | null;
+    nav_date: string | null;
+    xirr_pct: number | null;
+  };
 
 export type HoldingRow =
   | FixedDepositItem

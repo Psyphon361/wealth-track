@@ -44,7 +44,10 @@ def test_bond_one_year():
 def _mf(**kw):
     from types import SimpleNamespace
 
-    fields = dict(units=Decimal("10"), avg_nav=Decimal("50"), scheme_code=123)
+    fields = dict(
+        units=Decimal("10"), avg_nav=Decimal("50"), scheme_code=123,
+        purchase_date=date(2026, 1, 1),
+    )
     fields.update(kw)
     return SimpleNamespace(**fields)
 
@@ -76,3 +79,46 @@ def test_mf_without_scheme_code_ignores_nav():
     )  # fmt: skip
     assert r["current_value"] == Decimal("500.00")
     assert r["nav"] is None
+
+
+def test_mf_xirr_one_year():
+    r = valuation.value_mf(
+        _mf(purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
+        nav=Decimal("55"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert r["xirr_pct"] == Decimal("10.00")
+
+
+def test_mf_xirr_two_years():
+    r = valuation.value_mf(
+        _mf(purchase_date=date(2024, 10, 25)), date(2026, 10, 25),
+        nav=Decimal("60.5"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert r["xirr_pct"] == Decimal("10.00")
+
+
+def test_mf_xirr_short_holding_is_annualised():
+    r = valuation.value_mf(
+        _mf(purchase_date=date(2026, 9, 25)), date(2026, 10, 25),
+        nav=Decimal("51"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    expected = Decimal(str((1.02 ** (365 / 30) - 1) * 100)).quantize(Decimal("0.01"))
+    assert r["xirr_pct"] == expected
+
+
+def test_mf_xirr_none_cases():
+    same_day = valuation.value_mf(
+        _mf(purchase_date=date(2026, 10, 25)), date(2026, 10, 25),
+        nav=Decimal("55"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert same_day["xirr_pct"] is None
+    zero_current = valuation.value_mf(
+        _mf(purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
+        nav=Decimal("0"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert zero_current["xirr_pct"] is None
+    zero_invested = valuation.value_mf(
+        _mf(avg_nav=Decimal("0"), purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
+        nav=Decimal("55"), nav_date=date(2026, 10, 24),
+    )  # fmt: skip
+    assert zero_invested["xirr_pct"] is None

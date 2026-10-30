@@ -143,6 +143,14 @@ def value_stock(
     return _result(invested, stock.quantity * Decimal(price))
 
 
+def _xirr_pct(invested: Decimal, current: Decimal, start: date, today: date) -> Decimal | None:
+    """Annualised return of a single lump sum (equals XIRR for one cash flow)."""
+    days = (today - start).days
+    if invested <= 0 or current <= 0 or days < 1:
+        return None
+    return _q((float(current / invested) ** (365 / days) - 1) * 100)
+
+
 def value_mf(
     mf: Any,
     today: date | None = None,
@@ -151,15 +159,18 @@ def value_mf(
     nav_date: date | None = None,
 ) -> dict[str, Any]:
     """Value at the latest NAV when the holding has a scheme and a NAV is known."""
+    today = today or date.today()
     invested = Decimal(mf.units) * Decimal(mf.avg_nav)
     if mf.scheme_code is not None and nav is not None:
         out = _result(invested, Decimal(mf.units) * Decimal(nav))
         out["nav"] = Decimal(nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         out["nav_date"] = nav_date
+        out["xirr_pct"] = _xirr_pct(invested, out["current_value"], mf.purchase_date, today)
         return out
     out = _result(invested, invested)
     out["nav"] = None
     out["nav_date"] = None
+    out["xirr_pct"] = _xirr_pct(invested, out["current_value"], mf.purchase_date, today)
     return out
 
 

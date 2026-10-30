@@ -4,7 +4,9 @@ import {
   type MfScheme,
   type MutualFundItem,
 } from "@/lib/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatPct } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { gainTone } from "../gain-cell";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -97,9 +99,16 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     subtitle: (r) =>
       [MF_CATEGORY_LABELS[r.category], r.platform].filter(Boolean).join(" · "),
     kpi: (r) => ({
-      label: "NAV",
-      value: r.nav == null ? "—" : <span className="num">{nav.format(r.nav)}</span>,
-      sub: r.nav != null && r.nav_date ? `as of ${formatDate(r.nav_date)}` : undefined,
+      label: "XIRR",
+      value:
+        r.xirr_pct == null ? (
+          "—"
+        ) : (
+          <span className={cn("num", gainTone(r.xirr_pct))}>
+            {formatPct(r.xirr_pct)}
+          </span>
+        ),
+      sub: `since ${formatDate(r.purchase_date)}`,
     }),
     holding: (r) => [
       { label: "Scheme", value: r.scheme_name },
@@ -107,6 +116,14 @@ export const mfConfig: GridConfig<MutualFundItem> = {
       { label: "Platform", value: r.platform },
       { label: "Units", value: units.format(r.units), figure: true },
       { label: "Avg NAV", value: nav.format(r.avg_nav), figure: true },
+      {
+        label: "Current NAV",
+        value:
+          r.nav == null
+            ? "—"
+            : `${nav.format(r.nav)}${r.nav_date ? ` as of ${formatDate(r.nav_date)}` : ""}`,
+        figure: true,
+      },
       { label: "Purchase date", value: formatDate(r.purchase_date), figure: true },
     ],
     instrument: (m) => {
