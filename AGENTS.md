@@ -71,6 +71,7 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/auth.ts           server-only: auth cookie names and options, token types, safeNext, apiAuthFetch (replaces lib/session.ts)
 docs/           SPEC.md (behaviour), STATUS.md (progress/open items), HANDOFF.md (session resume notes), DEPLOY.md (Vercel+Neon), PLAN.md (original plan, historical)
 .github/workflows/api-deploy.yml   on push to main touching api/: alembic upgrade head on prod, then Vercel API deploy hook
+.github/workflows/dev-data-refresh.yml   scheduled (and manual) market-data imports (securities, AMFI, issuers) against the Neon dev branch; secret DEV_DATABASE_URL
 .claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md)
 package.json    root: `npm run dev` runs api + web together (concurrently)
 ```

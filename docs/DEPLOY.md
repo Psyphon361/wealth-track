@@ -161,6 +161,20 @@ Write migrations backward compatible (expand, then contract): the web project de
 
 Fallback: the manual `alembic upgrade head` in step 3 still works.
 
+## Dev data refresh (GitHub Actions)
+
+`.github/workflows/dev-data-refresh.yml` runs the market-data imports against the Neon **dev** branch, mirroring the production Vercel crons:
+
+| Import | Schedule (IST) |
+|---|---|
+| Securities (stock and bond masters) | daily 19:30 |
+| AMFI (MF master and NAVs) | daily 22:00 |
+| FD/RD issuers | Mondays 08:30 |
+
+One-time setup (you): GitHub repo → **Settings → Secrets and variables → Actions** → add `DEV_DATABASE_URL` = Neon dev branch **direct** (non-pooled) connection string.
+
+Manual run: **Actions → Dev data refresh → Run workflow**, then choose the job (`all`, `securities`, `amfi` or `issuers`).
+
 ## Auth rollout (one-time)
 
 Sign-in replaces the shared password. Migration `0010` adds users, refresh tokens and login attempts, and `user_id` on every holdings table. Do these steps in order:
@@ -199,4 +213,4 @@ cd api && DATABASE_URL='<production pooled connection string>' .venv/bin/python 
 | Data requests return 401 after logging in | `API_KEY` differs between the two projects |
 | API errors mentioning the database | `DATABASE_URL` wrong, not the pooled string, or migrations not run on production (step 3) |
 | First request after a while is slow | Cold start of the serverless function; subsequent requests are fast |
-| Local AMFI import fails with an SSL certificate error | uv's Python has no CA bundle on macOS; set `SSL_CERT_FILE` to a system CA bundle and rerun the import |
+| Local AMFI import fails with an SSL certificate error | uv's Python has no CA bundle on macOS; set `SSL_CERT_FILE` to certifi's bundle in the venv (`.venv/lib/python3.12/site-packages/certifi/cacert.pem`) and rerun the import. The system bundle `/etc/ssl/cert.pem` did not work |
