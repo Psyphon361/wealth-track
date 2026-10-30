@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { apiDelete } from "@/lib/api";
 import { getAssetEntry } from "@/lib/asset-catalog";
-import { formatINR } from "@/lib/format";
+import { formatINR, formatIstDateTime } from "@/lib/format";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
 import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
@@ -168,6 +168,16 @@ function TypedPortfolio<TRow extends HoldingRow>({
           {addLabel}
         </Link>
       </div>
+
+      {config.type === "stock" ? (
+        <p className="text-xs text-muted-foreground">
+          Prices refresh every 15 minutes during market hours (NSE/BSE via Yahoo
+          Finance).
+          {data.prices_as_of
+            ? ` Last updated ${formatIstDateTime(data.prices_as_of)}.`
+            : ""}
+        </p>
+      ) : null}
 
       <div className="min-w-0">
         <HoldingsGrid

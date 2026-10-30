@@ -1,4 +1,6 @@
 import { AssetForm } from "@/components/forms/asset-form";
+import { formatINR, formatPct } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { EXCHANGE_LABELS, type StockItem } from "@/lib/types";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
@@ -9,6 +11,7 @@ const labels = {
   broker: "Broker",
   quantity: "Qty",
   avg_buy_price: "Avg price",
+  price: "Price",
   invested: "Invested",
   current_value: "Current",
   gain: "Gain",
@@ -57,6 +60,28 @@ export const stockConfig: GridConfig<StockItem> = {
     kit.text("broker", (r) => r.broker),
     kit.number("quantity", (r) => r.quantity, (n) => String(n)),
     kit.money("avg_buy_price", (r) => r.avg_buy_price),
+    kit.display("price", (r) =>
+      r.price === null ? (
+        <span className="text-muted-foreground">—</span>
+      ) : (
+        <div className="leading-tight whitespace-nowrap">
+          <div className="num">{formatINR(r.price)}</div>
+          {r.day_change_pct !== null ? (
+            <div
+              className={cn(
+                "num text-[11px]",
+                r.day_change_pct > 0 && "text-gain",
+                r.day_change_pct < 0 && "text-loss",
+                r.day_change_pct === 0 && "text-muted-foreground",
+              )}
+            >
+              {r.day_change_pct > 0 ? "+" : ""}
+              {formatPct(r.day_change_pct)}
+            </div>
+          ) : null}
+        </div>
+      ),
+    ),
     kit.money("invested", (r) => r.invested),
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),

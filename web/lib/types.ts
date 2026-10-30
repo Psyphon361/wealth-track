@@ -316,7 +316,14 @@ export type SortDir = "asc" | "desc";
 
 export type FixedDepositItem = FixedDeposit & ComputedFields;
 export type RecurringDepositItem = RecurringDeposit & ComputedFields;
-export type StockItem = Stock & ComputedFields;
+export type StockItem = Stock &
+  ComputedFields & {
+    price: number | null;
+    prev_close: number | null;
+    day_change_pct: number | null;
+    price_time: string | null;
+    price_source: "yahoo" | "bhavcopy" | null;
+  };
 export type BondItem = Bond & ComputedFields;
 export type MutualFundItem = MutualFund &
   ComputedFields & { nav: number | null; nav_date: string | null };
@@ -350,4 +357,5 @@ export interface HoldingsResponse<TRow extends HoldingRow = HoldingRow> {
   page_count: number;
   summary: HoldingsSummary;
   facets: Record<string, FacetValue[]>;
+  prices_as_of?: string | null;
 }

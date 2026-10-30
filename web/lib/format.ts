@@ -22,3 +22,17 @@ export function formatDate(iso: string): string {
     timeZone: "UTC",
   });
 }
+
+/** ISO 8601 timestamp as IST, e.g. "30 Oct, 2:12 pm". */
+export function formatIstDateTime(iso: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "Asia/Kolkata",
+  }).formatToParts(new Date(iso));
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  return `${get("day")} ${get("month")}, ${get("hour")}:${get("minute")} ${get("dayPeriod").toLowerCase()}`;
+}
