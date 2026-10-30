@@ -108,7 +108,6 @@ export const mfConfig: GridConfig<MutualFundItem> = {
             {formatPct(r.xirr_pct)}
           </span>
         ),
-      sub: `since ${formatDate(r.purchase_date)}`,
     }),
     holding: (r) => [
       { label: "Scheme", value: r.scheme_name },

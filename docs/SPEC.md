@@ -192,7 +192,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Sortable headers; 10 rows per page; no totals row.
   - Row actions: eye (opens the details page `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
   - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
-- Holding details page `/portfolio/{type}/{id}` (`web/app/(app)/portfolio/[type]/[id]/`): one shared layout for all five types (`web/components/holding-detail/`), with per-type content from the `detail` block of each grid config (`web/components/portfolio/grid/configs/`). Data from `GET /api/holdings/{type}/{id}`. MF 4th card is XIRR (`xirr_pct`, "since <purchase date>"); the latest NAV shows in the Holding section as "Current NAV".
+- Holding details page `/portfolio/{type}/{id}` (`web/app/(app)/portfolio/[type]/[id]/`): one shared layout for all five types (`web/components/holding-detail/`), with per-type content from the `detail` block of each grid config (`web/components/portfolio/grid/configs/`). Data from `GET /api/holdings/{type}/{id}`. MF 4th card is XIRR (`xirr_pct`, percentage only); the latest NAV shows in the Holding section as "Current NAV".
   - Header: back link to the type's grid, type icon (`web/components/asset-type-icon.tsx`), name, sub-line, status badge, Edit and Delete.
   - KPI strip: Invested, Current value, Gain, and a type card: FD/RD/bond Maturity with days left; stock Price with day change; MF NAV with its as-of date.
   - Tenure bar for FD, RD and bonds.
