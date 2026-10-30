@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
-import type { AssetType, HoldingRow } from "@/lib/types";
+import type { AssetType, HoldingMaster, HoldingRow } from "@/lib/types";
 import type { gridFeatures } from "./features";
 
 export type GridFeatures = typeof gridFeatures;
@@ -40,6 +40,31 @@ export interface DateFilterDef {
 
 export type FilterDef = FacetFilterDef | RangeFilterDef | DateFilterDef;
 
+/** A label/value pair on the details page; empty values render as a dash. */
+export interface DetailField {
+  label: string;
+  value: string | null | undefined;
+  /** Numeric value: rendered with the `num` utility. */
+  figure?: boolean;
+}
+
+export interface DetailKpi {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+}
+
+/** What the shared holding details page needs from each asset type. */
+export interface DetailConfig<TRow extends HoldingRow> {
+  subtitle: (item: TRow) => string | null;
+  /** Fourth KPI card (Maturity / Price / NAV). */
+  kpi: (item: TRow) => DetailKpi;
+  /** Start and end dates for the tenure bar; omit for open-ended holdings. */
+  tenure?: (item: TRow) => { start: string; end: string } | null;
+  holding: (item: TRow) => DetailField[];
+  instrument: (master: HoldingMaster, item: TRow) => DetailField[];
+}
+
 export interface GridConfig<TRow extends HoldingRow> {
   type: AssetType;
   /** Lower-case plural noun, e.g. "fixed deposits". */
@@ -52,6 +77,7 @@ export interface GridConfig<TRow extends HoldingRow> {
   createColumns: (handlers: RowHandlers<TRow>) => GridColumn<TRow>[];
   rowName: (row: TRow) => string;
   renderEditForm: (row: TRow, onSaved: () => void) => ReactNode;
+  detail: DetailConfig<TRow>;
 }
 
 /** Every query-string key a filter definition reads or writes. */

@@ -1,5 +1,9 @@
 import { AssetForm } from "@/components/forms/asset-form";
-import { MF_CATEGORY_LABELS, type MutualFundItem } from "@/lib/types";
+import {
+  MF_CATEGORY_LABELS,
+  type MfScheme,
+  type MutualFundItem,
+} from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
@@ -22,11 +26,11 @@ const rowName = (r: MutualFundItem) => r.scheme_name;
 
 const kit = createColumnKit<MutualFundItem>("mf", labels, rowName);
 
-const units = new Intl.NumberFormat("en-IN", {
+export const units = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 3,
   maximumFractionDigits: 3,
 });
-const nav = new Intl.NumberFormat("en-IN", {
+export const nav = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 4,
   maximumFractionDigits: 4,
 });
@@ -89,6 +93,31 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     kit.date("purchase_date", (r) => r.purchase_date),
     kit.actions(handlers),
   ],
+  detail: {
+    subtitle: (r) =>
+      [MF_CATEGORY_LABELS[r.category], r.platform].filter(Boolean).join(" · "),
+    kpi: (r) => ({
+      label: "NAV",
+      value: r.nav == null ? "—" : <span className="num">{nav.format(r.nav)}</span>,
+      sub: r.nav != null && r.nav_date ? `as of ${formatDate(r.nav_date)}` : undefined,
+    }),
+    holding: (r) => [
+      { label: "Scheme", value: r.scheme_name },
+      { label: "Category", value: MF_CATEGORY_LABELS[r.category] },
+      { label: "Platform", value: r.platform },
+      { label: "Units", value: units.format(r.units), figure: true },
+      { label: "Avg NAV", value: nav.format(r.avg_nav), figure: true },
+      { label: "Purchase date", value: formatDate(r.purchase_date), figure: true },
+    ],
+    instrument: (m) => {
+      const s = m as MfScheme;
+      return [
+        { label: "Scheme code", value: String(s.scheme_code), figure: true },
+        { label: "AMC", value: s.amc },
+        { label: "Category", value: MF_CATEGORY_LABELS[s.category] },
+      ];
+    },
+  },
   renderEditForm: (row, onSaved) => (
     <AssetForm key={row.id} type="mf" record={row} onSaved={onSaved} />
   ),

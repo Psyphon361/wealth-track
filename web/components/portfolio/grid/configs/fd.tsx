@@ -5,10 +5,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { formatINR, formatPct } from "@/lib/format";
+import { formatDate, formatINR, formatPct } from "@/lib/format";
+import { formatTenure, maturityKpi } from "@/components/holding-detail/utils";
 import { cn } from "@/lib/utils";
 import {
   COMPOUNDING_LABELS,
+  FD_ISSUER_CATEGORY_LABELS,
+  type FdIssuer,
   PAYOUT_TYPE_LABELS,
   type FixedDepositItem,
 } from "@/lib/types";
@@ -31,6 +34,11 @@ const labels = {
 
 const rowName = (r: FixedDepositItem) =>
   r.label ? `${r.bank} · ${r.label}` : r.bank;
+
+const compoundingText = (r: FixedDepositItem) =>
+  r.payout_type === "payout"
+    ? `${PAYOUT_TYPE_LABELS.payout} · ${COMPOUNDING_LABELS[r.compounding]}`
+    : COMPOUNDING_LABELS[r.compounding];
 
 const kit = createColumnKit<FixedDepositItem>("fd", labels, rowName);
 
@@ -157,6 +165,52 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
     kit.status(),
     kit.actions(handlers),
   ],
+  detail: {
+    subtitle: (r) =>
+      `${formatPct(r.rate)} · ${r.payout_type === "payout" ? PAYOUT_TYPE_LABELS.payout : PAYOUT_TYPE_LABELS.cumulative}`,
+    kpi: (r) => maturityKpi(r.maturity_date, r.status === "matured"),
+    tenure: (r) =>
+      r.maturity_date ? { start: r.start_date, end: r.maturity_date } : null,
+    holding: (r) => [
+      { label: "Bank", value: r.bank },
+      { label: "Label", value: r.label },
+      { label: "Principal", value: formatINR(r.principal), figure: true },
+      { label: "Interest rate", value: formatPct(r.rate), figure: true },
+      { label: "Compounding", value: compoundingText(r) },
+      { label: "Start date", value: formatDate(r.start_date), figure: true },
+      {
+        label: "Tenure",
+        value: formatTenure(r.tenure_years, r.tenure_months, r.tenure_days),
+      },
+      {
+        label: "Maturity date",
+        value: r.maturity_date ? formatDate(r.maturity_date) : null,
+        figure: true,
+      },
+      ...(r.payout_type === "payout"
+        ? [
+            {
+              label: "Interest received",
+              value:
+                r.interest_received == null
+                  ? null
+                  : formatINR(r.interest_received),
+              figure: true,
+            },
+          ]
+        : []),
+    ],
+    instrument: (m) => {
+      const i = m as FdIssuer;
+      return [
+        { label: "Issuer type", value: FD_ISSUER_CATEGORY_LABELS[i.category] },
+        {
+          label: "DICGC insured",
+          value: i.dicgc_insured == null ? null : i.dicgc_insured ? "Yes" : "No",
+        },
+      ];
+    },
+  },
   renderEditForm: (row, onSaved) => (
     <AssetForm key={row.id} type="fd" record={row} onSaved={onSaved} />
   ),

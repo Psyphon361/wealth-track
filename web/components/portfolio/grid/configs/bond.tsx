@@ -1,6 +1,7 @@
 import { AssetForm } from "@/components/forms/asset-form";
-import { formatINR, formatPct } from "@/lib/format";
-import { BOND_TYPE_LABELS, type BondItem } from "@/lib/types";
+import { formatDate, formatINR, formatPct } from "@/lib/format";
+import { maturityKpi } from "@/components/holding-detail/utils";
+import { BOND_TYPE_LABELS, type BondItem, type BondMaster } from "@/lib/types";
 import type { GridConfig } from "../types";
 import { createColumnKit, STATUS_LABELS } from "./shared";
 
@@ -100,6 +101,58 @@ export const bondConfig: GridConfig<BondItem> = {
     kit.status(),
     kit.actions(handlers),
   ],
+  detail: {
+    subtitle: (r) => [r.isin, BOND_TYPE_LABELS[r.bond_type]].filter(Boolean).join(" · "),
+    kpi: (r) => maturityKpi(r.maturity_date, r.status === "matured"),
+    tenure: (r) => ({ start: r.purchase_date, end: r.maturity_date }),
+    holding: (r) => [
+      { label: "Name", value: r.name },
+      { label: "ISIN", value: r.isin, figure: true },
+      { label: "Issuer", value: r.issuer },
+      { label: "Type", value: BOND_TYPE_LABELS[r.bond_type] },
+      { label: "Platform", value: r.platform },
+      { label: "Quantity", value: String(r.quantity), figure: true },
+      {
+        label: "Purchase price per unit",
+        value: formatINR(r.purchase_price),
+        figure: true,
+      },
+      { label: "Total invested", value: formatINR(r.invested), figure: true },
+      { label: "YTM", value: formatPct(r.ytm), figure: true },
+      { label: "Purchase date", value: formatDate(r.purchase_date), figure: true },
+      { label: "Maturity date", value: formatDate(r.maturity_date), figure: true },
+    ],
+    instrument: (m) => {
+      const b = m as BondMaster;
+      return [
+        {
+          label: "Coupon rate",
+          value: b.coupon_rate == null ? null : formatPct(b.coupon_rate),
+          figure: true,
+        },
+        { label: "Coupon type", value: b.coupon_type },
+        { label: "Interest frequency", value: b.interest_frequency },
+        {
+          label: "Rating",
+          value: b.rating
+            ? b.rating_agency
+              ? `${b.rating} (${b.rating_agency})`
+              : b.rating
+            : null,
+        },
+        {
+          label: "Face value",
+          value: b.face_value == null ? null : formatINR(b.face_value),
+          figure: true,
+        },
+        {
+          label: "Issue date",
+          value: b.issue_date ? formatDate(b.issue_date) : null,
+          figure: true,
+        },
+      ];
+    },
+  },
   renderEditForm: (row, onSaved) => (
     <AssetForm key={row.id} type="bond" record={row} onSaved={onSaved} />
   ),

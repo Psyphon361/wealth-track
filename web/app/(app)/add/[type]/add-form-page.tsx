@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { AssetForm } from "@/components/forms/asset-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { getAssetEntry } from "@/lib/asset-catalog";
@@ -16,9 +17,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
       <div className="flex items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <entry.icon className="size-5" />
-        </div>
+        <AssetTypeIcon icon={entry.icon} />
         <h2 className="text-base font-medium">{entry.title}</h2>
       </div>
       <Card className="px-5 py-4 md:px-8 md:py-5">

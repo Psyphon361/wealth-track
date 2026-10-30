@@ -170,6 +170,8 @@ export interface BondMaster {
   rating: string | null;
   rating_agency: string | null;
   rating_as_of: string | null;
+  coupon_type: string | null;
+  interest_frequency: string | null;
 }
 
 export interface StockInput {
@@ -358,4 +360,13 @@ export interface HoldingsResponse<TRow extends HoldingRow = HoldingRow> {
   summary: HoldingsSummary;
   facets: Record<string, FacetValue[]>;
   prices_as_of?: string | null;
+}
+
+// Holding details (GET /holdings/{type}/{id})
+
+export type HoldingMaster = FdIssuer | StockMaster | BondMaster | MfScheme;
+
+export interface HoldingDetailResponse<TItem extends HoldingRow = HoldingRow> {
+  item: TItem;
+  master: HoldingMaster | null;
 }

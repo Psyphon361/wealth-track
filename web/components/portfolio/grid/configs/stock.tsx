@@ -1,7 +1,12 @@
 import { AssetForm } from "@/components/forms/asset-form";
-import { formatINR, formatPct } from "@/lib/format";
+import {
+  formatDate,
+  formatINR,
+  formatIstDateTime,
+  formatPct,
+} from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { EXCHANGE_LABELS, type StockItem } from "@/lib/types";
+import { EXCHANGE_LABELS, type StockItem, type StockMaster } from "@/lib/types";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -89,6 +94,49 @@ export const stockConfig: GridConfig<StockItem> = {
     kit.date("buy_date", (r) => r.buy_date),
     kit.actions(handlers),
   ],
+  detail: {
+    subtitle: (r) => [r.symbol, EXCHANGE_LABELS[r.exchange]].filter(Boolean).join(" · "),
+    kpi: (r) => ({
+      label: "Price",
+      value:
+        r.price === null ? "—" : <span className="num">{formatINR(r.price)}</span>,
+      sub:
+        r.price !== null && r.day_change_pct !== null ? (
+          <span
+            className={cn(
+              "num",
+              r.day_change_pct > 0 && "text-gain",
+              r.day_change_pct < 0 && "text-loss",
+            )}
+          >
+            {r.day_change_pct > 0 ? "+" : ""}
+            {formatPct(r.day_change_pct)} today
+          </span>
+        ) : undefined,
+    }),
+    holding: (r) => [
+      { label: "Name", value: r.name },
+      { label: "Symbol", value: r.symbol },
+      { label: "Exchange", value: EXCHANGE_LABELS[r.exchange] },
+      { label: "Broker", value: r.broker },
+      { label: "Quantity", value: String(r.quantity), figure: true },
+      { label: "Avg buy price", value: formatINR(r.avg_buy_price), figure: true },
+      { label: "Purchase date", value: formatDate(r.buy_date), figure: true },
+    ],
+    instrument: (m, r) => {
+      const s = m as StockMaster;
+      return [
+        { label: "ISIN", value: s.isin, figure: true },
+        { label: "NSE symbol", value: s.nse_symbol },
+        { label: "BSE symbol", value: s.bse_symbol ?? s.bse_code },
+        {
+          label: "Price date",
+          value: r.price_time ? formatIstDateTime(r.price_time) : null,
+          figure: true,
+        },
+      ];
+    },
+  },
   renderEditForm: (row, onSaved) => (
     <AssetForm key={row.id} type="stock" record={row} onSaved={onSaved} />
   ),

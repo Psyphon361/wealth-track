@@ -20,7 +20,7 @@ import type { AssetType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Flip once the /portfolio/{type}/{id} details page exists. */
-const DETAILS_ENABLED = false;
+const DETAILS_ENABLED = true;
 
 interface MenuEntry {
   key: string;

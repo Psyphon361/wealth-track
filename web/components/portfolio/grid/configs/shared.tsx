@@ -20,7 +20,7 @@ export const STATUS_LABELS: Record<HoldingStatus, string> = {
 
 const dash = <span className="text-muted-foreground">—</span>;
 
-function StatusBadge({ status }: { status: HoldingStatus }) {
+export function StatusBadge({ status }: { status: HoldingStatus }) {
   return status === "active" ? (
     <Badge variant="outline" className="font-normal">
       {STATUS_LABELS.active}

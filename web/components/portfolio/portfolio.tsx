@@ -5,19 +5,12 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { apiDelete } from "@/lib/api";
-import { getAssetEntry } from "@/lib/asset-catalog";
 import { formatINR, formatIstDateTime } from "@/lib/format";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
 import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
+import { EditDialog } from "./edit-dialog";
 import { bondConfig } from "./grid/configs/bond";
 import { fdConfig } from "./grid/configs/fd";
 import { mfConfig } from "./grid/configs/mf";
@@ -69,8 +62,6 @@ function TypedPortfolio<TRow extends HoldingRow>({
   const { refetch, removeItem } = q;
   const [editing, setEditing] = useState<TRow | null>(null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
-  const entry = getAssetEntry(config.type);
-  const title = entry?.title ?? config.noun;
   const addLabel = addLabelFor(config.type);
   const count = q.data
     ? q.data.summary.count + q.data.summary.matured_count
@@ -192,22 +183,12 @@ function TypedPortfolio<TRow extends HoldingRow>({
           onDelete={onDelete}
         />
 
-        <Dialog
-          open={editing !== null}
-          onOpenChange={(open) => {
-            if (!open) setEditing(null);
-          }}
-        >
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Edit {title.toLowerCase()}</DialogTitle>
-              <DialogDescription>
-                {editing ? config.rowName(editing) : ""}
-              </DialogDescription>
-            </DialogHeader>
-            {editing ? config.renderEditForm(editing, handleSaved) : null}
-          </DialogContent>
-        </Dialog>
+        <EditDialog
+          config={config}
+          row={editing}
+          onClose={() => setEditing(null)}
+          onSaved={handleSaved}
+        />
 
         <DeleteDialog
           target={deleting}
