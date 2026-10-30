@@ -178,8 +178,17 @@ export function BondForm({
   onSaved?: (record: Bond) => void;
   onCancel?: () => void;
 }) {
-  const { control, handleSubmit, setValue, getValues, setError, clearErrors } =
-    useForm<FormIn, unknown, FormOut>({
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    getValues,
+    setError,
+    clearErrors,
+    trigger,
+    getFieldState,
+    formState,
+  } = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
@@ -234,8 +243,22 @@ export function BondForm({
     }|${name === "purchase_price" ? next : priceStr}|${
       name === "invested_amount" ? next : totalStr
     }`;
-    setValue(name, next, { shouldValidate: true, shouldDirty: true });
-  }, [qtyStr, priceStr, totalStr, getValues, setValue]);
+    const amountFields = ["quantity", "purchase_price", "invested_amount"] as const;
+    const revalidate =
+      formState.isSubmitted ||
+      amountFields.some((f) => getFieldState(f, formState).error);
+    setValue(name, next, { shouldDirty: true });
+    if (revalidate) void trigger(amountFields);
+  }, [
+    qtyStr,
+    priceStr,
+    totalStr,
+    getValues,
+    setValue,
+    trigger,
+    getFieldState,
+    formState,
+  ]);
 
   // Master details for the summary line (selected, or fetched when editing).
   const [meta, setMeta] = useState<BondMaster | null>(null);
