@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { AssetForm } from "@/components/forms/asset-form";
@@ -9,10 +10,19 @@ import type { AssetType } from "@/lib/types";
 
 export function AddFormPage({ type }: { type: AssetType }) {
   const router = useRouter();
+  // The route stays mounted after leaving it (cacheComponents), so bump the
+  // key to remount the form blank for the next visit.
+  const [formKey, setFormKey] = useState(0);
   const entry = getAssetEntry(type);
   if (!entry) return null;
-  const onSaved = () => router.push(`/portfolio/${type}`);
-  const onCancel = () => router.push("/add");
+  const onSaved = () => {
+    setFormKey((k) => k + 1);
+    router.push(`/portfolio/${type}`);
+  };
+  const onCancel = () => {
+    setFormKey((k) => k + 1);
+    router.push("/add");
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
@@ -23,19 +33,44 @@ export function AddFormPage({ type }: { type: AssetType }) {
       <Card className="px-5 py-4 md:px-8 md:py-5">
         <CardContent className="px-0">
           {type === "fd" && (
-            <AssetForm type="fd" onSaved={onSaved} onCancel={onCancel} />
+            <AssetForm
+              key={formKey}
+              type="fd"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
           )}
           {type === "rd" && (
-            <AssetForm type="rd" onSaved={onSaved} onCancel={onCancel} />
+            <AssetForm
+              key={formKey}
+              type="rd"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
           )}
           {type === "stock" && (
-            <AssetForm type="stock" onSaved={onSaved} onCancel={onCancel} />
+            <AssetForm
+              key={formKey}
+              type="stock"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
           )}
           {type === "bond" && (
-            <AssetForm type="bond" onSaved={onSaved} onCancel={onCancel} />
+            <AssetForm
+              key={formKey}
+              type="bond"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
           )}
           {type === "mf" && (
-            <AssetForm type="mf" onSaved={onSaved} onCancel={onCancel} />
+            <AssetForm
+              key={formKey}
+              type="mf"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
           )}
         </CardContent>
       </Card>
