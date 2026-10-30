@@ -127,6 +127,19 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     [endpoint],
   );
 
+  // With cacheComponents the route stays mounted (hidden) after navigating
+  // away, keeping state. Effect cleanups run on hide, so drop the cached
+  // result here: on reveal the grid shows the skeleton until fresh data lands.
+  useEffect(() => {
+    return () => {
+      setData(null);
+      setError(null);
+      setSettled(null);
+      setRefreshing(false);
+      hasData.current = false;
+    };
+  }, []);
+
   useEffect(() => {
     const counter = requestId;
     load(qs);
