@@ -133,9 +133,14 @@ def value_bond(bond: Any, today: date | None = None) -> dict[str, Any]:
     )
 
 
-def value_stock(stock: Any, today: date | None = None) -> dict[str, Any]:
+def value_stock(
+    stock: Any, today: date | None = None, *, price: Decimal | None = None
+) -> dict[str, Any]:
+    """Current value is quantity x last price when a price is known, else the invested amount."""
     invested = stock.quantity * Decimal(stock.avg_buy_price)
-    return _result(invested, invested)
+    if price is None:
+        return _result(invested, invested)
+    return _result(invested, stock.quantity * Decimal(price))
 
 
 def value_mf(

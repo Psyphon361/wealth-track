@@ -11,6 +11,7 @@ kind and name; other sources only fill fields that are still empty. BSE rows who
 NSE debt list are bonds and are dropped here.
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.models.stock_master import StockMaster
 from app.services import market_files as market
+from app.services import stock_prices
 from app.services.market_files import SourceRows, Sources
 
 BHAV_SERIES = ("SM", "ST")
@@ -32,6 +34,7 @@ COLUMNS = [
 SOURCES = ["equity", "etf", "bhav", "bse"]  # fill order; lower index wins
 UNKNOWN_STOCK_MESSAGE = "Select a stock from the list"
 _SYMBOL = re.compile(r"^[A-Z0-9&-]{1,20}$")
+log = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -128,6 +131,45 @@ def parse_bse_bhav(data: bytes | str) -> SourceRows:
     return result
 
 
+def _trade_date(value: str | None, fallback: date) -> date:
+    try:
+        return date.fromisoformat(market.s(value)[:10])
+    except ValueError:
+        return fallback
+
+
+def parse_closes(data: bytes | str, fallback_date: date) -> dict[str, dict]:
+    """Per-ISIN close from a UDiFF bhavcopy (NSE or BSE), all series: price, prev_close, trade_date."""
+    closes: dict[str, dict] = {}
+    for rec in market.records(data):
+        isin = market.s(rec.get("ISIN"))
+        price = market.decimal_value(rec.get("ClsPric"), "0.01", 10**12)
+        if not market.ISIN_RE.match(isin) or not price:
+            continue
+        closes[isin] = {
+            "price": price,
+            "prev_close": market.decimal_value(rec.get("PrvsClsgPric"), "0.01", 10**12) or None,
+            "trade_date": _trade_date(rec.get("TradDt"), fallback_date),
+        }
+    return closes
+
+
+def collect_closes(sources: Sources) -> dict[str, dict]:
+    """Closes from both bhavcopies; NSE wins over BSE for the same ISIN. Unparseable files are skipped."""
+    closes: dict[str, dict] = {}
+    if sources.bse:
+        try:
+            closes.update(parse_closes(sources.bse[1], sources.bse[0]))
+        except Exception as exc:  # noqa: BLE001 - backup prices must never abort the import
+            log.warning("BSE close prices skipped: %s", exc)
+    if sources.bhav:
+        try:
+            closes.update(parse_closes(market.unzip_first(sources.bhav[1]), sources.bhav[0]))
+        except Exception as exc:  # noqa: BLE001
+            log.warning("NSE close prices skipped: %s", exc)
+    return closes
+
+
 # --- Merge / build -------------------------------------------------------------
 
 
@@ -167,6 +209,11 @@ def import_stocks(session: Session, sources: Sources, today: date) -> StockImpor
     stats = market.upsert_master(
         session, StockMaster, rows, COLUMNS + ["last_seen", "is_active"], BHAV_SERIES, today
     )
+    try:
+        stock_prices.upsert_closes(session, collect_closes(sources))
+    except Exception as exc:  # noqa: BLE001 - backup prices must never fail the master import
+        session.rollback()
+        log.warning("close prices not stored: %s", exc)
     kinds: dict[str, int] = {}
     for row in rows:
         kinds[row["kind"]] = kinds.get(row["kind"], 0) + 1

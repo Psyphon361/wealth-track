@@ -122,7 +122,8 @@ def _run(
     maturity_to: date | None = None,
 ) -> dict[str, Any]:
     cfg = CONFIG[slug]
-    rows: list[dict[str, Any]] = load_group(db, slug, user_id)["items"]
+    group = load_group(db, slug, user_id)
+    rows: list[dict[str, Any]] = group["items"]
     needle = (q or "").strip().lower()
     selected = {k: set(v) for k, v in multi.items() if v}
     m_from = maturity_from.isoformat() if maturity_from else None
@@ -207,6 +208,7 @@ def _run(
         "page_count": page_count,
         "summary": summary,
         "facets": facets,
+        "prices_as_of": group.get("prices_as_of"),
     }
 
 

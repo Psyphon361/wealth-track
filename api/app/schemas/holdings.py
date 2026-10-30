@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
@@ -28,3 +29,4 @@ class HoldingsResponse(BaseModel):
     page_count: int
     summary: HoldingsSummary
     facets: dict[str, list[FacetValue]]
+    prices_as_of: datetime | None = None  # stocks only: latest price_time over held stocks

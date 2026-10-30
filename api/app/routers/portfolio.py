@@ -12,9 +12,10 @@ from app.deps import current_user
 from app.models.user import User
 from app.models.mf_master import MFNavLatest
 from app.models.mutual_fund import MutualFund
+from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
-from app.services import valuation
+from app.services import stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
 
@@ -60,38 +61,83 @@ def _fetch_navs(bind: Any, user_id: int) -> dict[int, tuple[Decimal, date]]:
         return {r.scheme_code: (r.nav, r.nav_date) for r in session.scalars(stmt).all()}
 
 
-def _value(slug: str, record: Any, today: date, navs: dict[int, tuple[Decimal, date]]):
+def _value(
+    slug: str,
+    record: Any,
+    today: date,
+    navs: dict[int, tuple[Decimal, date]],
+    prices: dict[int, StockPriceLatest],
+):
     if slug == "mf":
         nav, nav_date = navs.get(record.scheme_code, (None, None))
         return valuation.value_mf(record, today, nav=nav, nav_date=nav_date)
+    if slug == "stock":
+        row = prices.get(record.master_id) if record.master_id is not None else None
+        out = valuation.value_stock(record, today, price=row.price if row else None)
+        out["price"] = row.price if row else None
+        out["prev_close"] = row.prev_close if row else None
+        out["day_change_pct"] = (
+            stock_prices.day_change_pct(row.price, row.prev_close) if row else None
+        )
+        out["price_time"] = row.price_time.isoformat() if row and row.price_time else None
+        out["price_source"] = row.source if row else None
+        return out
     return _VALUERS[slug](record, today)
+
+
+def _fetch_stocks(
+    bind: Any, user_id: int
+) -> tuple[list[Any], dict[int, StockPriceLatest]]:
+    """The user's stocks plus fresh last prices, on this part's own session."""
+    model = REGISTRY["stock"][0]
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        records = list(
+            session.scalars(
+                select(model).where(model.user_id == user_id).order_by(model.id)
+            ).all()
+        )
+        return records, _prices_for(session, records)
+
+
+def _prices_for(session: Session, records: list[Any]) -> dict[int, StockPriceLatest]:
+    ids = {r.master_id for r in records if r.master_id is not None}
+    stock_prices.ensure_fresh(session, ids)
+    return stock_prices.latest_prices(session, ids)
 
 
 def build_groups(
     records_by_type: dict[str, list[Any]],
     today: date,
     navs: dict[int, tuple[Decimal, date]] | None = None,
+    prices: dict[int, StockPriceLatest] | None = None,
 ) -> list[dict[str, Any]]:
     """Value every holding; returns the 5 groups in fixed order."""
     navs = navs or {}
+    prices = prices or {}
     groups = []
     for slug, (_model, _create, read_schema) in REGISTRY.items():
-        computed = [_value(slug, r, today, navs) for r in records_by_type.get(slug, [])]
+        computed = [_value(slug, r, today, navs, prices) for r in records_by_type.get(slug, [])]
         items = [
             _item(r, read_schema, c)
             for r, c in zip(records_by_type.get(slug, []), computed, strict=True)
         ]
         active = [c for c in computed if c["status"] == "active"]
-        groups.append(
-            {
-                "type": slug,
-                "label": LABELS[slug],
-                "items": items,
-                "totals": valuation.aggregate(active),
-                "count": len(active),
-                "matured_count": len(computed) - len(active),
-            }
-        )
+        group = {
+            "type": slug,
+            "label": LABELS[slug],
+            "items": items,
+            "totals": valuation.aggregate(active),
+            "count": len(active),
+            "matured_count": len(computed) - len(active),
+        }
+        if slug == "stock":
+            times = [
+                prices[r.master_id].price_time
+                for r in records_by_type.get(slug, [])
+                if r.master_id in prices and prices[r.master_id].price_time
+            ]
+            group["prices_as_of"] = max(times) if times else None
+        groups.append(group)
     return groups
 
 
@@ -106,12 +152,16 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
 
     with ThreadPoolExecutor(max_workers=len(REGISTRY) + 1) as pool:
         futures = {
-            slug: pool.submit(fetch, model) for slug, (model, _c, _r) in REGISTRY.items()
+            slug: pool.submit(fetch, model)
+            for slug, (model, _c, _r) in REGISTRY.items()
+            if slug != "stock"
         }
+        stock_future = pool.submit(_fetch_stocks, bind, user_id)
         nav_future = pool.submit(_fetch_navs, bind, user_id)
         records = {slug: future.result() for slug, future in futures.items()}
+        records["stock"], prices = stock_future.result()
         navs = nav_future.result()
-    return build_groups(records, today or date.today(), navs)
+    return build_groups(records, today or date.today(), navs, prices)
 
 
 def load_group(
@@ -128,7 +178,8 @@ def load_group(
     else:
         records = list(db.scalars(stmt).all())
         navs = {}
-    groups = build_groups({slug: records}, today or date.today(), navs)
+    prices = _prices_for(db, records) if slug == "stock" else {}
+    groups = build_groups({slug: records}, today or date.today(), navs, prices)
     return next(g for g in groups if g["type"] == slug)
 
 

@@ -34,7 +34,7 @@ def make_stock(**kw):
     from datetime import date
 
     fields = dict(
-        name="Test Stock", symbol=None, exchange="NSE", broker=None, quantity=10,
+        name="Test Stock", symbol=None, exchange="NSE", master_id=None, broker=None, quantity=10,
         avg_buy_price=Decimal("100"), buy_date=date(2025, 1, 1),
     )  # fmt: skip
     fields.update(kw)
