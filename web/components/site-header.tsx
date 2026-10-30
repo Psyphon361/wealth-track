@@ -66,20 +66,22 @@ export function SiteHeader() {
             return (
               <Fragment key={crumb.label}>
                 {i > 0 ? <BreadcrumbSeparator /> : null}
-                <BreadcrumbItem>
+                <BreadcrumbItem className={last ? "min-w-0" : "shrink-0 whitespace-nowrap"}>
                   {last || !crumb.href ? (
                     crumb.pending ? (
                       <Skeleton className="h-4 w-24" />
                     ) : (
                       <BreadcrumbPage
-                        className="block max-w-[40vw] truncate"
+                        className="block min-w-0 max-w-[40vw] truncate"
                         title={crumb.label}
                       >
                         {crumb.label}
                       </BreadcrumbPage>
                     )
                   ) : (
-                    <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
+                    <BreadcrumbLink href={crumb.href} className="whitespace-nowrap">
+                      {crumb.label}
+                    </BreadcrumbLink>
                   )}
                 </BreadcrumbItem>
               </Fragment>
