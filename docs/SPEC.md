@@ -23,6 +23,7 @@ Removed by user decision: FD maturity amount & status inputs, stock current pric
 - **`mf_master`** (static; daily upsert writes only rows that changed; renamed from `mf_schemes` in migration 0007, metadata-only): scheme_code PK, name, amc, amfi_category, category (mapped to the app enum), plan (direct/regular), option (growth/idcw/bonus/other), idcw_frequency, isin_growth_payout, isin_reinvest, is_active, updated_at. Model `MFMaster` (`api/app/models/mf_master.py`).
 - **`mf_nav_latest`:** scheme_code PK/FK, nav (4 dp), nav_date. One current NAV per scheme.
 - **Source:** AMFI `https://portal.amfiindia.com/spages/NAVAll.txt`. A scheme is active if its NAV date is within 30 days of the file's latest date. Rows are never deleted.
+- **Plan and option enrichment:** the same import also downloads AMFI's scheme master CSV (`https://portal.amfiindia.com/DownloadSchemeData_Po.aspx?mf=0`). Where NAVAll.txt leaves plan or option blank and the scheme name doesn't say, it takes them from the CSV's "Scheme NAV Name" column (about 5,400 of 14,400 schemes). Non-blank NAVAll columns win. If the CSV fetch fails, the import still runs without it. ETFs, FMPs and interval funds often have no plan, which stays null. The result and job output report `scheme_data_loaded` and `from_scheme_data` (the job prints `plan_or_option_from_scheme_data`).
 - **Category mapping** (AMFI category → app enum):
   - ELSS → elss
   - other Equity → equity

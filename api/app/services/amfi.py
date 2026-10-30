@@ -6,6 +6,8 @@ Lines without `;` are headers: a category header such as
 `Open Ended Schemes(Debt Scheme - Liquid Fund)`, or otherwise an AMC header.
 """
 
+import csv
+import io
 import re
 import urllib.request
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ from app.models.mf_master import MFNavLatest, MFMaster
 from app.services import nav_history
 
 NAVALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
+SCHEME_DATA_URL = "https://portal.amfiindia.com/DownloadSchemeData_Po.aspx?mf=0"
 FETCH_TIMEOUT = 30
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -72,6 +75,7 @@ class ParseResult:
     navs: list[NavRow] = field(default_factory=list)  # latest NAV, only rows with a valid NAV + date
     file_date: date | None = None
     skipped: int = 0
+    from_scheme_data: int = 0  # rows whose plan or option came from the scheme data NAV name
 
 
 @dataclass(frozen=True)
@@ -87,6 +91,8 @@ class ImportResult:
     navs_upserted: int
     history_appended: int = 0
     history_synced: int = 0
+    scheme_data_loaded: bool = False
+    from_scheme_data: int = 0
 
 
 # --- Normalisation -------------------------------------------------------------
@@ -160,6 +166,29 @@ def infer_option_from_name(name: str) -> tuple[str | None, str | None]:
     return None, None
 
 
+_NAV_GROWTH = re.compile(r"\b(growth|cumulative)\b")
+_NAV_BONUS = re.compile(r"\bbonus\b")
+
+
+def infer_option_from_nav_name(nav_name: str, scheme_name: str = "") -> tuple[str | None, str | None]:
+    """Option from AMFI's "Scheme NAV Name" (idcw / bonus / growth); None when unrecognised.
+
+    The scheme name is removed first so fund names such as "Growth Fund" or "Dividend Yield Fund"
+    are not mistaken for an option.
+    """
+    t = nav_name.lower()
+    base = scheme_name.strip().lower()
+    if base:
+        t = t.replace(base, " ")
+    if _IDCW.search(t):
+        return "idcw", idcw_frequency(t)
+    if _NAV_BONUS.search(t):
+        return "bonus", None
+    if _NAV_GROWTH.search(t):
+        return "growth", None
+    return None, None
+
+
 def normalise_plan(text: str, name: str) -> str | None:
     for source in (text.lower(), name.lower()):
         if re.search(r"\bdirect\b", source):
@@ -195,8 +224,12 @@ def _parse_nav(value: str) -> Decimal | None:
     return nav if nav.is_finite() and 0 <= nav <= MAX_NAV else None
 
 
-def parse_navall(text: str) -> ParseResult:
-    """Parse NAVAll.txt. Pure; malformed lines are counted in `skipped`, never raised."""
+def parse_navall(text: str, nav_names: dict[int, str] | None = None) -> ParseResult:
+    """Parse NAVAll.txt. Pure; malformed lines are counted in `skipped`, never raised.
+
+    `nav_names` (scheme code -> AMFI "Scheme NAV Name") fills a plan or option that NAVAll leaves
+    blank and the scheme name cannot tell; non-blank NAVAll columns always win.
+    """
     parsed: dict[int, tuple] = {}
     result = ParseResult()
     category: str | None = None
@@ -236,12 +269,22 @@ def parse_navall(text: str) -> ParseResult:
     cutoff = result.file_date - timedelta(days=STALE_DAYS) if result.file_date else None
 
     for code, name, amc_, cat, isin1, isin2, plan, option, nav, nav_date in parsed.values():
+        nav_name = nav_names.get(code) if nav_names else None
+        from_data = False
         plan_value = normalise_plan(plan, name)
+        if plan_value is None and nav_name:
+            plan_value = normalise_plan("", nav_name)
+            from_data = plan_value is not None
         option_text = option.strip()
         if option_text:
             option_value, frequency = normalise_option(option_text)
         else:
             option_value, frequency = infer_option_from_name(name)
+            if option_value is None and nav_name:
+                option_value, frequency = infer_option_from_nav_name(nav_name, name)
+                from_data = from_data or option_value is not None
+        if from_data:
+            result.from_scheme_data += 1
         result.rows.append(
             SchemeRow(
                 scheme_code=code,
@@ -271,9 +314,39 @@ def fetch_navall() -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
-def import_navall(session: Session, text: str) -> ImportResult:
+def parse_scheme_data(text: str) -> dict[int, str]:
+    """AMFI scheme master CSV -> {scheme_code: Scheme NAV Name}. Malformed rows are skipped."""
+    names: dict[int, str] = {}
+    reader = csv.reader(io.StringIO(text.lstrip("\ufeff")))
+    header = next(reader, None)
+    if not header:
+        return names
+    columns = [h.strip().lower() for h in header]
+    try:
+        code_at = columns.index("code")
+        name_at = columns.index("scheme nav name")
+    except ValueError:
+        return names
+    for record in reader:
+        if len(record) <= max(code_at, name_at):
+            continue
+        code, name = record[code_at].strip(), record[name_at].strip()
+        if code.isdigit() and name and int(code) <= MAX_SCHEME_CODE:
+            names[int(code)] = name
+    return names
+
+
+def fetch_scheme_data() -> dict[int, str]:
+    request = urllib.request.Request(SCHEME_DATA_URL, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT) as response:  # noqa: S310
+        return parse_scheme_data(response.read().decode("utf-8", errors="replace"))
+
+
+def import_navall(
+    session: Session, text: str, nav_names: dict[int, str] | None = None
+) -> ImportResult:
     """Upsert every scheme in the file; codes missing from the file become inactive. Never deletes."""
-    parsed = parse_navall(text)
+    parsed = parse_navall(text, nav_names)
     if not parsed.rows:
         raise ValueError("NAVAll file contained no scheme rows")
 
@@ -350,6 +423,8 @@ def import_navall(session: Session, text: str) -> ImportResult:
         navs_upserted=navs_upserted,
         history_appended=history_appended,
         history_synced=history_synced,
+        scheme_data_loaded=bool(nav_names),
+        from_scheme_data=parsed.from_scheme_data,
     )
 
 

@@ -35,6 +35,8 @@ class AmfiImportResult(BaseModel):
     navs_upserted: int
     history_appended: int = 0
     history_synced: int = 0
+    scheme_data_loaded: bool = False
+    from_scheme_data: int = 0
 
 
 class MFNavOnDate(BaseModel):

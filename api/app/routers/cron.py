@@ -31,7 +31,11 @@ def refresh_amfi(db: Session = Depends(get_db)):
         text = amfi.fetch_navall()
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise HTTPException(status_code=502, detail="Couldn't fetch the AMFI file") from exc
-    return amfi.import_navall(db, text)
+    try:
+        nav_names = amfi.fetch_scheme_data()
+    except (urllib.error.URLError, TimeoutError, OSError):
+        nav_names = None
+    return amfi.import_navall(db, text, nav_names)
 
 
 @router.get(

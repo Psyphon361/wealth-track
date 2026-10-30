@@ -10,6 +10,7 @@ from app.services.amfi import (
     map_category,
     normalise_option,
     parse_navall,
+    parse_scheme_data,
 )
 
 SAMPLE = (Path(__file__).parent / "fixtures" / "navall_sample.txt").read_text(encoding="utf-8")
@@ -191,3 +192,91 @@ def test_malformed_lines_are_skipped_not_fatal():
 def test_empty_input():
     result = parse_navall("")
     assert result.rows == [] and result.file_date is None
+
+
+SCHEME_CSV = (
+    "AMC,Code,Scheme Name,Scheme Type,Scheme Category,Scheme NAV Name,Scheme Minimum Amount,"
+    "Launch Date, Closure Date,ISIN Div Payout/ ISIN GrowthISIN Div Reinvestment\n"
+    'Test AMC,500001,Test Fund,Open Ended,Equity Scheme - Flexi Cap Fund,"Test Fund, Series 1-Direct - IDCW Payout/Reinvestment",5000,01-Jan-2020,,INF000A00001\n'
+    "Test AMC,notacode,Bad Fund,Open Ended,Equity,Bad Fund-Direct,5000,,,\n"
+    "Test AMC,500002\n"
+    "Test AMC,500003,Other Fund,Open Ended,Equity,,5000,,,\n"
+)
+
+
+def _navall(*lines: str) -> str:
+    header = "Scheme Code;ISIN Div Payout/ ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date"
+    return "\n".join(
+        [header, "", "Open Ended Schemes(Equity Scheme - Mid Cap Fund)", "", "Test Mutual Fund", *lines]
+    )
+
+
+def _line(code: int, name: str, plan: str = "", option: str = "") -> str:
+    return f"{code};INF000A0000{code % 10};-;{name};{plan};{option};10.0000;30-Oct-2026"
+
+
+def _one(line: str, nav_names):
+    return parse_navall(_navall(line), nav_names).rows[0]
+
+
+def test_parse_scheme_data_handles_quoted_comma_and_skips_malformed():
+    assert parse_scheme_data(SCHEME_CSV) == {
+        500001: "Test Fund, Series 1-Direct - IDCW Payout/Reinvestment"
+    }
+
+
+def test_parse_scheme_data_without_nav_name_column_is_empty():
+    assert parse_scheme_data("AMC,Code,Scheme Name\nTest AMC,500001,Test Fund\n") == {}
+
+
+@pytest.mark.parametrize(
+    "nav_name, plan, option, frequency",
+    [
+        ("Test Fund-Direct - IDCW Payout/Reinvestment", "direct", "idcw", None),
+        ("Test Fund-Regular Plan-Growth Option", "regular", "growth", None),
+        ("Test Fund-Direct Plan Growth Option", "direct", "growth", None),
+        ("Test Fund - Series 9 - Cumulative Option", None, "growth", None),
+        ("Test Fund-Direct - IDCW Monthly", "direct", "idcw", "monthly"),
+        ("Test Fund-Regular - Bonus", "regular", "bonus", None),
+        ("Test Fund-Direct", "direct", None, None),
+    ],
+)
+def test_blank_columns_filled_from_nav_name(nav_name, plan, option, frequency):
+    row = _one(_line(600001, "Test Fund"), {600001: nav_name})
+    assert (row.plan, row.option, row.idcw_frequency) == (plan, option, frequency)
+
+
+def test_fund_name_words_are_not_read_as_option():
+    row = _one(_line(600002, "Test Growth Fund"), {600002: "Test Growth Fund-Direct Plan"})
+    assert (row.plan, row.option) == ("direct", None)
+
+
+def test_navall_columns_win_over_nav_names():
+    line = _line(600003, "Test Fund", plan="Regular Plan", option="Growth")
+    row = _one(line, {600003: "Test Fund-Direct - IDCW Monthly"})
+    assert (row.plan, row.option, row.idcw_frequency) == ("regular", "growth", None)
+
+
+def test_name_inference_wins_over_nav_names():
+    row = _one(_line(600004, "Test Fund - Direct Plan - Growth"), {600004: "Test Fund-Regular IDCW"})
+    assert (row.plan, row.option) == ("direct", "growth")
+
+
+def test_no_nav_names_matches_previous_behaviour():
+    text = _navall(_line(600005, "Test Fund"), _line(600006, "Test Fund - Direct Plan - Growth"))
+    assert parse_navall(text, None).rows == parse_navall(text).rows
+    blank, named = parse_navall(text).rows
+    assert (blank.plan, blank.option) == (None, None)
+    assert (named.plan, named.option) == ("direct", "growth")
+    assert parse_navall(text).from_scheme_data == 0
+
+
+def test_etf_without_plan_stays_plan_none():
+    row = _one(_line(600007, "Test Nifty 50 ETF"), {600007: "Test Nifty 50 ETF"})
+    assert (row.plan, row.option) == (None, None)
+
+
+def test_from_scheme_data_counts_filled_rows():
+    text = _navall(_line(600008, "Test Fund"), _line(600009, "Test ETF"))
+    result = parse_navall(text, {600008: "Test Fund-Direct-Growth", 600009: "Test ETF"})
+    assert result.from_scheme_data == 1

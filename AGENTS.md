@@ -31,7 +31,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup
   app/routers/cron.py   /api/cron/amfi and /api/cron/securities: daily imports; /api/cron/issuers: weekly FD/RD issuer import; bearer CRON_SECRET (no X-API-Key)
   app/services/valuation.py  all money maths (maturity, status, invested, current, gain, interest_received)
-  app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest)
+  app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest), plus scheme master CSV enrichment of plan/option
   app/services/stock_prices.py  latest stock prices: nightly NSE/BSE bhavcopy close stored in stock_price_latest by the securities import (upsert_closes); latest_prices reads it for /api/holdings/stock, /api/portfolio and /api/dashboard
   app/models/stock_price.py  stock_price_latest (one row per stock_master id: price, prev_close, price_time, source bhavcopy, updated_at)
   app/services/nav_history.py  mfapi.in history fetch (on demand, 10 years kept, 24 h refetch limit), daily append for held schemes, NAV on-or-before lookup
