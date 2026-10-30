@@ -1,6 +1,7 @@
 """Historical NAV lookup for mutual fund schemes, backed by mfapi.in and cached in Postgres."""
 
 import json
+import logging
 import urllib.error
 import urllib.request
 from bisect import bisect_right
@@ -25,6 +26,8 @@ REFRESH_AFTER = timedelta(hours=24)
 BATCH_SIZE = 2000
 MAX_NAV = Decimal("9999999999")
 FUTURE_DATE_MESSAGE = "Date cannot be in the future"
+
+logger = logging.getLogger(__name__)
 
 NavRow = tuple[date, Decimal]
 
@@ -62,6 +65,12 @@ def pick_on_or_before(rows: list[NavRow], on_date: date) -> NavRow | None:
     ordered = sorted(rows, key=lambda r: r[0])
     index = bisect_right([r[0] for r in ordered], on_date)
     return ordered[index - 1] if index else None
+
+
+def pick_before(rows: list[NavRow], before_date: date) -> NavRow | None:
+    """The row with the greatest date strictly before before_date, or None."""
+    earlier = [r for r in rows if r[0] < before_date]
+    return max(earlier, key=lambda r: r[0]) if earlier else None
 
 
 def validate_not_future(on_date: date, today: date | None = None) -> None:
@@ -119,6 +128,39 @@ def _history_on_or_before(session: Session, scheme_code: int, on_date: date) -> 
     return (row[0], row[1]) if row else None
 
 
+def previous_navs(session: Session, scheme_codes) -> dict[int, NavRow]:
+    """Per scheme, the stored NAV on the latest date strictly before its latest NAV date.
+
+    One query, DB only (no network). Schemes without such a row are omitted.
+    """
+    codes = [c for c in scheme_codes if c is not None]
+    if not codes:
+        return {}
+    ranked = (
+        sa.select(
+            MFNavHistory.scheme_code.label("scheme_code"),
+            MFNavHistory.nav_date.label("nav_date"),
+            MFNavHistory.nav.label("nav"),
+            sa.func.row_number()
+            .over(
+                partition_by=MFNavHistory.scheme_code,
+                order_by=MFNavHistory.nav_date.desc(),
+            )
+            .label("rn"),
+        )
+        .join(MFNavLatest, MFNavLatest.scheme_code == MFNavHistory.scheme_code)
+        .where(
+            MFNavHistory.scheme_code.in_(codes),
+            MFNavHistory.nav_date < MFNavLatest.nav_date,
+        )
+        .subquery()
+    )
+    rows = session.execute(
+        sa.select(ranked.c.scheme_code, ranked.c.nav_date, ranked.c.nav).where(ranked.c.rn == 1)
+    ).all()
+    return {r[0]: (r[1], r[2]) for r in rows}
+
+
 def store_history(
     session: Session, scheme_code: int, rows: list[NavRow], today: date, now: datetime
 ) -> None:
@@ -156,6 +198,35 @@ def store_history(
         )
     )
     session.commit()
+
+
+def schemes_needing_history(held, synced) -> list[int]:
+    """Held scheme codes with no history sync record yet, sorted. Pure (no DB, no network)."""
+    done = set(synced)
+    return sorted({c for c in held if c is not None and c not in done})
+
+
+def sync_missing_history(session: Session) -> int:
+    """Fetch history (mfapi.in) for held schemes never synced. Failures are logged, never raised.
+
+    Schemes whose fetch fails stay unsynced and are retried by the next import; a successful
+    fetch records a sync row, so the 24 h refetch limit applies afterwards. Returns the count synced.
+    """
+    held = session.scalars(
+        sa.text("SELECT DISTINCT scheme_code FROM mutual_funds WHERE scheme_code IS NOT NULL")
+    ).all()
+    synced = session.scalars(sa.select(MFNavHistorySync.scheme_code)).all()
+    count = 0
+    for code in schemes_needing_history(held, synced):
+        try:
+            rows = fetch_mfapi(code)
+            now = datetime.now(timezone.utc)
+            store_history(session, code, rows, now.date(), now)
+            count += 1
+        except Exception:  # noqa: BLE001 - history is best effort, never fail the import
+            session.rollback()
+            logger.warning("NAV history sync failed for scheme %s", code, exc_info=True)
+    return count
 
 
 def resolve_nav(session: Session, scheme_code: int, on_date: date) -> dict | None:

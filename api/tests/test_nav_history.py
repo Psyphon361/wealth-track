@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.exceptions import RequestValidationError
 
-from app.services.nav_history import parse_mfapi, pick_on_or_before, validate_not_future
+from app.services.nav_history import parse_mfapi, pick_before, pick_on_or_before, validate_not_future
 
 FIXTURE = Path(__file__).parent / "fixtures" / "mfapi_sample.json"
 
@@ -85,3 +85,21 @@ def test_future_date_rejected():
 def test_today_and_past_allowed():
     validate_not_future(date(2026, 10, 25), today=date(2026, 10, 25))
     validate_not_future(date(2000, 1, 1), today=date(2026, 10, 25))
+
+
+def test_schemes_needing_history_skips_synced_and_null():
+    from app.services.nav_history import schemes_needing_history
+
+    assert schemes_needing_history([5, 3, 3, None, 9], [9]) == [3, 5]
+    assert schemes_needing_history([], [1]) == []
+
+
+def test_pick_before_takes_latest_strictly_earlier_date():
+    rows = [
+        (date(2026, 10, 14), Decimal("90.1")),
+        (date(2026, 10, 16), Decimal("90.8")),
+        (date(2026, 10, 15), Decimal("90.6")),
+        (date(2026, 10, 17), Decimal("91.0")),
+    ]
+    assert pick_before(rows, date(2026, 10, 17)) == (date(2026, 10, 16), Decimal("90.8"))
+    assert pick_before(rows, date(2026, 10, 14)) is None

@@ -86,6 +86,7 @@ class ImportResult:
     deactivated: int
     navs_upserted: int
     history_appended: int = 0
+    history_synced: int = 0
 
 
 # --- Normalisation -------------------------------------------------------------
@@ -336,6 +337,7 @@ def import_navall(session: Session, text: str) -> ImportResult:
     active = session.scalar(sa.select(sa.func.count()).where(MFMaster.is_active)) or 0
     total = session.scalar(sa.select(sa.func.count()).select_from(MFMaster)) or 0
     session.commit()
+    history_synced = nav_history.sync_missing_history(session)
     return ImportResult(
         rows=len(parsed.rows),
         active=active,
@@ -347,6 +349,7 @@ def import_navall(session: Session, text: str) -> ImportResult:
         deactivated=deactivated,
         navs_upserted=navs_upserted,
         history_appended=history_appended,
+        history_synced=history_synced,
     )
 
 

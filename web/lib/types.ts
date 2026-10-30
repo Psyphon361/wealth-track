@@ -331,7 +331,10 @@ export type MutualFundItem = MutualFund &
   ComputedFields & {
     nav: number | null;
     nav_date: string | null;
-    xirr_pct: number | null;
+    prev_nav: number | null;
+    prev_nav_date: string | null;
+    day_change: number | null;
+    day_change_pct: number | null;
   };
 
 export type HoldingRow =

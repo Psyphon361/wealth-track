@@ -17,7 +17,7 @@
 - Historical NAV lookup (mf_nav_history via mfapi.in, cached) and Average NAV auto-fill in the MF form.
 - MF valuation at the latest AMFI NAV (units × NAV for scheme-linked holdings; `nav`/`nav_date` in API items) (SPEC §3).
 - After saving an asset, the add form opens that type's portfolio tab (`/portfolio/{type}`).
-- MF grid "NAV" column (latest NAV, "as of" date). MF details page shows XIRR (`xirr_pct`, annualised lump-sum return) as the 4th KPI; NAV moved to the Holding section.
+- MF grid "NAV" column (latest NAV, "as of" date). MF details page shows the 1-day change (`day_change`, `day_change_pct` from the previous stored NAV) as the 4th KPI. XIRR removed until individual purchases are recorded, since a single purchase date understates it; NAV moved to the Holding section.
 - Securities masters for stocks/ETFs (`stock_master`) and bonds (`bond_master`), migration 0006, from NSE/BSE files with a daily cron; stock and bond form pickers with the linked `master_id` (SPEC §1, §4, §5). MF master table renamed `mf_schemes` → `mf_master` (migration 0007).
 
 - Bond master enrichment (committed, not pushed: `49eeb0c`, `79f548f`, `c14bd87`): `bond_master` merged by ISIN from seed files (SGB tranches, tax-free bonds), NSDL India Bond Info list (committed CSV, refreshed manually via `app.jobs.nsdl_convert`), NSE DEBT, NSE ratings and SGB JSON, and bhavcopy GB. New columns: issue date/price, rating + agency, coupon type, interest frequency, issue size, ownership, issue mode, perpetual, NSDL status (migrations 0008, 0009). Social Stock Exchange instruments excluded. SPEC §1 has the details and the refresh procedure.

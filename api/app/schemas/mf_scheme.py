@@ -34,6 +34,7 @@ class AmfiImportResult(BaseModel):
     deactivated: int
     navs_upserted: int
     history_appended: int = 0
+    history_synced: int = 0
 
 
 class MFNavOnDate(BaseModel):

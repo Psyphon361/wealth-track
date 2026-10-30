@@ -4,7 +4,7 @@ import {
   type MfScheme,
   type MutualFundItem,
 } from "@/lib/types";
-import { formatDate, formatPct } from "@/lib/format";
+import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { gainTone } from "../gain-cell";
 import type { GridConfig } from "../types";
@@ -98,17 +98,28 @@ export const mfConfig: GridConfig<MutualFundItem> = {
   detail: {
     subtitle: (r) =>
       [MF_CATEGORY_LABELS[r.category], r.platform].filter(Boolean).join(" · "),
-    kpi: (r) => ({
-      label: "XIRR",
-      value:
-        r.xirr_pct == null ? (
-          "—"
-        ) : (
-          <span className={cn("num", gainTone(r.xirr_pct))}>
-            {formatPct(r.xirr_pct)}
+    kpi: (r) => {
+      if (r.day_change == null || r.day_change_pct == null) {
+        return { label: "1-day change", value: "—" };
+      }
+      const tone = gainTone(r.day_change);
+      const sign = r.day_change > 0 ? "+" : "";
+      return {
+        label: "1-day change",
+        value: (
+          <span className={cn("num", tone)}>
+            {sign}
+            {formatINR(r.day_change)}
           </span>
         ),
-    }),
+        sub: (
+          <span className={cn("num", tone)}>
+            {sign}
+            {formatPct(r.day_change_pct)}
+          </span>
+        ),
+      };
+    },
     holding: (r) => [
       { label: "Scheme", value: r.scheme_name },
       { label: "Category", value: MF_CATEGORY_LABELS[r.category] },

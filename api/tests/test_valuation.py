@@ -81,44 +81,28 @@ def test_mf_without_scheme_code_ignores_nav():
     assert r["nav"] is None
 
 
-def test_mf_xirr_one_year():
+def test_mf_day_change_with_prev_nav():
     r = valuation.value_mf(
-        _mf(purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
+        _mf(), date(2026, 10, 25),
         nav=Decimal("55"), nav_date=date(2026, 10, 24),
+        prev_nav=Decimal("50"), prev_nav_date=date(2026, 10, 23),
     )  # fmt: skip
-    assert r["xirr_pct"] == Decimal("10.00")
+    assert r["prev_nav"] == Decimal("50.0000")
+    assert r["prev_nav_date"] == date(2026, 10, 23)
+    assert r["day_change"] == Decimal(_mf().units) * Decimal("5")
+    assert r["day_change_pct"] == Decimal("10.00")
 
 
-def test_mf_xirr_two_years():
+def test_mf_day_change_without_prev_nav():
     r = valuation.value_mf(
-        _mf(purchase_date=date(2024, 10, 25)), date(2026, 10, 25),
-        nav=Decimal("60.5"), nav_date=date(2026, 10, 24),
+        _mf(), date(2026, 10, 25), nav=Decimal("55"), nav_date=date(2026, 10, 24)
     )  # fmt: skip
-    assert r["xirr_pct"] == Decimal("10.00")
+    assert r["prev_nav"] is None
+    assert r["day_change"] is None
+    assert r["day_change_pct"] is None
 
 
-def test_mf_xirr_short_holding_is_annualised():
-    r = valuation.value_mf(
-        _mf(purchase_date=date(2026, 9, 25)), date(2026, 10, 25),
-        nav=Decimal("51"), nav_date=date(2026, 10, 24),
-    )  # fmt: skip
-    expected = Decimal(str((1.02 ** (365 / 30) - 1) * 100)).quantize(Decimal("0.01"))
-    assert r["xirr_pct"] == expected
-
-
-def test_mf_xirr_none_cases():
-    same_day = valuation.value_mf(
-        _mf(purchase_date=date(2026, 10, 25)), date(2026, 10, 25),
-        nav=Decimal("55"), nav_date=date(2026, 10, 24),
-    )  # fmt: skip
-    assert same_day["xirr_pct"] is None
-    zero_current = valuation.value_mf(
-        _mf(purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
-        nav=Decimal("0"), nav_date=date(2026, 10, 24),
-    )  # fmt: skip
-    assert zero_current["xirr_pct"] is None
-    zero_invested = valuation.value_mf(
-        _mf(avg_nav=Decimal("0"), purchase_date=date(2025, 10, 25)), date(2026, 10, 25),
-        nav=Decimal("55"), nav_date=date(2026, 10, 24),
-    )  # fmt: skip
-    assert zero_invested["xirr_pct"] is None
+def test_mf_day_change_without_nav():
+    r = valuation.value_mf(_mf(), date(2026, 10, 25))
+    assert r["day_change"] is None
+    assert r["day_change_pct"] is None

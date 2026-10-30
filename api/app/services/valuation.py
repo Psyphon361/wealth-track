@@ -143,34 +143,47 @@ def value_stock(
     return _result(invested, stock.quantity * Decimal(price))
 
 
-def _xirr_pct(invested: Decimal, current: Decimal, start: date, today: date) -> Decimal | None:
-    """Annualised return of a single lump sum (equals XIRR for one cash flow)."""
-    days = (today - start).days
-    if invested <= 0 or current <= 0 or days < 1:
-        return None
-    return _q((float(current / invested) ** (365 / days) - 1) * 100)
-
-
 def value_mf(
     mf: Any,
     today: date | None = None,
     *,
     nav: Decimal | None = None,
     nav_date: date | None = None,
+    prev_nav: Decimal | None = None,
+    prev_nav_date: date | None = None,
 ) -> dict[str, Any]:
     """Value at the latest NAV when the holding has a scheme and a NAV is known."""
-    today = today or date.today()
     invested = Decimal(mf.units) * Decimal(mf.avg_nav)
     if mf.scheme_code is not None and nav is not None:
         out = _result(invested, Decimal(mf.units) * Decimal(nav))
         out["nav"] = Decimal(nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
         out["nav_date"] = nav_date
-        out["xirr_pct"] = _xirr_pct(invested, out["current_value"], mf.purchase_date, today)
+        out.update(_mf_day_change(Decimal(mf.units), nav, prev_nav, prev_nav_date))
         return out
     out = _result(invested, invested)
     out["nav"] = None
     out["nav_date"] = None
-    out["xirr_pct"] = _xirr_pct(invested, out["current_value"], mf.purchase_date, today)
+    out.update(_mf_day_change(Decimal(mf.units), None, None, None))
+    return out
+
+
+def _mf_day_change(
+    units: Decimal, nav: Decimal | None, prev_nav: Decimal | None, prev_nav_date: date | None
+) -> dict[str, Any]:
+    """1-day change in INR and % between the latest NAV and the previous one."""
+    out: dict[str, Any] = {
+        "prev_nav": None,
+        "prev_nav_date": None,
+        "day_change": None,
+        "day_change_pct": None,
+    }
+    if prev_nav is None:
+        return out
+    out["prev_nav"] = Decimal(prev_nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+    out["prev_nav_date"] = prev_nav_date
+    if nav is not None and Decimal(prev_nav) > 0:
+        out["day_change"] = _q(units * (Decimal(nav) - Decimal(prev_nav)))
+        out["day_change_pct"] = _q((Decimal(nav) / Decimal(prev_nav) - 1) * 100)
     return out
 
 
