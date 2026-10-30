@@ -1,4 +1,3 @@
-from app.models.app_state import AppState
 from app.models.bond import Bond
 from app.models.bond_master import BondMaster
 from app.models.fd_issuer_master import FdIssuerMaster
@@ -14,7 +13,6 @@ from app.models.stock_price import StockPriceLatest
 from app.models.user import User
 
 __all__ = [
-    "AppState",
     "Bond",
     "BondMaster",
     "FdIssuerMaster",

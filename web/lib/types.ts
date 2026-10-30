@@ -322,7 +322,7 @@ export type StockItem = Stock &
     prev_close: number | null;
     day_change_pct: number | null;
     price_time: string | null;
-    price_source: "yahoo" | "bhavcopy" | null;
+    price_source: "bhavcopy" | null;
   };
 export type BondItem = Bond & ComputedFields;
 export type MutualFundItem = MutualFund &

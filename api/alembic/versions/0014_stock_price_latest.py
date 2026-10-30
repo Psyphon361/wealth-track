@@ -25,19 +25,10 @@ def upgrade() -> None:
             primary_key=True,
             autoincrement=False,
         ),
-        sa.Column("price", sa.Numeric(14, 2), nullable=True),
+        sa.Column("price", sa.Numeric(14, 2), nullable=False),
         sa.Column("prev_close", sa.Numeric(14, 2), nullable=True),
         sa.Column("price_time", sa.DateTime(timezone=True), nullable=True),
         sa.Column("source", sa.String(20), nullable=False),
-        sa.Column(
-            "fetched_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
-        ),
-        sa.Column("last_attempt_at", sa.DateTime(timezone=True), nullable=True),
-    )
-    op.create_table(
-        "app_state",
-        sa.Column("key", sa.String(100), primary_key=True),
-        sa.Column("value", sa.Text(), nullable=False),
         sa.Column(
             "updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
         ),
@@ -45,5 +36,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_table("app_state")
     op.drop_table("stock_price_latest")

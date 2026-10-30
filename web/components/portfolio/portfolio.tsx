@@ -171,8 +171,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
 
       {config.type === "stock" ? (
         <p className="text-xs text-muted-foreground">
-          Prices refresh every 15 minutes during market hours (NSE/BSE via Yahoo
-          Finance).
+          Prices are the NSE/BSE closing price, updated nightly.
           {data.prices_as_of
             ? ` Last updated ${formatIstDateTime(data.prices_as_of)}.`
             : ""}

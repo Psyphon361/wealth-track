@@ -88,7 +88,7 @@ def _value(
 def _fetch_stocks(
     bind: Any, user_id: int
 ) -> tuple[list[Any], dict[int, StockPriceLatest]]:
-    """The user's stocks plus fresh last prices, on this part's own session."""
+    """The user's stocks plus last close prices, on this part's own session."""
     model = REGISTRY["stock"][0]
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         records = list(
@@ -101,7 +101,6 @@ def _fetch_stocks(
 
 def _prices_for(session: Session, records: list[Any]) -> dict[int, StockPriceLatest]:
     ids = {r.master_id for r in records if r.master_id is not None}
-    stock_prices.ensure_fresh(session, ids)
     return stock_prices.latest_prices(session, ids)
 
 
