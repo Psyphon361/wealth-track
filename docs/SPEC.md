@@ -296,3 +296,37 @@ Users sign in with email and password. Every holding belongs to one user.
 - The browser cannot call `/api/auth/*` directly: the route handler returns 404 for it (auth goes through the server actions only).
 - `/login` and `/signup` are the only auth pages. `next` is honoured only for same-origin relative paths. Log out (account menu in the top bar) revokes the refresh family and clears both cookies, then goes to `/login`.
 - The login and sign-up password fields have a show/hide (eye) toggle.
+
+## 8. CAS import (mutual funds)
+
+Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/app/schemas/cas_import.py`; web `web/components/forms/cas-import/`. On `/add/mf` the form has two tabs: "Manual entry" and "Import CAS".
+
+### Preview (`POST /api/import/cas/preview`, multipart `file` + `password`)
+
+- The file must be a CAMS or KFintech CAS PDF, at most 4 MB, starting with `%PDF`. It is parsed in memory with `casparser` 1.4.1 (local, no network). The file and password are never stored or logged.
+- Errors (`{message, description}`):
+  - 413 "File too large" / "Upload a CAS PDF smaller than 4 MB."
+  - 422 "Couldn't read this statement" / "Upload a CAMS or KFintech CAS PDF." (not a PDF, or unreadable)
+  - 400 "Wrong password" / "The CAS password is usually your PAN in capitals."
+  - 422 "Depository statements aren't supported yet" / "Download a CAMS or KFintech CAS from MF Central." (NSDL or CDSL statement)
+- Merge: schemes are grouped across folios by the matched `mf_master` scheme (AMFI code first, then ISIN; unmatched schemes group by ISIN or name). Schemes with zero closing units are hidden and counted in `hidden_zero`.
+  - units = sum of closing units (3 dp); invested = sum of valuation cost (2 dp); avg NAV = invested ÷ units (4 dp).
+  - purchase date = earliest PURCHASE, PURCHASE_SIP, SWITCH_IN or SWITCH_IN_MERGER after the running balance last reached zero; falls back to the valuation date when there is none.
+  - name, AMC, plan, option and category come from `mf_master`; an unmatched scheme gets category `other` and its statement name.
+- Each row has `existing` (the user's MF holdings in the same scheme: id, units, invested, avg NAV, purchase date), `importable` and `issue`. `importable` is true when the row passes the manual MF rules (§2, rule 21 included). Otherwise `issue` gives the first reason: "Not found in the AMFI scheme list", "Closing units are not positive", "The statement has no invested amount for this fund", "The statement has no purchase date for this fund", or the first rule message.
+- Response: `statement_from`, `statement_to`, `rows`, `hidden_zero`.
+
+### Review (web)
+
+- One checkbox per row, ticked when `importable`. Each row shows a "New" badge, or "In portfolio" when `existing` is not empty.
+- When exactly one holding matches the scheme, the row offers "Update existing" (default) or "Add as new".
+- "Import N funds" submits the ticked rows.
+
+### Commit (`POST /api/import/cas/commit`, JSON `rows`)
+
+- Each row has `action`: `create` or `update` (update names the existing holding).
+- Every row is validated like manual MF entry (§2). Validation is all-or-nothing: one failing row saves nothing.
+  - 422 "Couldn't import — nothing was saved" / "<fund> — <reason>", where the reason is a field message (for example "Average NAV: …"), "Not found in the AMFI scheme list", or "The existing holding wasn't found".
+- create: a new MF holding with platform empty.
+- update: replaces units, avg NAV, invested and purchase date; platform and notes are kept.
+- 200 → `message` "Imported N funds" ("Imported 1 fund" for one), `description` "X added, Y updated.", `created`, `updated`.

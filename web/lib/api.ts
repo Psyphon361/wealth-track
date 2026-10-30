@@ -48,11 +48,21 @@ async function request<T>(
   body?: unknown,
 ): Promise<T> {
   let res: Response;
+  const isForm = typeof FormData !== "undefined" && body instanceof FormData;
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
-      headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      // FormData: the browser sets the multipart content-type and boundary.
+      headers:
+        body !== undefined && !isForm
+          ? { "Content-Type": "application/json" }
+          : undefined,
+      body:
+        body === undefined
+          ? undefined
+          : isForm
+            ? (body as FormData)
+            : JSON.stringify(body),
       cache: "no-store",
     });
   } catch {
@@ -91,6 +101,10 @@ export function apiGet<T>(path: string): Promise<T> {
 
 export function apiPost<T>(path: string, body: unknown): Promise<T> {
   return request<T>("POST", path, body);
+}
+
+export function apiPostForm<T>(path: string, form: FormData): Promise<T> {
+  return request<T>("POST", path, form);
 }
 
 export function apiPut<T>(path: string, body: unknown): Promise<T> {

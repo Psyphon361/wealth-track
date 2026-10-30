@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, auth, cron, holdings, master, portfolio
+from app.routers import assets, auth, cas_import, cron, holdings, master, portfolio
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -152,6 +152,7 @@ api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
 api_router.include_router(holdings.router)
 api_router.include_router(master.router)
+api_router.include_router(cas_import.router)
 
 app.include_router(api_router)
 # Not behind X-API-Key: authenticated by CRON_SECRET instead.

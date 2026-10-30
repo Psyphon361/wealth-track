@@ -75,7 +75,9 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
 
   const target = `${apiBase()}/api/${upstreamPath.map(encodeURIComponent).join("/")}${req.nextUrl.search}`;
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
-  const body = hasBody ? await req.text() : undefined;
+  // Raw bytes (not text) so binary multipart uploads survive; reused on retry.
+  const bytes = hasBody ? await req.arrayBuffer() : undefined;
+  const body = bytes && bytes.byteLength > 0 ? bytes : undefined;
   const contentType = req.headers.get("content-type");
 
   const call = (token: string | undefined) => {
@@ -88,7 +90,7 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
     return fetch(target, {
       method: req.method,
       headers,
-      body: body || undefined,
+      body,
       cache: "no-store",
       redirect: "manual",
     });

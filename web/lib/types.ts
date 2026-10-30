@@ -241,6 +241,62 @@ export interface MutualFundInput {
   notes: string | null;
 }
 
+// CAS import
+
+export interface CasExistingHolding {
+  id: number;
+  units: number;
+  invested_amount: number;
+  avg_nav: number;
+  purchase_date: string;
+}
+
+export interface CasPreviewRow {
+  key: string;
+  scheme_code: number | null;
+  scheme_name: string;
+  amc: string;
+  plan: MfPlan | null;
+  option: MfOption | null;
+  category: MFCategory;
+  isin: string;
+  folios: string[];
+  units: number;
+  invested_amount: number;
+  avg_nav: number;
+  purchase_date: string | null;
+  current_value: number | null;
+  existing: CasExistingHolding[];
+  importable: boolean;
+  issue: string | null;
+}
+
+export interface CasPreview {
+  statement_from: string;
+  statement_to: string;
+  rows: CasPreviewRow[];
+  hidden_zero: number;
+}
+
+export interface CasCommitRow {
+  action: "create" | "update";
+  holding_id: number | null;
+  scheme_code: number | null;
+  scheme_name: string;
+  category: MFCategory;
+  units: number;
+  avg_nav: number;
+  invested_amount: number;
+  purchase_date: string | null;
+}
+
+export interface CasCommitResult {
+  message: string;
+  description: string;
+  created: number;
+  updated: number;
+}
+
 // Record types (responses)
 
 export interface RecordFields {

@@ -7,3 +7,5 @@ pydantic-settings>=2.4
 python-dateutil>=2.9
 pyjwt[crypto]==2.15.1
 argon2-cffi==25.1.0
+casparser==1.4.1
+python-multipart==0.0.20
