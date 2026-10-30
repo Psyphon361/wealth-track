@@ -162,6 +162,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - (`*` = free-text values whose options come from the data.)
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf).
+- `GET /holdings/{fd|rd|stock|bond|mf}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row; `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 - Sign-in: every route except `/api/health`, `/api/cron/*`, `/api/auth/*` and OPTIONS needs `Authorization: Bearer <access token>` (401 otherwise). Holdings are per user; see §7.
 
@@ -189,8 +190,14 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Its own grid has type-specific columns and filters. Stocks include Price (latest price with day change %), Current/Gain/Gain %; a note under the stocks summary reads "Prices are the NSE/BSE closing price, updated nightly. Last updated <IST time>." Stocks without a price show current = invested. MF Current/Gain use the latest NAV where available (see §3). The MF grid has a visible-by-default, non-sortable "NAV" column after Avg NAV: latest NAV with a muted "as of {date}" line, "—" when null.
   - The grid has debounced search, faceted filters, %-range and maturity-date range filters, Reset, and a Columns menu saved per type in localStorage `wt.portfolio.columns.{type}`.
   - Sortable headers; 10 rows per page; no totals row.
-  - Row actions: eye (disabled, "Details coming soon"; future `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
+  - Row actions: eye (opens the details page `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
   - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
+- Holding details page `/portfolio/{type}/{id}` (`web/app/(app)/portfolio/[type]/[id]/`): one shared layout for all five types (`web/components/holding-detail/`), with per-type content from the `detail` block of each grid config (`web/components/portfolio/grid/configs/`). Data from `GET /api/holdings/{type}/{id}`.
+  - Header: back link to the type's grid, type icon (`web/components/asset-type-icon.tsx`), name, sub-line, status badge, Edit and Delete.
+  - KPI strip: Invested, Current value, Gain, and a type card: FD/RD/bond Maturity with days left; stock Price with day change; MF NAV with its as-of date.
+  - Tenure bar for FD, RD and bonds.
+  - Sections: Holding, Instrument (only when linked to master data), Notes.
+  - Edit opens the shared edit dialog (`web/components/portfolio/edit-dialog.tsx`, also used by the grid). Delete returns to the grid.
 - `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`, `/signup` (both without the sidebar).
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Sign-in is required everywhere, local dev included: `proxy.ts` redirects pages without the `wt_refresh` cookie to `/login?next=…`; cookies, refresh and the proxy rules are in §7. The top bar, right of the "Add asset" button, has an account menu (`web/components/user-menu.tsx`): a round avatar with the email's first letter (from `GET /api/me`) opens a dropdown with "Signed in as <email>" and "Log out".

@@ -29,6 +29,8 @@
 - Stock prices (built, not pushed; migration `0014` adds `stock_price_latest`): stock current value = quantity × latest price. Prices are the nightly NSE/BSE bhavcopy close, stored by the securities import (cron 19:30 IST) in `stock_price_latest`. A live intraday source is a possible later addition (Yahoo blocks server clients; an Upstox analytics token needs an Upstox account). Stocks grid has a Price column with day change % and a "Last updated" note. Bonds have no market price (YTM accrual); MF uses the latest AMFI NAV. SPEC §3, §5.
 - Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Not yet tested with a real Google client (the user creates it).
 
+- Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
+
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
 
@@ -47,7 +49,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Known gaps / small follow-ups
 
 - FD/RD issuers: Unity Small Finance Bank is not listed (enter it manually); Razorpay RRB names are pre-amalgamation; NBFC/HFC `reg_no` is empty (SPEC §1).
-- Holdings details page (eye icon) not built yet.
 - Forms don't map API 422 `detail` field errors onto inputs (forms validate first, so rarely visible).
 - `notify.deleting()` in `web/lib/notify.ts` is unused.
 - Generic HTTP error wording ("Request failed") and the routing 404 description were not specified by the user — confirm if they matter.
