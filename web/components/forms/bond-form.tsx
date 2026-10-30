@@ -6,10 +6,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiGet } from "@/lib/api";
 import {
+  BOND_PRECISION,
   bondAmountsConsistent,
-  deriveBondAmount,
-  type BondAmountField,
-} from "@/lib/bond-amounts";
+  deriveAmount,
+  type AmountField,
+} from "@/lib/holding-amounts";
 import { formatDate } from "@/lib/format";
 import {
   BOND_TYPE_LABELS,
@@ -115,7 +116,7 @@ type FormOut = z.output<typeof schema>;
 
 const BOND_TYPE_OPTIONS = toOptions(BOND_TYPE_LABELS);
 
-const FORM_TO_AMOUNT: Record<string, BondAmountField> = {
+const FORM_TO_AMOUNT: Record<string, AmountField> = {
   quantity: "quantity",
   purchase_price: "price",
   invested_amount: "total",
@@ -209,12 +210,12 @@ export function BondForm({
   const priceStr = useWatch({ control, name: "purchase_price" });
   const totalStr = useWatch({ control, name: "invested_amount" });
   // The two amounts the user edited most recently (oldest first).
-  const edited = useRef<BondAmountField[]>(
+  const edited = useRef<AmountField[]>(
     record ? ["quantity", "price"] : [],
   );
   const lastKey = useRef(`${qtyStr}|${priceStr}|${totalStr}`);
 
-  function markEdited(field: BondAmountField) {
+  function markEdited(field: AmountField) {
     edited.current = [
       ...edited.current.filter((f) => f !== field),
       field,
@@ -225,9 +226,10 @@ export function BondForm({
     const key = `${qtyStr}|${priceStr}|${totalStr}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
-    const d = deriveBondAmount(
+    const d = deriveAmount(
       { quantity: toNum(qtyStr), price: toNum(priceStr), total: toNum(totalStr) },
       edited.current,
+      BOND_PRECISION,
     );
     if (!d) return;
     const name =

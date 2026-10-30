@@ -153,7 +153,7 @@ def value_mf(
     prev_nav_date: date | None = None,
 ) -> dict[str, Any]:
     """Value at the latest NAV when the holding has a scheme and a NAV is known."""
-    invested = Decimal(mf.units) * Decimal(mf.avg_nav)
+    invested = Decimal(mf.invested_amount)
     if mf.scheme_code is not None and nav is not None:
         out = _result(invested, Decimal(mf.units) * Decimal(nav))
         out["nav"] = Decimal(nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)

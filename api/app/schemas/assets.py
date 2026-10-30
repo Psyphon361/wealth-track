@@ -431,13 +431,25 @@ class MutualFundBase(BaseModel):
     category: Literal["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
     units: Dec
     avg_nav: Dec
+    invested_amount: Dec
     purchase_date: date
+
+
+MF_AMOUNT_MISMATCH = "Total invested must equal units × average NAV"
 
 
 class MutualFundCreate(_Create, MutualFundBase):
     units: Units
     avg_nav: Nav
+    invested_amount: Money
     purchase_date: TradeDate
+
+    @model_validator(mode="after")
+    def _cross_field(self):
+        tolerance = self.units * Decimal("0.00005") + self.avg_nav * Decimal("0.0005") + Decimal("0.01")
+        if abs(self.units * self.avg_nav - self.invested_amount) > tolerance:
+            _field_error(self, "invested_amount", MF_AMOUNT_MISMATCH)
+        return self
 
 
 class MutualFundRead(MutualFundBase, _Read):

@@ -23,11 +23,14 @@ export function useNavAutofill({
   purchaseDate,
   avgNav,
   setValue,
+  onFilled,
 }: {
   enabled: boolean;
   schemeCode: number | null;
   purchaseDate: string;
   avgNav: string;
+  /** Called just before Avg NAV is filled (must be referentially stable). */
+  onFilled?: () => void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setValue: UseFormSetValue<any>;
 }): string | null {
@@ -64,6 +67,7 @@ export function useNavAutofill({
           const text = nav.nav.toFixed(4);
           setAutoText(text);
           setResult({ key: wantKey, kind: "ok", nav });
+          onFilled?.();
           setValue("avg_nav", text, { shouldDirty: true, shouldValidate: true });
         })
         .catch((err) => {
@@ -79,7 +83,7 @@ export function useNavAutofill({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [wantKey, setValue]);
+  }, [wantKey, setValue, onFilled]);
 
   if (wantKey === null) return null;
   if (!result || result.key !== wantKey) return "Fetching NAV…";

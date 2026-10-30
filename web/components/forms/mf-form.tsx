@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { apiGet } from "@/lib/api";
+import {
+  MF_PRECISION,
+  deriveAmount,
+  mfAmountsConsistent,
+  type AmountField,
+} from "@/lib/holding-amounts";
 import {
   MF_CATEGORY_LABELS,
   type MfScheme,
@@ -23,6 +29,7 @@ import {
 } from "./fields";
 import {
   MAX_TEXT,
+  MF_AMOUNT_MISMATCH_ERROR,
   SCHEME_REQUIRED_ERROR,
   maxFutureDateISO,
   mfCategoryEnum,
@@ -48,6 +55,7 @@ const schema = z
     category: mfCategoryEnum,
     units: positiveUnits,
     avg_nav: moneyNumber,
+    invested_amount: moneyNumber,
     purchase_date: startDateString,
     notes: notesText,
   })
@@ -67,12 +75,31 @@ const schema = z
         message: "Required",
       });
     }
-  });
+  })
+  .refine(
+    (v) => mfAmountsConsistent(v.units, v.avg_nav, v.invested_amount),
+    {
+      message: MF_AMOUNT_MISMATCH_ERROR,
+      path: ["invested_amount"],
+    },
+  );
 
 type FormIn = z.input<typeof schema>;
 type FormOut = z.output<typeof schema>;
 
 const CATEGORY_OPTIONS = toOptions(MF_CATEGORY_LABELS);
+
+const FORM_TO_AMOUNT: Record<string, AmountField> = {
+  units: "quantity",
+  avg_nav: "price",
+  invested_amount: "total",
+};
+
+function toNum(s: unknown): number | null {
+  if (typeof s !== "string" || s.trim() === "") return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
 
 const LINK_BUTTON =
   "w-fit text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline";
@@ -86,6 +113,7 @@ function toDefaults(r?: MutualFund): FormIn {
     category: r?.category ?? "equity",
     units: r ? String(r.units) : "",
     avg_nav: r ? String(r.avg_nav) : "",
+    invested_amount: r ? String(r.invested_amount) : "",
     purchase_date: r?.purchase_date ?? "",
     notes: r?.notes ?? "",
   };
@@ -100,11 +128,17 @@ export function MfForm({
   onSaved?: (record: MutualFund) => void;
   onCancel?: () => void;
 }) {
-  const { control, handleSubmit, setValue, setError, clearErrors } = useForm<
-    FormIn,
-    unknown,
-    FormOut
-  >({
+  const {
+    control,
+    handleSubmit,
+    setValue,
+    getValues,
+    setError,
+    clearErrors,
+    trigger,
+    getFieldState,
+    formState,
+  } = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
@@ -120,13 +154,70 @@ export function MfForm({
   const schemeCode = useWatch({ control, name: "scheme_code" });
   const purchaseDate = useWatch({ control, name: "purchase_date" });
   const avgNav = useWatch({ control, name: "avg_nav" });
+  const unitsStr = useWatch({ control, name: "units" });
+  const totalStr = useWatch({ control, name: "invested_amount" });
+  // The two amounts the user edited most recently (oldest first).
+  const edited = useRef<AmountField[]>(record ? ["quantity", "price"] : []);
+  const lastKey = useRef(`${unitsStr}|${avgNav}|${totalStr}`);
+
+  const markEdited = useCallback((field: AmountField) => {
+    edited.current = [
+      ...edited.current.filter((f) => f !== field),
+      field,
+    ].slice(-2);
+  }, []);
+  const onNavFilled = useCallback(() => markEdited("price"), [markEdited]);
+
   const navHint = useNavAutofill({
     enabled: mode === "picker",
     schemeCode,
     purchaseDate: String(purchaseDate ?? ""),
     avgNav: String(avgNav ?? ""),
     setValue,
+    onFilled: onNavFilled,
   });
+
+  useEffect(() => {
+    const key = `${unitsStr}|${avgNav}|${totalStr}`;
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+    const d = deriveAmount(
+      {
+        quantity: toNum(unitsStr),
+        price: toNum(avgNav),
+        total: toNum(totalStr),
+      },
+      edited.current,
+      MF_PRECISION,
+    );
+    if (!d) return;
+    const name =
+      d.field === "quantity"
+        ? "units"
+        : d.field === "price"
+          ? "avg_nav"
+          : "invested_amount";
+    const next = String(d.value);
+    if (getValues(name) === next) return;
+    lastKey.current = `${name === "units" ? next : unitsStr}|${
+      name === "avg_nav" ? next : avgNav
+    }|${name === "invested_amount" ? next : totalStr}`;
+    const amountFields = ["units", "avg_nav", "invested_amount"] as const;
+    const revalidate =
+      formState.isSubmitted ||
+      amountFields.some((f) => getFieldState(f, formState).error);
+    setValue(name, next, { shouldDirty: true });
+    if (revalidate) void trigger(amountFields);
+  }, [
+    unitsStr,
+    avgNav,
+    totalStr,
+    getValues,
+    setValue,
+    trigger,
+    getFieldState,
+    formState,
+  ]);
   // Master details for the summary line (selected, or fetched when editing).
   const [meta, setMeta] = useState<MfScheme | null>(null);
 
@@ -162,6 +253,7 @@ export function MfForm({
       category: values.category,
       units: values.units,
       avg_nav: values.avg_nav,
+      invested_amount: values.invested_amount,
       purchase_date: values.purchase_date,
       notes: values.notes,
     };
@@ -235,24 +327,41 @@ export function MfForm({
         options={CATEGORY_OPTIONS}
         required
       />
-      <TextField
-        control={control}
-        name="units"
-        label="Units"
-        inputMode="decimal"
-        decimals={3}
-        required
-      />
-      <TextField
-        control={control}
-        name="avg_nav"
-        label="Average NAV"
-        adornment="₹"
-        inputMode="decimal"
-        decimals={4}
-        hint={navHint}
-        required
-      />
+      <div
+        className="contents"
+        onInputCapture={(e) => {
+          const f = FORM_TO_AMOUNT[(e.target as HTMLInputElement).name];
+          if (f) markEdited(f);
+        }}
+      >
+        <TextField
+          control={control}
+          name="units"
+          label="Units"
+          inputMode="decimal"
+          decimals={3}
+          required
+        />
+        <TextField
+          control={control}
+          name="avg_nav"
+          label="Average NAV"
+          adornment="₹"
+          inputMode="decimal"
+          decimals={4}
+          hint={navHint}
+          required
+        />
+        <TextField
+          control={control}
+          name="invested_amount"
+          label="Total invested"
+          adornment="₹"
+          inputMode="decimal"
+          decimals={2}
+          required
+        />
+      </div>
       <DateField
         control={control}
         name="purchase_date"

@@ -236,6 +236,7 @@ export interface MutualFundInput {
   category: MFCategory;
   units: number;
   avg_nav: number;
+  invested_amount: number;
   purchase_date: string;
   notes: string | null;
 }

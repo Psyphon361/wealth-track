@@ -11,7 +11,7 @@ RD = {
 }  # fmt: skip
 MF = {
     "scheme_name": "Scoped Fund", "category": "equity", "units": 10, "avg_nav": 100,
-    "purchase_date": "2025-01-01",
+    "invested_amount": 1000, "purchase_date": "2025-01-01",
 }  # fmt: skip
 PAYLOADS = {"fd": FD, "rd": RD, "stock": STOCK, "mf": MF}
 

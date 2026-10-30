@@ -45,7 +45,7 @@ def _mf(**kw):
     from types import SimpleNamespace
 
     fields = dict(
-        units=Decimal("10"), avg_nav=Decimal("50"), scheme_code=123,
+        units=Decimal("10"), avg_nav=Decimal("50"), invested_amount=Decimal("500"), scheme_code=123,
         purchase_date=date(2026, 1, 1),
     )
     fields.update(kw)

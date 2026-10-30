@@ -21,6 +21,8 @@ export const TENURE_ERROR = "Tenure must be greater than zero";
 export const MATURITY_RANGE_ERROR = "Maturity must be within 50 years of purchase";
 export const BOND_AMOUNT_MISMATCH_ERROR =
   "Total invested must equal quantity × purchase price";
+export const MF_AMOUNT_MISMATCH_ERROR =
+  "Total invested must equal units × average NAV";
 export const FD_RATE_ERROR = "Interest rate must be between 0 and 15%";
 export const YTM_ERROR = "YTM must be between 0 and 30%";
 export const ISIN_ERROR = "ISIN must be 12 characters, e.g. INE002A01018";
