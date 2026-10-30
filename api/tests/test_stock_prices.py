@@ -215,6 +215,22 @@ def test_failed_attempt_makes_row_fresh_for_15_minutes():
     assert not is_stale(None, NOW, attempt)
 
 
+def test_bhavcopy_only_row_is_stale_in_hours_and_after_close():
+    just_imported = NOW - timedelta(minutes=5)
+    assert is_stale(just_imported, NOW, None, "bhavcopy")
+    after_close = ist(2026, 10, 28, 18, 0)
+    assert is_stale(ist(2026, 10, 28, 16, 0), after_close, None, "bhavcopy")
+
+
+def test_recent_yahoo_fetch_is_fresh():
+    assert not is_stale(NOW - timedelta(minutes=5), NOW, None, "yahoo")
+
+
+def test_failed_attempt_on_bhavcopy_row_is_fresh():
+    attempt = NOW - timedelta(minutes=5)
+    assert not is_stale(NOW - timedelta(minutes=1), NOW, attempt, "bhavcopy")
+
+
 def test_failed_fetch_records_attempt_without_touching_price():
     session = RecordingSession(masters=[master(1, "AAA")])
 

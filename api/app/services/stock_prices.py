@@ -126,9 +126,17 @@ def _last_close(now: datetime) -> datetime:
 
 
 def is_stale(
-    fetched_at: datetime | None, now: datetime, last_attempt_at: datetime | None = None
+    fetched_at: datetime | None,
+    now: datetime,
+    last_attempt_at: datetime | None = None,
+    source: str | None = "yahoo",
 ) -> bool:
-    """Stale judged on the later of the last fetch and the last (failed) attempt."""
+    """Stale judged on Yahoo activity only: the later of the last Yahoo fetch and the last attempt.
+
+    A bhavcopy backup row's `fetched_at` is the import time, not a Yahoo fetch, so it is ignored.
+    """
+    if source != "yahoo":
+        fetched_at = None
     seen = [t for t in (fetched_at, last_attempt_at) if t is not None]
     if not seen:
         return True
@@ -207,6 +215,7 @@ def ensure_fresh(
             getattr(existing.get(i), "fetched_at", None),
             now,
             getattr(existing.get(i), "last_attempt_at", None),
+            getattr(existing.get(i), "source", "yahoo"),
         )
     ]
     if not stale:
