@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { useBreadcrumbLabel } from "@/components/breadcrumb-label";
 import { DeleteDialog, type DeleteTarget } from "@/components/portfolio/delete-dialog";
@@ -19,7 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiDelete } from "@/lib/api";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
-import type { AssetType, HoldingRow } from "@/lib/types";
+import { ASSET_TYPE_LABELS, type AssetType, type HoldingRow } from "@/lib/types";
 import { KpiStrip } from "./kpi-strip";
 import { NotesSection, Section } from "./sections";
 import { TenureBar } from "./tenure-bar";
@@ -28,6 +29,7 @@ import { useHoldingDetail } from "./use-holding-detail";
 export function HoldingDetailSkeleton() {
   return (
     <div className="space-y-4">
+      <Skeleton className="h-4 w-32" />
       <div className="flex items-center gap-3">
         <Skeleton className="size-9 rounded-lg" />
         <div className="space-y-1.5">
@@ -60,9 +62,20 @@ function TypedDetail<TRow extends HoldingRow>({
   const backHref = `/portfolio/${config.type}`;
   useBreadcrumbLabel(data ? config.rowName(data.item) : null);
 
+  const back = (
+    <Link
+      href={backHref}
+      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+    >
+      <ArrowLeft className="size-3.5" aria-hidden />
+      {ASSET_TYPE_LABELS[config.type]}
+    </Link>
+  );
+
   if (error) {
     return (
       <div className="space-y-4">
+        {back}
         <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
           <div>
             <p className="text-sm font-medium text-destructive">{error.message}</p>
@@ -99,6 +112,7 @@ function TypedDetail<TRow extends HoldingRow>({
 
   return (
     <div className="space-y-4">
+      {back}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {entry ? <AssetTypeIcon icon={entry.icon} /> : null}
