@@ -182,6 +182,27 @@ def load_group(
     return next(g for g in groups if g["type"] == slug)
 
 
+def load_holding(
+    db: Session, slug: str, user_id: int, item_id: int, today: date | None = None
+) -> tuple[Any, dict[str, Any]] | None:
+    """One of the user's holdings as (record, grid item), or None if not theirs."""
+    model = REGISTRY[slug][0]
+    record = db.scalars(
+        select(model).where(model.id == item_id, model.user_id == user_id)
+    ).first()
+    if record is None:
+        return None
+    navs: dict[int, tuple[Decimal, date]] = {}
+    if slug == "mf" and record.scheme_code is not None:
+        row = db.get(MFNavLatest, record.scheme_code)
+        if row is not None:
+            navs[row.scheme_code] = (row.nav, row.nav_date)
+    prices = _prices_for(db, [record]) if slug == "stock" else {}
+    groups = build_groups({slug: [record]}, today or date.today(), navs, prices)
+    group = next(g for g in groups if g["type"] == slug)
+    return record, group["items"][0]
+
+
 def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
     total_invested = _q(sum((g["totals"]["invested"] for g in groups), Decimal("0")))
     total_current = _q(sum((g["totals"]["current_value"] for g in groups), Decimal("0")))

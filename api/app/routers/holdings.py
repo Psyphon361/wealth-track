@@ -2,14 +2,17 @@ from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
 from app.models.user import User
-from app.routers.portfolio import _q, load_group
-from app.schemas.holdings import HoldingsResponse
+from app.routers.portfolio import _q, load_group, load_holding
+from app.schemas.holdings import HoldingDetailResponse, HoldingsResponse
+from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
+from app.schemas.mf_scheme import MFSchemeRead
+from app.services import amfi, bond_master, fd_issuers, stock_master
 
 router = APIRouter(tags=["holdings"])
 
@@ -317,3 +320,46 @@ def get_mf_holdings(
         db, user.id, "mf",q=q, sort=sort, dir=dir, page=page,
         multi={"category": category, "platform": platform},
     )  # fmt: skip
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={
+            "message": "Holding not found",
+            "description": "It may have been deleted, or it belongs to another account.",
+        },
+    )
+
+
+def linked_master(db: Session, slug: str, record: Any) -> dict[str, Any] | None:
+    """The master record linked to a holding, serialised with its read model."""
+    if slug in ("fd", "rd"):
+        found = fd_issuers.get_issuer(db, record.issuer_id) if record.issuer_id else None
+        schema = FdIssuerRead
+    elif slug == "stock":
+        found = stock_master.get_stock_master(db, record.master_id) if record.master_id else None
+        schema = StockMasterRead
+    elif slug == "bond":
+        found = bond_master.get_bond_master(db, record.master_id) if record.master_id else None
+        schema = BondMasterRead
+    else:
+        found = amfi.get_scheme_with_nav(db, record.scheme_code) if record.scheme_code else None
+        schema = MFSchemeRead
+    return schema.model_validate(found).model_dump(mode="json") if found is not None else None
+
+
+@router.get("/holdings/{slug}/{item_id}", response_model=HoldingDetailResponse)
+def get_holding_detail(
+    slug: str,
+    item_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    if slug not in CONFIG:
+        raise _not_found()
+    loaded = load_holding(db, slug, user.id, item_id)
+    if loaded is None:
+        raise _not_found()
+    record, item = loaded
+    return {"item": item, "master": linked_master(db, slug, record)}

@@ -30,3 +30,8 @@ class HoldingsResponse(BaseModel):
     summary: HoldingsSummary
     facets: dict[str, list[FacetValue]]
     prices_as_of: datetime | None = None  # stocks only: latest price_time over held stocks
+
+
+class HoldingDetailResponse(BaseModel):
+    item: dict[str, Any]  # same dict a grid row of this type gets
+    master: dict[str, Any] | None = None  # linked master record, or null when not linked
