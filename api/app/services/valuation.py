@@ -1,7 +1,7 @@
 """Pure valuation helpers. Rates are percent p.a.; year fraction = days / 365."""
 
 from collections.abc import Iterable, Mapping
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
@@ -268,20 +268,32 @@ def xirr(flows: list[tuple[date, Decimal]]) -> Decimal | None:
     return None
 
 
+def _as_date(value: date | datetime | str) -> date:
+    """Accept a date, a datetime (its date part) or an ISO "YYYY-MM-DD" string."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(value)
+
+
 def mf_xirr(
     units: Decimal,
     invested: Decimal,
-    purchase_date: date,
+    purchase_date: date | str,
     current_value: Decimal,
     transactions: list[Any],
-    as_of: date,
+    as_of: date | str,
 ) -> tuple[Decimal | None, str | None, int]:
     """(xirr %, basis, transactions used) for a mutual fund holding.
 
     Uses the stored transactions when their net units match the holding, else treats the
-    invested amount as one purchase on the purchase date.
+    invested amount as one purchase on the purchase date. Dates may be dates, datetimes or
+    ISO strings.
     """
     current = Decimal(current_value)
+    as_of = _as_date(as_of)
+    purchase_date = _as_date(purchase_date)
     if transactions:
         net = sum(
             (Decimal(t.units) if t.kind == "purchase" else -Decimal(t.units) for t in transactions),
@@ -289,7 +301,10 @@ def mf_xirr(
         )
         if abs(net - Decimal(units)) <= Decimal("0.01"):
             flows = [
-                (t.txn_date, -Decimal(t.amount) if t.kind == "purchase" else Decimal(t.amount))
+                (
+                    _as_date(t.txn_date),
+                    -Decimal(t.amount) if t.kind == "purchase" else Decimal(t.amount),
+                )
                 for t in transactions
             ]
             flows.append((as_of, current))

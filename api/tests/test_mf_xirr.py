@@ -96,6 +96,21 @@ def test_mf_xirr_none_when_unsolvable():
     assert mf_xirr(D(100), D(10000), AS_OF, D(11000), [], AS_OF) == (None, None, 0)
 
 
+def test_mf_xirr_accepts_iso_string_dates():
+    # nav_date can arrive as an ISO string from the item builder; must match the date result.
+    txns = [
+        t(date(2025, 1, 1), "purchase", "10000", "100"),
+        t(date(2025, 6, 1), "redemption", "6000", "50"),
+    ]
+    as_dates = mf_xirr(D(50), D(5000), date(2025, 1, 1), D(6000), txns, AS_OF)
+    as_strings = mf_xirr(D(50), D(5000), "2025-01-01", D(6000), txns, "2026-01-01")
+    assert as_strings == as_dates and as_dates[0] is not None
+
+    no_txns_dates = mf_xirr(D(100), D(10000), date(2025, 1, 1), D(11000), [], AS_OF)
+    no_txns_strings = mf_xirr(D(100), D(10000), "2025-01-01", D(11000), [], "2026-01-01")
+    assert no_txns_strings == no_txns_dates == (D("10.00"), "purchase_date", 0)
+
+
 # --- preview rows -------------------------------------------------------------------------
 
 
