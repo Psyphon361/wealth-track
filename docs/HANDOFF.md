@@ -1,5 +1,30 @@
 # HANDOFF — session resume notes (2026-10-29)
 
+## Resume notes — 2026-10-31 (session 3)
+
+State: main is at 9a41aca, pushed. Since the last handoff this session shipped: CAS import for MFs (CAMS/KFintech via casparser + our own MF Central Detailed CAS parser, `api/app/services/mfcentral_cas.py`); optional CAS password; `mf_transactions` table (migration 0016, dev DB migrated; prod migrated by the deploy workflow — confirm the "API migrate and deploy" runs for f3fde0a/9a41aca succeeded with `gh run list`); MF XIRR (details page Holding section + sortable grid column, `valuation.xirr`/`mf_xirr`, `add_mf_xirr` in routers/holdings.py); dashboard Total row emphasis (100.00%); public landing page at `/` for everyone (aurora background), dashboard moved to `/dashboard`; Import CAS is the first/default tab on /add/mf with a hint line per tab.
+
+Not yet verified in a browser (do these first):
+1. Landing page after the route move: the user's dev server served stale files (old feature cards, a hydration-mismatch "1 Issue"). After a clean restart (`npm run clean` then `npm run dev`, done by the user), check: compact feature cards + one-line privacy note, no hydration error, page height ~half of the original, mobile 375px (preview table hides "Current" below sm).
+2. Signed-in side (needs the user — the browser pane has no working probe login): "Open app" on `/`, sidebar/logo/breadcrumb → `/dashboard`, post-login lands on `/dashboard`, /login while signed in → `/dashboard`.
+3. XIRR row on MF details and XIRR grid column; dashboard Total row; add-MF hint lines.
+
+Pending user actions:
+- Re-import the CAS with "Update existing" (dev and prod) so `mf_transactions` is filled; the user's 4 dev funds were imported before transactions were saved, so they show "from purchase date" XIRR.
+- Open question: Motilal Oswal Midcap XIRR is 3.87% here vs 4.49% on Groww (Invesco 16.06, JM 0.36, Bandhan -7.96 match exactly). Not reproducible by date shift, day count, stamp duty, dropping one txn or per-folio XIRR; ask the user whether Groww lists all 15 Motilal transactions incl. the older folio 91069711026.
+
+Offered, not accepted yet: NSDL/CDSL CAS import for stocks/bonds (no buy price in those statements); auto-redirect on 401; intraday price provider.
+
+Gotchas learned this session:
+- next.config.ts has a Turbopack rule treating every *.css (incl. *.module.css) as global CSS: CSS modules don't work, and edits appended to globals.css didn't show up in the user's running dev server. Component-scoped CSS goes in a hoisted `<style href precedence>` inside the component (see components/landing/aurora.tsx).
+- Turbopack serves stale output after files are moved/deleted; ask the user for `npm run clean` + restart. A second `next dev` can't start in web/ while the user's runs (so no spare-port web server).
+- Builders using `git mv`/`git rm` leave renames staged; the orchestrator hook only allows `git add <paths> && git commit -F`, so a commit sweeps up anything already staged. Check `git status` for staged entries before committing; undoing needs a builder (the hook blocks git reset, rm, cd).
+- Deleted paths don't match `?`-globs; stage them by directory (e.g. `git add app components`).
+- Holding item dicts serialise dates to ISO strings (portfolio.py `_item`); helpers that take dates from items must accept strings.
+- Read-only checks against the dev DB: small scripts in the session scratchpad run with `api/.venv/bin/python -I <script>` (sys.path insert api/), always `db.rollback()`; never write to the shared dev DB.
+- The browser pane is signed out; the users CLI uses getpass, so probe accounts can't be created non-interactively.
+- Never type the user's PAN (CAS password) anywhere; never commit or copy their CAS PDFs (they live in ~/Downloads).
+
 Read after `AGENTS.md`, `docs/STATUS.md` and `docs/SPEC.md`. This file covers what those don't: how the last session worked, what it learned the hard way, and what's next. Verify against the code before acting; update this file when you finish a chunk of work.
 
 ## Where things stand
