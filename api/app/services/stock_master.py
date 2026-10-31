@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.models.stock_master import StockMaster
 from app.services import market_files as market
-from app.services import stock_prices
+from app.services import stock_history, stock_prices
 from app.services.market_files import SourceRows, Sources
 
 BHAV_SERIES = ("SM", "ST")
@@ -210,7 +210,9 @@ def import_stocks(session: Session, sources: Sources, today: date) -> StockImpor
         session, StockMaster, rows, COLUMNS + ["last_seen", "is_active"], BHAV_SERIES, today
     )
     try:
-        stock_prices.upsert_closes(session, collect_closes(sources))
+        closes = collect_closes(sources)
+        stock_prices.upsert_closes(session, closes)
+        stock_history.append_closes_for_holdings(session, closes)
     except Exception as exc:  # noqa: BLE001 - backup prices must never fail the master import
         session.rollback()
         log.warning("close prices not stored: %s", exc)

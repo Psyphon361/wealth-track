@@ -11,6 +11,7 @@ from app.models.refresh_token import RefreshToken
 from app.models.stock import Stock
 from app.models.stock_master import StockMaster
 from app.models.stock_price import StockPriceLatest
+from app.models.stock_price_history import StockPriceHistory, StockPriceHistorySync
 from app.models.user import User
 
 __all__ = [
@@ -30,5 +31,7 @@ __all__ = [
     "Stock",
     "StockMaster",
     "StockPriceLatest",
+    "StockPriceHistory",
+    "StockPriceHistorySync",
     "User",
 ]

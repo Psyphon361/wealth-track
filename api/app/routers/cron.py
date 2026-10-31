@@ -10,7 +10,7 @@ from app.config import settings
 from app.db import get_db
 from app.schemas.mf_scheme import AmfiImportResult
 from app.schemas.market_master import FdIssuerImportResult, MarketImportResult
-from app.services import amfi, bond_master, fd_issuers, market_files, stock_master
+from app.services import amfi, bond_master, fd_issuers, market_files, stock_history, stock_master
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -47,10 +47,12 @@ def refresh_securities(db: Session = Depends(get_db)):
         sources = market_files.fetch_sources(today)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise HTTPException(status_code=502, detail="Couldn't fetch the securities files") from exc
-    return {
+    result = {
         "stocks": asdict(stock_master.import_stocks(db, sources, today)),
         "bonds": asdict(bond_master.import_bonds(db, sources, today)),
     }
+    stock_history.backfill_safely(db, today)
+    return result
 
 
 @router.get(

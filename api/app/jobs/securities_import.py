@@ -4,7 +4,7 @@ import time
 from datetime import date
 
 from app.db import SessionLocal, get_engine
-from app.services import bond_master, market_files, stock_master
+from app.services import bond_master, market_files, stock_history, stock_master
 
 
 def main() -> None:
@@ -16,6 +16,7 @@ def main() -> None:
     with SessionLocal() as session:
         stocks = stock_master.import_stocks(session, sources, today)
         bonds = bond_master.import_bonds(session, sources, today)
+        history = stock_history.backfill_safely(session, today)
     done = time.perf_counter()
     print(f"stocks total={stocks.total} kinds={stocks.kinds} skipped={stocks.skipped}")
     print(f"stocks sources={stocks.sources} bhav_date={stocks.bhav_date} bse_date={stocks.bse_date}")
@@ -33,6 +34,11 @@ def main() -> None:
     print(f"bonds excluded_sse={bonds.excluded} with_rating={bonds.with_rating} nsdl_only={bonds.nsdl_only}")
     for tag, error in bonds.errors.items():
         print(f"bonds {tag}_error={error}")
+    if history is not None:
+        print(
+            f"stock history backfill stocks={history.stocks} rows={history.rows} "
+            f"months_fetched={history.months_fetched} months_missed={history.months_missed}"
+        )
     for label, error in (
         ("bhav_error", stocks.bhav_error or bonds.bhav_error),
         ("bse_error", stocks.bse_error),
