@@ -1,89 +1,144 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+
 const AURORA_CSS = `
-@keyframes lp-aurora-a {
-  from { transform: translate3d(-8%, -4%, 0) rotate(-8deg) scale(1); }
-  to { transform: translate3d(10%, 8%, 0) rotate(10deg) scale(1.2); }
+.lp-aurora {
+  --mx: 0;
+  --my: 0;
+  --sx: 50%;
+  --sy: 30%;
+  --so: 0;
 }
-@keyframes lp-aurora-b {
-  from { transform: translate3d(6%, 6%, 0) rotate(12deg) scale(1.1); }
-  to { transform: translate3d(-12%, -6%, 0) rotate(-6deg) scale(0.9); }
-}
-@keyframes lp-aurora-c {
-  from { transform: translate3d(-6%, 8%, 0) rotate(0deg) scale(0.9); }
-  to { transform: translate3d(8%, -8%, 0) rotate(20deg) scale(1.15); }
-}
-@keyframes lp-aurora-d {
-  from { transform: translate3d(10%, -6%, 0) rotate(-14deg) scale(1.05); }
-  to { transform: translate3d(-8%, 6%, 0) rotate(8deg) scale(1.25); }
-}
-.lp-blob {
+.lp-ray {
   position: absolute;
-  border-radius: 9999px;
-  mix-blend-mode: screen;
+  top: -10%;
+  left: 50%;
+  height: 120%;
+  transform-origin: 50% 0;
+  transform: translateX(calc(var(--mx) * var(--shift, -1vw))) rotate(calc(var(--r) + var(--mx) * var(--tilt, 3deg)));
+  background: linear-gradient(to bottom, oklch(0.85 0.09 163 / var(--a)) 0%, oklch(0.85 0.09 163 / calc(var(--a) * 0.4)) 45%, transparent 85%);
   will-change: transform;
-  animation-timing-function: ease-in-out;
-  animation-direction: alternate;
-  animation-iteration-count: infinite;
 }
-.lp-blob-a { animation-name: lp-aurora-a; }
-.lp-blob-b { animation-name: lp-aurora-b; }
-.lp-blob-c { animation-name: lp-aurora-c; }
-.lp-blob-d { animation-name: lp-aurora-d; }
+.lp-spot {
+  position: absolute;
+  inset: 0;
+  opacity: var(--so);
+  background: radial-gradient(420px circle at var(--sx) var(--sy), oklch(0.85 0.09 163 / 0.09), transparent 70%);
+}
 @media (prefers-reduced-motion: reduce) {
-  .lp-blob { animation: none !important; }
+  .lp-ray { will-change: auto; }
   .lp-reveal-hidden { opacity: 1 !important; transform: none !important; transition: none !important; }
 }
 `;
 
+const RAYS = [
+  { r: "-24deg", w: "9vw", a: 0.09, blur: 28, tilt: "4deg", shift: "-1.5vw" },
+  { r: "-9deg", w: "14vw", a: 0.13, blur: 36, tilt: "3deg", shift: "-1vw" },
+  { r: "8deg", w: "12vw", a: 0.12, blur: 32, tilt: "3.5deg", shift: "-1.2vw" },
+  { r: "23deg", w: "8vw", a: 0.08, blur: 26, tilt: "4.5deg", shift: "-1.8vw" },
+];
+
 export function Aurora({ className = "h-screen" }: { className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    const parent = el?.parentElement;
+    if (!el || !parent) return;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (coarse || reduced) return;
+
+    const target = { x: 0, y: 0, sx: 0, sy: 0, o: 0 };
+    const cur = { x: 0, y: 0, sx: 0, sy: 0, o: 0 };
+    let raf = 0;
+    let first = true;
+
+    const tick = () => {
+      const k = 0.08;
+      cur.x += (target.x - cur.x) * k;
+      cur.y += (target.y - cur.y) * k;
+      cur.sx += (target.sx - cur.sx) * 0.2;
+      cur.sy += (target.sy - cur.sy) * 0.2;
+      cur.o += (target.o - cur.o) * 0.08;
+      el.style.setProperty("--mx", cur.x.toFixed(4));
+      el.style.setProperty("--my", cur.y.toFixed(4));
+      el.style.setProperty("--sx", `${cur.sx.toFixed(1)}px`);
+      el.style.setProperty("--sy", `${cur.sy.toFixed(1)}px`);
+      el.style.setProperty("--so", cur.o.toFixed(4));
+      const settled =
+        Math.abs(target.x - cur.x) < 0.001 &&
+        Math.abs(target.y - cur.y) < 0.001 &&
+        Math.abs(target.sx - cur.sx) < 0.5 &&
+        Math.abs(target.sy - cur.sy) < 0.5 &&
+        Math.abs(target.o - cur.o) < 0.001;
+      raf = settled ? 0 : requestAnimationFrame(tick);
+    };
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const rect = parent.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const inside = px >= 0 && py >= 0 && px <= rect.width && py <= rect.height;
+      if (inside) {
+        target.x = (px / rect.width) * 2 - 1;
+        target.y = (py / rect.height) * 2 - 1;
+        target.sx = px;
+        target.sy = py;
+        target.o = 1;
+        if (first) {
+          cur.sx = px;
+          cur.sy = py;
+          first = false;
+        }
+      } else {
+        target.x = 0;
+        target.y = 0;
+        target.o = 0;
+      }
+      kick();
+    };
+
+    window.addEventListener("pointermove", onMove, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
     <div
+      ref={ref}
       aria-hidden
-      className={`pointer-events-none absolute inset-x-0 top-0 -z-10 overflow-hidden ${className}`}
+      className={`lp-aurora pointer-events-none absolute inset-x-0 top-0 -z-10 overflow-hidden ${className}`}
       style={{
         maskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
         WebkitMaskImage: "linear-gradient(to bottom, black 55%, transparent 100%)",
       }}
     >
       <style href="landing-aurora" precedence="default">{AURORA_CSS}</style>
-      <div
-        className="lp-blob lp-blob-a -top-[15%] -left-[15%] h-[55vh] w-[80vw]"
-        style={{
-          background: "oklch(0.45 0.11 165)",
-          opacity: 0.45,
-          filter: "blur(110px)",
-          animationDuration: "32s",
-        }}
-      />
-      <div
-        className="lp-blob lp-blob-b top-[5%] left-[25%] h-[50vh] w-[70vw]"
-        style={{
-          background: "oklch(0.696 0.15 163)",
-          opacity: 0.3,
-          filter: "blur(120px)",
-          animationDuration: "41s",
-          animationDelay: "-9s",
-        }}
-      />
-      <div
-        className="lp-blob lp-blob-c top-[-10%] right-[-15%] h-[60vh] w-[65vw]"
-        style={{
-          background: "oklch(0.62 0.1 190)",
-          opacity: 0.32,
-          filter: "blur(100px)",
-          animationDuration: "27s",
-          animationDelay: "-14s",
-        }}
-      />
-      <div
-        className="lp-blob lp-blob-d top-[30%] left-[-10%] h-[40vh] w-[60vw]"
-        style={{
-          background: "oklch(0.35 0.09 170)",
-          opacity: 0.4,
-          filter: "blur(90px)",
-          animationDuration: "45s",
-          animationDelay: "-22s",
-        }}
-      />
+      {RAYS.map((ray, i) => (
+        <div
+          key={i}
+          className="lp-ray"
+          style={
+            {
+              width: ray.w,
+              marginLeft: `calc(${ray.w} / -2)`,
+              filter: `blur(${ray.blur}px)`,
+              "--r": ray.r,
+              "--a": ray.a,
+              "--tilt": ray.tilt,
+              "--shift": ray.shift,
+            } as React.CSSProperties
+          }
+        />
+      ))}
+      <div className="lp-spot" />
       <svg className="absolute inset-0 size-full opacity-[0.05]" xmlns="http://www.w3.org/2000/svg">
         <filter id="aurora-grain">
           <feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch" />

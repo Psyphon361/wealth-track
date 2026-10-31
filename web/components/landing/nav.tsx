@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export function Wordmark() {
   return (
     <span className="flex items-center gap-2 font-semibold tracking-tight">
-      <span className="size-5 rounded-md bg-gradient-to-br from-gain to-[oklch(0.5_0.12_190)] shadow-[0_0_16px_oklch(0.696_0.15_163/0.5)]" />
+      <span className="size-5 rounded-md bg-gradient-to-br from-gain to-[oklch(0.5_0.12_190)] shadow-[0_0_8px_oklch(0.696_0.15_163/0.25)]" />
       Wealth Tracker
     </span>
   );
