@@ -29,6 +29,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf}
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (5 type queries run concurrently)
+  app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup
@@ -39,6 +40,8 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest), plus scheme master CSV enrichment of plan/option
   app/services/stock_prices.py  latest stock prices: nightly NSE/BSE bhavcopy close stored in stock_price_latest by the securities import (upsert_closes); latest_prices reads it for /api/holdings/stock, /api/portfolio and /api/dashboard
   app/models/stock_price.py  stock_price_latest (one row per stock_master id: price, prev_close, price_time, source bhavcopy, updated_at)
+  app/models/stock_price_history.py  stock_price_history (master_id, trade_date, close; one close per held stock per trading day) and stock_price_history_sync (master_id, backfilled_at; one row once a stock's 12-month backfill has run)
+  app/services/stock_history.py  appends the night's close for held stocks (called inside import_stocks after upsert_closes); backfill_safely runs the one-time 12-month month-end backfill (NSE bhavcopy, BSE fallback) after the cron/CLI import
   app/services/nav_history.py  mfapi.in history fetch (on demand, 10 years kept, 24 h refetch limit), daily append for held schemes, NAV on-or-before lookup
   app/services/market_files.py  shared securities download/parse/upsert helpers (fetch_sources downloads each file once)
   app/services/stock_master.py  stock_master import: NSE EQUITY_L, ETF list, UDiFF bhavcopy (SME), BSE bhavcopy; ISIN merge
@@ -47,10 +50,11 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/fd_issuers.py  fd_issuer_master import (Razorpay IFSC banks, DICGC insured flag, seed files; sources in its docstring), issuer search and require_issuer for FD/RD
   app/jobs/copy_holdings.py  one-off CLI: copies one user's holdings from SOURCE_DATABASE_URL to TARGET_DATABASE_URL, re-linking masters by ISIN/issuer code/scheme_code (dry run unless --apply)
   app/jobs/securities_import.py  CLI: `python -m app.jobs.securities_import` runs the stock and bond master imports
+  app/jobs/stock_history_backfill.py  CLI: `python -m app.jobs.stock_history_backfill [--months 12]` runs the stock price history backfill for held stocks
   app/jobs/issuers_import.py  CLI: `python -m app.jobs.issuers_import` runs the FD/RD issuer master import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -70,7 +74,7 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   components/holding-detail/ holding details page: shared layout for all five types (header, KPI strip, tenure bar, sections)
   components/asset-type-icon.tsx  shared tinted asset-type icon (details page and add form)
   components/breadcrumb-label.tsx  breadcrumb label context: BreadcrumbLabelProvider (in the (app) layout) and useBreadcrumbLabel (sets the last crumb while mounted)
-  components/dashboard/ KPI cards + holdings-by-type table
+  components/dashboard/ KPI cards, net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx) and holdings-by-type table
   components/ui/        shadcn components (calendar.tsx has a custom inline month/year dropdown)
   lib/api.ts            fetch helpers, ApiError; base URL is same-origin /api
   lib/holding-amounts.ts  bond + MF quantity / price / total helper (vitest tests in holding-amounts.test.ts)
@@ -107,7 +111,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0016`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0017`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)

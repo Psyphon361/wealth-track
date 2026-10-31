@@ -35,6 +35,7 @@
 - Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Verified by the user with a real Google OAuth client (2026-10-31).
 - 2026-10-31: Landing hero reworked (cursor-following green light rays in `components/landing/aurora.tsx`, neutral headline gradient, white primary buttons on the landing only; badge, footer and duplicate hero CTA removed).
 - 2026-10-31: Expired session: any API 401 in the browser redirects to `/login?next=<page>` (`web/lib/api.ts`).
+- 2026-10-31: Net worth over time chart (migration 0017 stock price history, GET /api/networth/history, dashboard card).
 - 2026-10-31: FD, RD and bond pages have an Active (n) / Matured (m) switch (`statusTabs`, `?status=matured`); dashboard no longer shows "+N matured".
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
@@ -75,7 +76,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next (backlog the user asked to keep)
 
-- Net worth over time: daily snapshot + dashboard trend chart (highest value).
 - Motilal Oswal Midcap XIRR gap: 3.87% here vs 4.49% on Groww. Ask whether Groww lists all 15 transactions, incl. folio 91069711026.
 - Password reset and email verification (research an email provider later; same as auth step 3).
 - Pruning NAV history of unheld schemes (see Deferred).
