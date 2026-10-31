@@ -8,7 +8,7 @@ import {
   type RecurringDepositItem,
 } from "@/lib/types";
 import type { GridConfig } from "../types";
-import { createColumnKit, STATUS_LABELS } from "./shared";
+import { createColumnKit } from "./shared";
 
 const labels = {
   bank: "Bank",
@@ -46,7 +46,6 @@ export const rdConfig: GridConfig<RecurringDepositItem> = {
   ],
   filters: [
     { kind: "facet", key: "bank", title: "Bank" },
-    { kind: "facet", key: "status", title: "Status", labels: STATUS_LABELS },
     { kind: "range", title: "Rate", minKey: "rate_min", maxKey: "rate_max" },
     {
       kind: "date",
@@ -55,6 +54,7 @@ export const rdConfig: GridConfig<RecurringDepositItem> = {
       toKey: "maturity_to",
     },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

@@ -72,6 +72,8 @@ export interface GridConfig<TRow extends HoldingRow> {
   searchPlaceholder: string;
   sortKeys: readonly string[];
   filters: FilterDef[];
+  /** Split the page into Active / Matured tabs driven by the `status` query param. */
+  statusTabs?: boolean;
   /** Labels for headers and the Columns menu, by column id. */
   columnLabels: Record<string, string>;
   createColumns: (handlers: RowHandlers<TRow>) => GridColumn<TRow>[];

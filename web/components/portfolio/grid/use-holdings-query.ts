@@ -15,6 +15,8 @@ export interface HoldingsFilters {
   sort: string;
   dir: SortDir;
   page: number;
+  /** Matured tab selected (only for configs with `statusTabs`). */
+  matured: boolean;
 }
 
 export interface FilterPatch {
@@ -37,7 +39,7 @@ function posInt(v: string | null, fallback: number): number {
 
 export function parseFilters(
   sp: URLSearchParams,
-  config: Pick<GridConfig<HoldingRow>, "filters" | "sortKeys">,
+  config: Pick<GridConfig<HoldingRow>, "filters" | "sortKeys" | "statusTabs">,
 ): HoldingsFilters {
   const params: Record<string, string[]> = {};
   for (const key of filterParamKeys(config.filters)) {
@@ -55,6 +57,7 @@ export function parseFilters(
     sort: config.sortKeys.includes(sort) ? sort : DEFAULT_SORT,
     dir: dir === "asc" || dir === "desc" ? dir : DEFAULT_DIR,
     page: posInt(sp.get("page"), 1),
+    matured: config.statusTabs === true && sp.get("status") === "matured",
   };
 }
 
@@ -70,7 +73,18 @@ export function toQueryString(f: HoldingsFilters): string {
     sp.set("dir", f.dir);
   }
   if (f.page !== 1) sp.set("page", String(f.page));
+  if (f.matured) sp.set("status", "matured");
   return sp.toString();
+}
+
+/** Query string sent to the API: the Active tab sends status=active explicitly. */
+function toApiQueryString(
+  f: HoldingsFilters,
+  config: Pick<GridConfig<HoldingRow>, "statusTabs">,
+): string {
+  const query = toQueryString(f);
+  if (!config.statusTabs || f.matured) return query;
+  return query ? `${query}&status=active` : "status=active";
 }
 
 export function hasActiveFilters(f: HoldingsFilters): boolean {
@@ -93,7 +107,10 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     () => parseFilters(new URLSearchParams(paramString), config),
     [paramString, config],
   );
-  const qs = useMemo(() => toQueryString(filters), [filters]);
+  const qs = useMemo(
+    () => toApiQueryString(filters, config),
+    [filters, config],
+  );
   const endpoint = `/holdings/${config.type}`;
 
   const [data, setData] = useState<HoldingsResponse<TRow> | null>(null);
@@ -186,6 +203,12 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     [navigate, filters],
   );
 
+  /** Switch Active / Matured tab; resets to page 1. */
+  const setMatured = useCallback(
+    (matured: boolean) => navigate({ ...filters, matured, page: 1 }),
+    [navigate, filters],
+  );
+
   const refetch = useCallback(() => {
     setRefreshing(true);
     load(qs);
@@ -211,14 +234,18 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
               total: Math.max(0, prev.total - 1),
               summary: {
                 ...prev.summary,
-                count: Math.max(0, prev.summary.count - 1),
+                ...(filters.matured
+                  ? {
+                      matured_count: Math.max(0, prev.summary.matured_count - 1),
+                    }
+                  : { count: Math.max(0, prev.summary.count - 1) }),
               },
             }
           : prev,
       );
       return () => setData(snapshot);
     },
-    [data],
+    [data, filters.matured],
   );
 
   // If the current page no longer exists (e.g. after deletes), go to the last one.
@@ -245,6 +272,7 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     setFilters,
     setSort,
     setPage,
+    setMatured,
     resetFilters,
     refetch,
     retry,

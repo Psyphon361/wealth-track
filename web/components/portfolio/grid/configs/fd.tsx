@@ -17,7 +17,7 @@ import {
 } from "@/lib/types";
 import type { GridConfig } from "../types";
 import { GainCell, gainTone } from "../gain-cell";
-import { createColumnKit, STATUS_LABELS } from "./shared";
+import { createColumnKit } from "./shared";
 
 const labels = {
   bank: "Bank",
@@ -72,7 +72,6 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
       title: "Compounding",
       labels: COMPOUNDING_LABELS,
     },
-    { kind: "facet", key: "status", title: "Status", labels: STATUS_LABELS },
     { kind: "range", title: "Rate", minKey: "rate_min", maxKey: "rate_max" },
     {
       kind: "date",
@@ -81,6 +80,7 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
       toKey: "maturity_to",
     },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

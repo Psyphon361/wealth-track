@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { apiDelete } from "@/lib/api";
 import { formatINR, formatIstDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
 import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
@@ -23,18 +24,76 @@ import { hasActiveFilters, useHoldingsQuery } from "./grid/use-holdings-query";
 
 const LABEL = "text-[11px] font-medium tracking-wider text-muted-foreground uppercase";
 
-function SummaryStrip({ summary }: { summary: HoldingsSummary }) {
+function StatusTabs({
+  summary,
+  matured,
+  onChange,
+}: {
+  summary: HoldingsSummary;
+  matured: boolean;
+  onChange: (matured: boolean) => void;
+}) {
+  const tabs = [
+    { value: false, label: "Active", n: summary.count },
+    { value: true, label: "Matured", n: summary.matured_count },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Holding status"
+      className="inline-flex items-center gap-0.5 rounded-md bg-muted p-0.5"
+    >
+      {tabs.map((t) => (
+        <button
+          key={t.label}
+          type="button"
+          role="tab"
+          aria-selected={matured === t.value}
+          onClick={() => matured !== t.value && onChange(t.value)}
+          className={cn(
+            "rounded-sm px-3 py-1.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+            matured === t.value
+              ? "bg-background font-medium text-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t.label} <span className="num">({t.n})</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function SummaryStrip({
+  summary,
+  showTotals = true,
+  tabs,
+}: {
+  summary: HoldingsSummary;
+  showTotals?: boolean;
+  tabs?: ReactNode;
+}) {
   return (
     <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
-      <div className="num font-medium">
-        {summary.count} active
-        {summary.matured_count > 0 ? (
-          <span className="font-normal text-muted-foreground">
-            {" "}
-            · {summary.matured_count} matured
-          </span>
-        ) : null}
-      </div>
+      {tabs ?? (
+        <div className="num font-medium">
+          {summary.count} active
+          {summary.matured_count > 0 ? (
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              · {summary.matured_count} matured
+            </span>
+          ) : null}
+        </div>
+      )}
+      {showTotals ? <Totals summary={summary} /> : null}
+    </dl>
+  );
+}
+
+function Totals({ summary }: { summary: HoldingsSummary }) {
+  return (
+    <>
       <div className="flex items-baseline gap-1.5">
         <dt className={LABEL}>Invested</dt>
         <dd className="num">{formatINR(summary.invested)}</dd>
@@ -49,7 +108,7 @@ function SummaryStrip({ summary }: { summary: HoldingsSummary }) {
           <GainCell gain={summary.gain} pct={summary.gain_pct} />
         </dd>
       </div>
-    </dl>
+    </>
   );
 }
 
@@ -150,7 +209,21 @@ function TypedPortfolio<TRow extends HoldingRow>({
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <SummaryStrip summary={data.summary} />
+        {config.statusTabs ? (
+          <SummaryStrip
+            summary={data.summary}
+            showTotals={!filters.matured}
+            tabs={
+              <StatusTabs
+                summary={data.summary}
+                matured={filters.matured}
+                onChange={q.setMatured}
+              />
+            }
+          />
+        ) : (
+          <SummaryStrip summary={data.summary} />
+        )}
         <Link
           href={`/add/${config.type}`}
           className={buttonVariants({ variant: "outline", size: "sm" })}
@@ -170,18 +243,27 @@ function TypedPortfolio<TRow extends HoldingRow>({
       ) : null}
 
       <div className="min-w-0">
-        <HoldingsGrid
-          config={config}
-          data={data}
-          filters={filters}
-          fetching={q.fetching}
-          onFilters={q.setFilters}
-          onReset={q.resetFilters}
-          onSort={q.setSort}
-          onPage={q.setPage}
-          onEdit={onEdit}
-          onDelete={onDelete}
-        />
+        {filters.matured &&
+        data.total === 0 &&
+        !q.fetching &&
+        !hasActiveFilters(filters) ? (
+          <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+            No matured {config.noun}
+          </div>
+        ) : (
+          <HoldingsGrid
+            config={config}
+            data={data}
+            filters={filters}
+            fetching={q.fetching}
+            onFilters={q.setFilters}
+            onReset={q.resetFilters}
+            onSort={q.setSort}
+            onPage={q.setPage}
+            onEdit={onEdit}
+            onDelete={onDelete}
+          />
+        )}
 
         <EditDialog
           config={config}
