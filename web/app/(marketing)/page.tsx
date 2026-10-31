@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function LandingPage() {
   return (
     <>
-      <Nav cta={<AuthCta variant="nav" />} />
+      <Nav cta={<AuthCta />} />
       <main>
         <Hero />
         <Features />

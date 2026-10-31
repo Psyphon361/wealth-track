@@ -1,5 +1,4 @@
 import { Aurora } from "./aurora";
-import { AuthCta } from "./auth-cta";
 import { ProductPreview } from "./product-preview";
 
 export function Hero() {
@@ -16,9 +15,6 @@ export function Hero() {
         <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground text-balance">
           FDs, RDs, stocks, bonds and mutual funds — valued every day, in ₹.
         </p>
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <AuthCta variant="hero" />
-        </div>
         <ProductPreview />
       </div>
     </section>
