@@ -1,5 +1,17 @@
 # HANDOFF — session resume notes (2026-10-29)
 
+## Resume notes — 2026-10-31 (session 4)
+
+Shipped and pushed (main at 5ba7303 plus whatever follows this note): landing hero reworked (cursor-following faint green light rays in components/landing/aurora.tsx replace the green blobs; neutral headline gradient; white primary buttons on the landing only; "Built for Indian investors" badge, footer and the duplicate hero CTA removed — auth buttons live only in the nav); expired session → any API 401 in the browser redirects to /login?next=<page> (web/lib/api.ts); FD, RD and bond pages have an Active (n) / Matured (m) switch (grid config `statusTabs`, `?status=matured`), Matured hides the active-only totals; dashboard no longer shows "+N matured". Prod migration 0016 confirmed applied (API deploy run for f3fde0a succeeded).
+
+Verified by the user: signed-in landing/dashboard routing, MF XIRR row and grid column, dashboard Total row, add-MF hint lines, Google sign-in on a real OAuth client.
+
+Decisions: stock/bond import (CDSL/NSDL CAS or broker tradebooks) researched and parked — CDSL/NSDL statements have no buy price or date, tradebooks need one parser per broker and miss splits/bonuses. Don't re-offer unless the user raises it.
+
+Backlog the user asked to keep: net worth over time (daily snapshot + dashboard trend chart; highest value); Motilal Oswal Midcap XIRR gap (3.87% here vs 4.49% Groww — ask whether Groww lists all 15 txns incl. folio 91069711026); password reset + email verification (research email provider later); prune NAV history of unheld schemes.
+
+Gotchas: the orchestrator commit hook needs paths relative to the shell's cwd (it may be web/ — use `../docs/...`), and allows only `git add … && git commit -F <file>`. Testing the 401 redirect without signing in: set a bogus non-httpOnly `wt_refresh` cookie in the browser pane, open a page — the refresh round trip takes a few seconds before the redirect.
+
 ## Resume notes — 2026-10-31 (session 3)
 
 State: main is at 9a41aca, pushed. Since the last handoff this session shipped: CAS import for MFs (CAMS/KFintech via casparser + our own MF Central Detailed CAS parser, `api/app/services/mfcentral_cas.py`); optional CAS password; `mf_transactions` table (migration 0016, dev DB migrated; prod migrated by the deploy workflow — confirm the "API migrate and deploy" runs for f3fde0a/9a41aca succeeded with `gh run list`); MF XIRR (details page Holding section + sortable grid column, `valuation.xirr`/`mf_xirr`, `add_mf_xirr` in routers/holdings.py); dashboard Total row emphasis (100.00%); public landing page at `/` for everyone (aurora background), dashboard moved to `/dashboard`; Import CAS is the first/default tab on /add/mf with a hint line per tab.

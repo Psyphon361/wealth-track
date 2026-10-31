@@ -32,7 +32,10 @@
 - 2026-10-31: MF import from a CAMS/KFintech CAS PDF (`/add/mf`, "Import CAS" tab; `/api/import/cas/preview` and `/commit`, SPEC §8). Uncommitted; not yet tested against a real CAS PDF.
 - 2026-10-31: MF XIRR on the details page (CAS-imported transactions; manual entries use the purchase date). Migration `0016` adds `mf_transactions`; `GET /api/holdings/mf/{id}` returns `xirr`, `xirr_basis`, `xirr_transactions`. SPEC §4, §5, §8.
 - 2026-10-31: Public landing page (signed-out `/`) with aurora background; dashboard Total row emphasised and shows 100.00%. SPEC §5 ("Landing page").
-- Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Not yet tested with a real Google client (the user creates it).
+- Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Verified by the user with a real Google OAuth client (2026-10-31).
+- 2026-10-31: Landing hero reworked (cursor-following green light rays in `components/landing/aurora.tsx`, neutral headline gradient, white primary buttons on the landing only; badge, footer and duplicate hero CTA removed).
+- 2026-10-31: Expired session: any API 401 in the browser redirects to `/login?next=<page>` (`web/lib/api.ts`).
+- 2026-10-31: FD, RD and bond pages have an Active (n) / Matured (m) switch (`statusTabs`, `?status=matured`); dashboard no longer shows "+N matured".
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
@@ -61,14 +64,22 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - The NSDL list is refreshed by hand (monthly suggested). Until the next refresh, new issues are missing from the bond list.
 - `tax_free` in `bond_master` depends on the seed file (106 bonds) and the NSDL "Taxfree" flag; `stock_master` has no tax_free detection.
 - Bond rating in the picker is pending (uncommitted web change).
-- Session errors: when the session is invalid, pages show "Not authorised" with Retry instead of redirecting to `/login` (the proxy only checks the cookie's presence).
+- Session errors: an API 401 in the browser now redirects to `/login` (2026-10-31). The proxy still only checks the cookie's presence, so a bogus cookie passes until the first API call.
 - Some NSE ETF names in `stock_master` are raw codes (e.g. "NIPINDETFNIFTYBEES").
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
 ## Next (auth)
 
-- Auth step 2 is built. Next: the user creates the Google OAuth client (DEPLOY §5b) and tests the real flow; fix whatever it shows.
+- Auth step 2 is built and verified with a real Google OAuth client (2026-10-31).
 - Auth step 3: password reset and email verification (needs an email provider; not chosen yet).
+
+## Next (backlog the user asked to keep)
+
+- Net worth over time: daily snapshot + dashboard trend chart (highest value).
+- Motilal Oswal Midcap XIRR gap: 3.87% here vs 4.49% on Groww. Ask whether Groww lists all 15 transactions, incl. folio 91069711026.
+- Password reset and email verification (research an email provider later; same as auth step 3).
+- Pruning NAV history of unheld schemes (see Deferred).
+- Stock/bond import from CDSL/NSDL CAS or broker tradebooks: parked. CDSL/NSDL statements have no buy price or date; tradebooks need one parser per broker and miss splits/bonuses. Don't re-offer unless the user raises it.
 
 ## Deferred (not started)
 
