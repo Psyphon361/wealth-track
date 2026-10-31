@@ -42,6 +42,20 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
+let redirectingToLogin = false;
+
+/** Session expired: full navigation to /login (resets client state), once. */
+function redirectToLogin(): void {
+  if (typeof window === "undefined" || redirectingToLogin) return;
+  const { pathname, search } = window.location;
+  if (pathname.startsWith("/login") || pathname.startsWith("/signup")) return;
+  redirectingToLogin = true;
+  const target = `/login?next=${encodeURIComponent(pathname + search)}`;
+  // Full navigation on purpose: resets all client state after a lost session.
+  // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+  window.location.assign(target);
+}
+
 async function request<T>(
   method: string,
   path: string,
@@ -73,6 +87,7 @@ async function request<T>(
       "Network error",
     );
   }
+  if (res.status === 401) redirectToLogin();
   if (!res.ok) {
     let data: Record<string, unknown> = {};
     try {
