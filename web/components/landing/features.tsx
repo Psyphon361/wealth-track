@@ -1,4 +1,4 @@
-import { Calculator, FileUp, IndianRupee, Layers, LineChart, RefreshCw } from "lucide-react";
+import { Calculator, FileUp, IndianRupee, Layers, LineChart, RefreshCw, ShieldCheck } from "lucide-react";
 import { Reveal } from "./reveal";
 
 const features = [
@@ -12,25 +12,30 @@ const features = [
 
 export function Features() {
   return (
-    <section className="px-4 py-20">
+    <section className="px-4 py-12">
       <div className="mx-auto max-w-6xl">
         <Reveal className="mx-auto max-w-xl text-center">
-          <h2 className="text-3xl font-semibold tracking-tight">Everything you hold, understood</h2>
-          <p className="mt-3 text-muted-foreground">Quiet, accurate and made for how Indians invest.</p>
+          <h2 className="text-2xl font-semibold tracking-tight">Everything you hold, understood</h2>
         </Reveal>
-        <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f, i) => (
             <Reveal key={f.title} delay={(i % 3) * 80}>
-              <div className="h-full rounded-xl border border-border bg-card/60 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40">
-                <span className="flex size-9 items-center justify-center rounded-lg bg-primary/15 text-primary">
-                  <f.icon className="size-4.5" />
-                </span>
-                <h3 className="mt-4 font-medium">{f.title}</h3>
-                <p className="mt-1.5 text-muted-foreground">{f.text}</p>
+              <div className="h-full rounded-xl border border-border bg-card/60 p-4 transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/40">
+                <div className="flex items-center gap-3">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+                    <f.icon className="size-4" />
+                  </span>
+                  <h3 className="font-medium">{f.title}</h3>
+                </div>
+                <p className="mt-2 text-sm text-muted-foreground">{f.text}</p>
               </div>
             </Reveal>
           ))}
         </div>
+        <p className="mt-8 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+          <ShieldCheck className="size-3.5 shrink-0" />
+          Your CAS file and password are read in memory and never stored. Invite-only, no ads.
+        </p>
       </div>
     </section>
   );

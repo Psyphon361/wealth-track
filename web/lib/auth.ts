@@ -42,7 +42,7 @@ export function clearAuthCookies(store: CookieSetter): void {
 /** Only allow same-origin relative paths. */
 export function safeNext(next: string | null | undefined): string {
   if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) {
-    return "/";
+    return "/dashboard";
   }
   return next;
 }

@@ -24,14 +24,11 @@ export function proxy(request: NextRequest) {
   // Files from web/public (og.png, logo.svg, ...) are public.
   if (/\.[a-z0-9]+$/i.test(pathname)) return NextResponse.next();
 
-  const isWelcome = pathname === "/welcome" || pathname.startsWith("/welcome/");
-  if (isWelcome) {
-    if (hasRefresh) return NextResponse.redirect(new URL("/", request.url));
-    return NextResponse.next();
+  // The landing page is public for everyone; /welcome is the old address.
+  if (pathname === "/welcome" || pathname.startsWith("/welcome/")) {
+    return NextResponse.redirect(new URL("/", request.url), 308);
   }
-  if (pathname === "/" && !hasRefresh) {
-    return NextResponse.rewrite(new URL("/welcome", request.url));
-  }
+  if (pathname === "/") return NextResponse.next();
 
   const isAuthPage =
     pathname === "/login" ||
@@ -39,7 +36,7 @@ export function proxy(request: NextRequest) {
     pathname === "/signup" ||
     pathname.startsWith("/signup/");
   if (isAuthPage) {
-    if (hasRefresh) return NextResponse.redirect(new URL("/", request.url));
+    if (hasRefresh) return NextResponse.redirect(new URL("/dashboard", request.url));
     return NextResponse.next();
   }
   if (hasRefresh) return NextResponse.next();

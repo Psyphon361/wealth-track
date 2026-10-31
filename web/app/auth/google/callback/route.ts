@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
   function fail(error: { message: string; description: string }): NextResponse {
     const url = new URL("/login", requestOrigin);
-    if (next !== "/") url.searchParams.set("next", next);
+    if (next !== "/dashboard") url.searchParams.set("next", next);
     const res = NextResponse.redirect(url);
     res.cookies.set(AUTH_ERROR_COOKIE, JSON.stringify(error), {
       httpOnly: true,

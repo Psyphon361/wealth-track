@@ -186,7 +186,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 ## 5. Web app
 
-- Pages: `/` Dashboard (KPI cards, holdings-by-type table with allocation bars; asset-type rows link to `/portfolio/{type}`).
+- Pages: `/dashboard` Dashboard (KPI cards, holdings-by-type table with allocation bars; asset-type rows link to `/portfolio/{type}`).
   - `/portfolio` redirects to the first asset type you hold.
   - `/portfolio/{type}` shows Groww-style fixed-width tabs (FD, RD, Stocks, Bonds, Mutual Funds, with counts) and a sliding underline. The content fades in when the type changes; reduced motion is respected.
   - Each type has a summary strip (count, invested, current, gain) and an "Add FD"/"Add RD"/"Add stocks"/… button linking to `/add/{type}`.
@@ -223,8 +223,8 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 ### Landing page
 
-- Public page at `/welcome` (`web/app/(marketing)/welcome/`), no sidebar and no sign-in. `proxy.ts` rewrites signed-out visitors to `/` onto `/welcome`; a signed-in user opening `/welcome` is redirected to `/`. Paths ending in a file extension (files in `web/public`) pass through.
-- Sections, top to bottom: nav, hero, sample-data dashboard preview, 6 features, how it works, privacy, closing CTA, footer (`web/components/landing/`).
+- Public page at `/` for everyone (`web/app/(marketing)/page.tsx`), no sidebar and no sign-in. Signed-in users see a single "Open app" button (to `/dashboard`) in the nav and hero instead of "Log in" / "Get started"; the cookie check is in a Suspense-wrapped server component so the page stays static. `/welcome` redirects permanently to `/`; signed-in users opening `/login` or `/signup` go to `/dashboard`, and the default post-login destination is `/dashboard`. Paths ending in a file extension (files in `web/public`) pass through.
+- Sections, top to bottom: nav, hero, sample-data dashboard preview, 6 features with a one-line privacy note below, footer (`web/components/landing/`).
 - The dashboard preview uses made-up sample figures, not user data. The Holdings table hides its "Current" column below `sm`.
 - Aurora background (`aurora.tsx`) is pure CSS. Reduced motion freezes it.
 
@@ -311,7 +311,7 @@ Users sign in with email and password. Every holding belongs to one user.
 
 ## 8. CAS import (mutual funds)
 
-Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/app/schemas/cas_import.py`; web `web/components/forms/cas-import/`. On `/add/mf` the form has two tabs: "Manual entry" and "Import CAS".
+Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/app/schemas/cas_import.py`; web `web/components/forms/cas-import/`. On `/add/mf` the form has two tabs: "Import CAS" (first and default, reopened on every visit) and "Manual entry".
 
 ### Preview (`POST /api/import/cas/preview`, multipart `file` + optional `password`)
 

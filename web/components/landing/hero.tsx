@@ -1,12 +1,10 @@
-import Link from "next/link";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { Aurora } from "./aurora";
+import { AuthCta } from "./auth-cta";
 import { ProductPreview } from "./product-preview";
 
 export function Hero() {
   return (
-    <section className="relative px-4 pt-16 pb-20 sm:pt-24">
+    <section className="relative px-4 pt-10 pb-12 sm:pt-14">
       <Aurora />
       <div className="mx-auto max-w-6xl text-center">
         <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card/50 px-3 py-1 text-xs text-muted-foreground backdrop-blur">
@@ -22,16 +20,8 @@ export function Hero() {
         <p className="mx-auto mt-5 max-w-xl text-base text-muted-foreground text-balance">
           FDs, RDs, stocks, bonds and mutual funds — valued every day, in ₹.
         </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <Link href="/signup" className={cn(buttonVariants({ size: "lg" }), "h-10 px-5 text-sm")}>
-            Get started
-          </Link>
-          <Link
-            href="/login"
-            className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-10 px-5 text-sm")}
-          >
-            Log in
-          </Link>
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <AuthCta variant="hero" />
         </div>
         <ProductPreview />
       </div>

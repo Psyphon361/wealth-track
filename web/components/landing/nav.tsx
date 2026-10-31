@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export function Wordmark() {
@@ -14,7 +13,7 @@ export function Wordmark() {
   );
 }
 
-export function Nav() {
+export function Nav({ cta }: { cta: React.ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
@@ -37,12 +36,7 @@ export function Nav() {
           <Wordmark />
         </Link>
         <nav className="flex items-center gap-2">
-          <Link href="/login" className={buttonVariants({ variant: "ghost" })}>
-            Log in
-          </Link>
-          <Link href="/signup" className={buttonVariants()}>
-            Get started
-          </Link>
+          {cta}
         </nav>
       </div>
     </header>

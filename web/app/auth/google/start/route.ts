@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
   if (!clientId) {
     const url = new URL("/login", requestOrigin);
-    if (next !== "/") url.searchParams.set("next", next);
+    if (next !== "/dashboard") url.searchParams.set("next", next);
     const res = NextResponse.redirect(url);
     res.cookies.set(
       AUTH_ERROR_COOKIE,

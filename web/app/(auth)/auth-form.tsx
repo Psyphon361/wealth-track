@@ -91,7 +91,7 @@ export function AuthForm({
     if (found.email || found.password) event.preventDefault();
   }
 
-  const query = next !== "/" ? `?next=${encodeURIComponent(next)}` : "";
+  const query = next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : "";
 
   return (
     <Card className="w-full max-w-sm">
