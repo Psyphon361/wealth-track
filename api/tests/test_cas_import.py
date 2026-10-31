@@ -184,6 +184,19 @@ def test_preview_wrong_password(mf_client, users, monkeypatch):  # noqa: F811
     assert r.json()["description"] == "The CAS password is usually your PAN in capitals."
 
 
+def test_preview_empty_password_needed(mf_client, users, monkeypatch):  # noqa: F811
+    def boom(*a, **k):
+        raise IncorrectPasswordError("bad")
+
+    monkeypatch.setattr(casparser, "read_cas_pdf", boom)
+    r = upload(mf_client, users[0], password="  ")
+    assert r.status_code == 400
+    assert r.json()["message"] == "Password needed"
+    assert r.json()["description"] == (
+        "This statement is password-protected. The password is usually your PAN in capitals."
+    )
+
+
 def test_preview_non_pdf_and_too_large(mf_client, users):  # noqa: F811
     r = upload(mf_client, users[0], content=b"hello")
     assert r.status_code == 422 and r.json()["message"] == "Couldn't read this statement"

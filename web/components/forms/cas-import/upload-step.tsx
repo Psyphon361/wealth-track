@@ -25,7 +25,6 @@ export function CasUploadStep({
   const [file, setFile] = useState<File | null>(null);
   const [password, setPassword] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   function pickFile(f: File | null) {
@@ -41,10 +40,6 @@ export function CasUploadStep({
       ok = false;
     } else if (file.size > MAX_BYTES) {
       setFileError("The file must be 4 MB or smaller.");
-      ok = false;
-    }
-    if (!password.trim()) {
-      setPasswordError("Enter the statement password.");
       ok = false;
     }
     if (!ok || !file) return;
@@ -100,7 +95,7 @@ export function CasUploadStep({
       </div>
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="cas-password" className="text-xs text-muted-foreground">
-          Password
+          Password (optional)
         </Label>
         <Input
           id="cas-password"
@@ -108,19 +103,12 @@ export function CasUploadStep({
           autoComplete="off"
           value={password}
           disabled={loading}
-          aria-invalid={!!passwordError}
-          onChange={(e) => {
-            setPassword(e.target.value);
-            setPasswordError(null);
-          }}
+          onChange={(e) => setPassword(e.target.value)}
         />
-        {passwordError ? (
-          <p className="text-xs text-destructive">{passwordError}</p>
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            Usually your PAN in capitals
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground">
+          Leave empty if the PDF isn&apos;t password-protected. Usually your PAN
+          in capitals.
+        </p>
       </div>
       <p className="text-xs text-muted-foreground">
         Download your CAS from MF Central or CAMS. The file and password

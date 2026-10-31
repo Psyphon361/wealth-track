@@ -37,6 +37,12 @@ def read_statement(raw: bytes, password: str):
     try:
         data = casparser.read_cas_pdf(io.BytesIO(raw), password, output="dict")
     except IncorrectPasswordError:
+        if not password.strip():
+            raise _error(
+                400,
+                "Password needed",
+                "This statement is password-protected. The password is usually your PAN in capitals.",
+            )
         raise _error(400, "Wrong password", "The CAS password is usually your PAN in capitals.")
     except Exception:
         return _read_mfcentral(raw, password)

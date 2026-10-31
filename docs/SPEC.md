@@ -306,14 +306,15 @@ Users sign in with email and password. Every holding belongs to one user.
 
 Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/app/schemas/cas_import.py`; web `web/components/forms/cas-import/`. On `/add/mf` the form has two tabs: "Manual entry" and "Import CAS".
 
-### Preview (`POST /api/import/cas/preview`, multipart `file` + `password`)
+### Preview (`POST /api/import/cas/preview`, multipart `file` + optional `password`)
 
-- The file must be a CAMS or KFintech CAS PDF, at most 4 MB, starting with `%PDF`. It is parsed in memory with `casparser` 1.4.1 (local, no network). The file and password are never stored or logged.
+- The file must be a CAMS or KFintech CAS PDF, at most 4 MB, starting with `%PDF`. It is parsed in memory with `casparser` 1.4.1 (local, no network). The file and password are never stored or logged. The password is optional (unencrypted PDFs, e.g. some MF Central downloads, need none).
 - MF Central "Detailed CAS" PDFs (which casparser cannot identify) are read by our own text parser, `api/app/services/mfcentral_cas.py`, as a fallback when casparser fails for a reason other than the password. Zero-unit rows (address updates, cancelled SIPs) are skipped. Invested = FIFO cost of the remaining units (outflows consume the oldest purchases first, proportionally to lot cost, 2 dp). If a scheme starts with a non-zero "Opening Unit Balance" its invested amount is unknown (cost empty) and the row's issue is "Statement starts after the first purchase. Download it from your first investment date."
 - Errors (`{message, description}`):
   - 413 "File too large" / "Upload a CAS PDF smaller than 4 MB."
   - 422 "Couldn't read this statement" / "Upload a CAMS or KFintech CAS PDF." (not a PDF, or unreadable)
-  - 400 "Wrong password" / "The CAS password is usually your PAN in capitals."
+  - 400 "Wrong password" / "The CAS password is usually your PAN in capitals." (non-empty password rejected)
+  - 400 "Password needed" / "This statement is password-protected. The password is usually your PAN in capitals." (password empty and the PDF is encrypted)
   - 422 "Depository statements aren't supported yet" / "Download a CAMS or KFintech CAS from MF Central." (NSDL or CDSL statement)
 - Merge: schemes are grouped across folios by the matched `mf_master` scheme (AMFI code first, then ISIN; unmatched schemes group by ISIN or name). Schemes with zero closing units are hidden and counted in `hidden_zero`.
   - units = sum of closing units (3 dp); invested = sum of valuation cost (2 dp); avg NAV = invested ÷ units (4 dp).
