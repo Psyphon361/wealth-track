@@ -1,13 +1,14 @@
 from datetime import datetime
 
 from app.jobs.copy_holdings import (
+    TABLES,
     build_insert,
     business_key,
     is_duplicate,
     relink_master,
     relink_scheme,
 )
-from tests.conftest import make_bond, make_fd, make_stock
+from tests.conftest import make_bond, make_fd, make_gold, make_stock
 
 
 def _row(obj, **extra):
@@ -64,3 +65,16 @@ def test_build_insert_excludes_id_swaps_user_keeps_timestamps():
     assert values["master_id"] == 77
     assert values["created_at"] == stamp and values["updated_at"] == stamp
     assert values["name"] == row["name"]
+
+
+def test_gold_has_no_master_link_and_is_copied():
+    from app.models.gold import Gold
+
+    spec = next(t for t in TABLES if t.model is Gold)
+    assert spec.link_column is None and spec.master is None
+    gold = make_gold()
+    assert is_duplicate(_row(make_gold()), None, {business_key(_row(gold), None)})
+    assert not is_duplicate(_row(make_gold(weight_grams=11)), None, {business_key(_row(gold), None)})
+    values = build_insert(_row(gold, user_id=1), 42, None, None)
+    assert values["user_id"] == 42 and "id" not in values
+    assert values["name"] == gold.name and values["purity"] == "916"

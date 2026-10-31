@@ -1,0 +1,87 @@
+from datetime import date, timedelta
+from decimal import Decimal
+
+import pytest
+from pydantic import ValidationError
+
+from app.schemas.assets import (
+    GOLD_FORM_ERROR,
+    GOLD_PURITY_ERROR,
+    GOLD_WEIGHT_DECIMALS_ERROR,
+    GoldCreate,
+)
+from app.services import valuation
+from tests.conftest import make_gold
+
+VALID = {
+    "name": "Wedding necklace", "form": "jewellery", "purity": "916", "weight_grams": "25.5",
+    "purchase_date": "2025-01-01", "invested_amount": "150000",
+}  # fmt: skip
+
+
+def _errors(**override):
+    with pytest.raises(ValidationError) as exc:
+        GoldCreate(**{**VALID, **override})
+    return {e["loc"][0]: e["msg"] for e in exc.value.errors()}
+
+
+def test_valid_gold_accepted():
+    gold = GoldCreate(**VALID)
+    assert gold.weight_grams == Decimal("25.5") and gold.purity == "916"
+
+
+def test_required_name():
+    assert _errors(name="  ") == {"name": "Required"}
+
+
+def test_weight_must_be_positive():
+    assert _errors(weight_grams="0") == {"weight_grams": "Must be greater than 0"}
+    assert _errors(weight_grams="-1") == {"weight_grams": "Must be greater than 0"}
+
+
+def test_weight_max_three_decimals():
+    assert _errors(weight_grams="1.2345") == {"weight_grams": GOLD_WEIGHT_DECIMALS_ERROR}
+    assert GoldCreate(**{**VALID, "weight_grams": "1.234"}).weight_grams == Decimal("1.234")
+
+
+def test_amount_must_be_positive():
+    assert _errors(invested_amount="0") == {"invested_amount": "Must be greater than 0"}
+
+
+def test_future_date_rejected():
+    future = (date.today() + timedelta(days=60)).isoformat()
+    assert _errors(purchase_date=future) == {
+        "purchase_date": "Date can be at most 30 days in the future"
+    }
+
+
+def test_bad_enums():
+    assert _errors(form="ring") == {"form": GOLD_FORM_ERROR}
+    assert _errors(purity="900") == {"purity": GOLD_PURITY_ERROR}
+
+
+def test_value_with_rate():
+    gold = make_gold(weight_grams=Decimal("10.5"), invested_amount=Decimal("50000"))
+    out = valuation.value_gold(
+        gold, date(2026, 10, 24), rate=Decimal("6000.00"), rate_date=date(2026, 10, 23)
+    )
+    assert out["current_value"] == Decimal("63000.00")
+    assert out["gain"] == Decimal("13000.00") and out["gain_pct"] == Decimal("26.00")
+    assert out["rate_per_gram"] == Decimal("6000.00") and out["rate_date"] == date(2026, 10, 23)
+    assert out["status"] == "active"
+
+
+def test_value_without_rate_is_invested():
+    out = valuation.value_gold(make_gold(), date(2026, 10, 24))
+    assert out["current_value"] == out["invested"] == Decimal("50000.00")
+    assert out["gain"] == Decimal("0.00")
+    assert out["rate_per_gram"] is None and out["rate_date"] is None
+
+
+def test_xirr_single_cashflow():
+    gold = make_gold(purchase_date=date(2025, 10, 24), invested_amount=Decimal("100000"))
+    out = valuation.value_gold(
+        gold, date(2026, 10, 24), rate=Decimal("12000"), rate_date=date(2026, 10, 24)
+    )
+    # 10 g x 12000 = 120000 after exactly 365 days: 20 %
+    assert out["xirr"] == Decimal("20.00")

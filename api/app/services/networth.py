@@ -125,6 +125,7 @@ def _holding_start(slug: str, record: Any) -> date:
         "stock": lambda r: r.buy_date,
         "bond": lambda r: r.purchase_date,
         "mf": lambda r: r.purchase_date,
+        "gold": lambda r: r.purchase_date,
     }[slug](record)
 
 
@@ -145,7 +146,7 @@ def earliest_start(
 ) -> date | None:
     """Earliest start date over every holding (MF with matching txns: its first txn)."""
     starts = [
-        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond") for r in holdings.get(slug, ())
+        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "gold") for r in holdings.get(slug, ())
     ]
     starts += [m.start for m in _prepare_mfs(holdings.get("mf", ()), txns or {})]
     return min(starts) if starts else None
@@ -175,11 +176,14 @@ def build_history(
     closes: dict[int, Series],
     txns: dict[int, Sequence[Any]],
     today_totals: tuple[Decimal, Decimal],
+    gold_rates: dict[str, Series] | None = None,
 ) -> dict[str, Any]:
     """Net worth series for the range. `today_totals` = (invested, current) from the dashboard.
 
-    `navs` {scheme_code: [(date, nav)]} and `closes` {master_id: [(date, close)]} are sorted by date.
+    `navs` {scheme_code: [(date, nav)]}, `closes` {master_id: [(date, close)]} and `gold_rates`
+    {purity: [(date, rate per gram)]} are sorted by date.
     """
+    gold_rates = gold_rates or {}
     start = earliest_start(holdings, txns)
     if start is None:
         return {"range": range_key, "points": [], "stocks_at_cost_before": None}
@@ -211,6 +215,13 @@ def build_history(
                 last_at_cost = len(points)
             invested += _q(cost)
             current += _q(cost) if close is None else _q(Decimal(r.quantity) * Decimal(close))
+        for r in holdings.get("gold", ()):
+            if r.purchase_date > d:
+                continue
+            cost = _q(Decimal(r.invested_amount))
+            rate = on_or_before(gold_rates.get(r.purity, ()), d)
+            invested += cost
+            current += cost if rate is None else _q(Decimal(r.weight_grams) * Decimal(rate))
         for m in mfs:
             pair = _mf_at(m, d, navs)
             if pair is not None:

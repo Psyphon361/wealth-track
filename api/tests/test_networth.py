@@ -3,7 +3,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 from app.services import networth, valuation
-from tests.conftest import make_bond, make_fd, make_stock
+from tests.conftest import make_bond, make_fd, make_gold, make_stock
 
 TODAY = date(2026, 10, 31)
 
@@ -129,3 +129,17 @@ def test_fixed_ranges_are_daily():
     assert days[0] == date(2026, 9, 30)
     assert days[-1] == TODAY
     assert len(days) == 32
+
+
+def test_gold_rate_on_or_before_cost_before_first_rate_and_excluded_before_purchase():
+    gold = make_gold(purchase_date=date(2026, 10, 1), weight_grams=Decimal("10"),
+                     invested_amount=Decimal("50000"), purity="916")
+    rates = {"916": [(date(2026, 10, 10), Decimal("5100")), (date(2026, 10, 20), Decimal("5200"))]}
+    result = networth.build_history(
+        "1m", TODAY, {"gold": [gold]}, {}, {}, {}, (Decimal("0"), Decimal("0")), rates
+    )
+    assert point(result, "2026-09-30")["invested"] == Decimal("0.00")
+    p = point(result, "2026-10-05")  # before the first stored rate: valued at cost
+    assert p["invested"] == Decimal("50000.00") and p["current"] == Decimal("50000.00")
+    assert point(result, "2026-10-15")["current"] == Decimal("51000.00")  # rate of the 10th
+    assert point(result, "2026-10-25")["current"] == Decimal("52000.00")  # rate of the 20th

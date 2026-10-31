@@ -15,7 +15,7 @@ from app.models.mutual_fund import MutualFund
 from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
-from app.services import nav_history, stock_prices, valuation
+from app.services import gold_rates, nav_history, stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
 
@@ -25,6 +25,7 @@ LABELS = {
     "stock": "Stocks",
     "bond": "Bonds",
     "mf": "Mutual Funds",
+    "gold": "Gold",
 }
 _VALUERS = {
     "fd": valuation.value_fd,
@@ -32,6 +33,7 @@ _VALUERS = {
     "stock": valuation.value_stock,
     "bond": valuation.value_bond,
     "mf": valuation.value_mf,
+    "gold": valuation.value_gold,
 }
 _CENT = Decimal("0.01")
 
@@ -71,6 +73,12 @@ def _fetch_prev_navs(bind: Any, user_id: int) -> dict[int, tuple[date, Decimal]]
         return nav_history.previous_navs(session, codes)
 
 
+def _fetch_gold_rates(bind: Any) -> dict[str, tuple[Decimal, date]]:
+    """Latest IBJA rate per purity, on this part's own session."""
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return gold_rates.latest_rates(session)
+
+
 def _value(
     slug: str,
     record: Any,
@@ -78,7 +86,11 @@ def _value(
     navs: dict[int, tuple[Decimal, date]],
     prices: dict[int, StockPriceLatest],
     prev_navs: dict[int, tuple[date, Decimal]],
+    rates: dict[str, tuple[Decimal, date]],
 ):
+    if slug == "gold":
+        rate, rate_date = rates.get(record.purity, (None, None))
+        return valuation.value_gold(record, today, rate=rate, rate_date=rate_date)
     if slug == "mf":
         nav, nav_date = navs.get(record.scheme_code, (None, None))
         prev_date, prev_nav = prev_navs.get(record.scheme_code, (None, None))
@@ -124,15 +136,17 @@ def build_groups(
     navs: dict[int, tuple[Decimal, date]] | None = None,
     prices: dict[int, StockPriceLatest] | None = None,
     prev_navs: dict[int, tuple[date, Decimal]] | None = None,
+    rates: dict[str, tuple[Decimal, date]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Value every holding; returns the 5 groups in fixed order."""
+    """Value every holding; returns the groups in REGISTRY order."""
+    rates = rates or {}
     navs = navs or {}
     prices = prices or {}
     prev_navs = prev_navs or {}
     groups = []
     for slug, (_model, _create, read_schema) in REGISTRY.items():
         computed = [
-            _value(slug, r, today, navs, prices, prev_navs) for r in records_by_type.get(slug, [])
+            _value(slug, r, today, navs, prices, prev_navs, rates) for r in records_by_type.get(slug, [])
         ]
         items = [
             _item(r, read_schema, c)
@@ -167,7 +181,7 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
             stmt = select(model).where(model.user_id == user_id).order_by(model.id)
             return list(session.scalars(stmt).all())
 
-    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 2) as pool:
+    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 3) as pool:
         futures = {
             slug: pool.submit(fetch, model)
             for slug, (model, _c, _r) in REGISTRY.items()
@@ -176,11 +190,13 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
         stock_future = pool.submit(_fetch_stocks, bind, user_id)
         nav_future = pool.submit(_fetch_navs, bind, user_id)
         prev_future = pool.submit(_fetch_prev_navs, bind, user_id)
+        rates_future = pool.submit(_fetch_gold_rates, bind)
         records = {slug: future.result() for slug, future in futures.items()}
         records["stock"], prices = stock_future.result()
         navs = nav_future.result()
         prev_navs = prev_future.result()
-    return build_groups(records, today or date.today(), navs, prices, prev_navs)
+        rates = rates_future.result()
+    return build_groups(records, today or date.today(), navs, prices, prev_navs, rates)
 
 
 def load_group(
@@ -201,7 +217,8 @@ def load_group(
         navs = {}
         prev_navs = {}
     prices = _prices_for(db, records) if slug == "stock" else {}
-    groups = build_groups({slug: records}, today or date.today(), navs, prices, prev_navs)
+    rates = gold_rates.latest_rates(db) if slug == "gold" else {}
+    groups = build_groups({slug: records}, today or date.today(), navs, prices, prev_navs, rates)
     return next(g for g in groups if g["type"] == slug)
 
 
@@ -223,7 +240,8 @@ def load_holding(
             navs[row.scheme_code] = (row.nav, row.nav_date)
             prev_navs = nav_history.previous_navs(db, [record.scheme_code])
     prices = _prices_for(db, [record]) if slug == "stock" else {}
-    groups = build_groups({slug: [record]}, today or date.today(), navs, prices, prev_navs)
+    rates = gold_rates.latest_rates(db) if slug == "gold" else {}
+    groups = build_groups({slug: [record]}, today or date.today(), navs, prices, prev_navs, rates)
     group = next(g for g in groups if g["type"] == slug)
     return record, group["items"][0]
 

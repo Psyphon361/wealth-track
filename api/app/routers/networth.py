@@ -14,7 +14,7 @@ from app.models.user import User
 from app.routers.assets import REGISTRY
 from app.routers.portfolio import build_dashboard, load_groups
 from app.schemas.networth import NetWorthHistoryResponse
-from app.services import networth, stock_history
+from app.services import gold_rates, networth, stock_history
 
 router = APIRouter(tags=["networth"])
 
@@ -57,6 +57,13 @@ def _fetch_closes(bind: Any, ids: set[int], end: date) -> dict[int, list[tuple[d
         return stock_history.closes_between(session, ids, date(1900, 1, 1), end)
 
 
+def _fetch_gold_rates(
+    bind: Any, purities: set[str], start: date, end: date
+) -> dict[str, list[tuple[date, Any]]]:
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return gold_rates.history_between(session, sorted(purities), start, end)
+
+
 def _fetch_txns(bind: Any, mf_ids: list[int]) -> dict[int, list[MFTransaction]]:
     out: dict[int, list[MFTransaction]] = {}
     if not mf_ids:
@@ -93,6 +100,12 @@ def load_history(
         groups = groups_future.result()
         navs = nav_future.result()
         closes = closes_future.result()
+        golds = records["gold"]
+        rates = (
+            _fetch_gold_rates(bind, {g.purity for g in golds}, first - timedelta(days=14), today)
+            if golds
+            else {}
+        )
     totals = build_dashboard(groups)
     return networth.build_history(
         range_key,
@@ -102,6 +115,7 @@ def load_history(
         closes,
         txns,
         (totals["total_invested"], totals["total_current"]),
+        rates,
     )
 
 

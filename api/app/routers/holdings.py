@@ -24,11 +24,15 @@ _ZERO = Decimal("0")
 COMPOUNDING = ["monthly", "quarterly", "half_yearly", "yearly", "simple"]
 STATUSES = ["active", "matured"]
 BOND_TYPES = ["government", "corporate", "tax_free", "sgb", "other"]
+GOLD_FORMS = ["jewellery", "coin", "bar", "digital"]
+GOLD_PURITIES = ["999", "995", "916", "750", "585"]
 MF_CATEGORIES = ["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
 
 Compounding = Literal["monthly", "quarterly", "half_yearly", "yearly", "simple"]
 Status = Literal["active", "matured"]
 BondType = Literal["government", "corporate", "tax_free", "sgb", "other"]
+GoldForm = Literal["jewellery", "coin", "bar", "digital"]
+GoldPurity = Literal["999", "995", "916", "750", "585"]
 MfCategory = Literal["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
 
 # Per type: search fields, facets (key -> enum values, or None for free text),
@@ -69,6 +73,11 @@ CONFIG: dict[str, dict[str, Any]] = {
         "facets": {"category": MF_CATEGORIES, "platform": None},
         "text": {"scheme_name", "category", "platform"},
     },
+    "gold": {
+        "search": ("name", "notes"),
+        "facets": {"form": GOLD_FORMS, "purity": GOLD_PURITIES},
+        "text": {"name", "form", "purity"},
+    },
 }
 
 FdSort = Literal[
@@ -91,6 +100,11 @@ BondSort = Literal[
 MfSort = Literal[
     "scheme_name", "category", "platform", "units", "avg_nav", "invested",
     "current_value", "gain", "gain_pct", "xirr", "purchase_date",
+]  # fmt: skip
+
+GoldSort = Literal[
+    "name", "form", "purity", "weight_grams", "purchase_date", "invested",
+    "current_value", "gain", "gain_pct", "xirr",
 ]  # fmt: skip
 
 Q = Annotated[str | None, Query(max_length=100)]
@@ -353,6 +367,23 @@ def get_mf_holdings(
     )  # fmt: skip
 
 
+@router.get("/holdings/gold", response_model=HoldingsResponse)
+def get_gold_holdings(
+    q: Q = None,
+    form: Annotated[list[GoldForm] | None, Query()] = None,
+    purity: Annotated[list[GoldPurity] | None, Query()] = None,
+    sort: GoldSort = "current_value",
+    dir: Dir = "desc",
+    page: Page = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    return _run(
+        db, user.id, "gold",q=q, sort=sort, dir=dir, page=page,
+        multi={"form": form, "purity": purity},
+    )  # fmt: skip
+
+
 def _not_found() -> HTTPException:
     return HTTPException(
         status_code=404,
@@ -374,6 +405,8 @@ def linked_master(db: Session, slug: str, record: Any) -> dict[str, Any] | None:
     elif slug == "bond":
         found = bond_master.get_bond_master(db, record.master_id) if record.master_id else None
         schema = BondMasterRead
+    elif slug == "gold":
+        return None  # gold has no master table
     else:
         found = amfi.get_scheme_with_nav(db, record.scheme_code) if record.scheme_code else None
         schema = MFSchemeRead

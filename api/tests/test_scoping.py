@@ -7,6 +7,8 @@ from app.main import app
 from app.models import (
     Bond,
     FixedDeposit,
+    Gold,
+    GoldRateLatest,
     MFNavLatest,
     MFTransaction,
     MutualFund,
@@ -33,7 +35,8 @@ def client(auth_engine, auth_settings):
         tables=[
             m.__table__
             for m in (
-                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, MFNavLatest, MFTransaction
+                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, GoldRateLatest, MFNavLatest,
+                MFTransaction
             )
         ],
     )

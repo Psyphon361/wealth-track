@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from app.schemas.assets import Number
 
-AssetType = Literal["fd", "rd", "stock", "bond", "mf"]
+AssetType = Literal["fd", "rd", "stock", "bond", "mf", "gold"]
 Amount = Annotated[Decimal, Number]
 
 

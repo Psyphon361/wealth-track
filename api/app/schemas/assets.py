@@ -454,3 +454,66 @@ class MutualFundCreate(_Create, MutualFundBase):
 
 class MutualFundRead(MutualFundBase, _Read):
     pass
+
+
+# --- Gold -------------------------------------------------------------------
+
+
+GOLD_FORM_ERROR = "Choose a form"
+GOLD_PURITY_ERROR = "Choose a purity"
+GOLD_WEIGHT_DECIMALS_ERROR = "Weight can have at most 3 decimal places"
+GOLD_FORMS = ("jewellery", "coin", "bar", "digital")
+GOLD_PURITIES = ("999", "995", "916", "750", "585")
+
+
+def _one_of(allowed: tuple[str, ...], message: str) -> Callable[[object], object]:
+    def check(value: object) -> object:
+        if value not in allowed:
+            raise _error(message)
+        return value
+
+    return check
+
+
+def _weight_decimals(value: Decimal) -> Decimal:
+    if value.is_finite() and value.normalize().as_tuple().exponent < -3:
+        raise _error(GOLD_WEIGHT_DECIMALS_ERROR)
+    return value
+
+
+GoldForm = Annotated[
+    Literal["jewellery", "coin", "bar", "digital"],
+    BeforeValidator(_one_of(GOLD_FORMS, GOLD_FORM_ERROR)),
+]
+GoldPurity = Annotated[
+    Literal["999", "995", "916", "750", "585"],
+    BeforeValidator(_one_of(GOLD_PURITIES, GOLD_PURITY_ERROR)),
+]
+GoldWeight = Annotated[
+    Decimal,
+    AfterValidator(_positive),
+    AfterValidator(_weight_decimals),
+    AfterValidator(_max_quantity),
+    Number,
+]
+
+
+class GoldBase(BaseModel):
+    name: Required
+    form: Literal["jewellery", "coin", "bar", "digital"]
+    purity: Literal["999", "995", "916", "750", "585"]
+    weight_grams: Dec
+    purchase_date: date
+    invested_amount: Dec
+
+
+class GoldCreate(_Create, GoldBase):
+    form: GoldForm
+    purity: GoldPurity
+    weight_grams: GoldWeight
+    purchase_date: TradeDate
+    invested_amount: Money
+
+
+class GoldRead(GoldBase, _Read):
+    pass

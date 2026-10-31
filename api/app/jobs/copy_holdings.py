@@ -24,6 +24,7 @@ from app.models.bond import Bond
 from app.models.bond_master import BondMaster
 from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
+from app.models.gold import Gold
 from app.models.mf_master import MFMaster
 from app.models.mutual_fund import MutualFund
 from app.models.recurring_deposit import RecurringDeposit
@@ -38,9 +39,9 @@ NON_BUSINESS = ("id", "user_id", "created_at", "updated_at")
 class TableSpec:
     model: Any
     name_column: str
-    link_column: str
-    master: Any  # master model, or MFMaster (scheme_code kept as-is)
-    key_column: str  # natural key column on the master
+    link_column: str | None  # None for a table without a master link
+    master: Any  # master model, MFMaster (scheme_code kept as-is), or None (no master table)
+    key_column: str | None  # natural key column on the master
 
 
 TABLES = (
@@ -49,6 +50,7 @@ TABLES = (
     TableSpec(Stock, "name", "master_id", StockMaster, "isin"),
     TableSpec(Bond, "name", "master_id", BondMaster, "isin"),
     TableSpec(MutualFund, "scheme_name", "scheme_code", MFMaster, "scheme_code"),
+    TableSpec(Gold, "name", None, None, None),
 )
 
 
@@ -81,23 +83,24 @@ def relink_scheme(scheme_code: int | None, target_codes: set[int]) -> tuple[int 
     return None, True
 
 
-def business_key(row: dict[str, Any], link_column: str) -> tuple:
-    """Values of every column except id, user_id, timestamps and the master link."""
-    skip = set(NON_BUSINESS) | {link_column}
+def business_key(row: dict[str, Any], link_column: str | None) -> tuple:
+    """Values of every column except id, user_id, timestamps and the master link (if any)."""
+    skip = set(NON_BUSINESS) | ({link_column} if link_column else set())
     return tuple(sorted((k, v) for k, v in row.items() if k not in skip))
 
 
-def is_duplicate(row: dict[str, Any], link_column: str, existing_keys: set[tuple]) -> bool:
+def is_duplicate(row: dict[str, Any], link_column: str | None, existing_keys: set[tuple]) -> bool:
     return business_key(row, link_column) in existing_keys
 
 
 def build_insert(
-    row: dict[str, Any], target_user_id: int, link_column: str, new_link: int | None
+    row: dict[str, Any], target_user_id: int, link_column: str | None, new_link: int | None
 ) -> dict[str, Any]:
     """Insert values: all columns but id, user_id swapped, link replaced, timestamps kept."""
     values = {k: v for k, v in row.items() if k != "id"}
     values["user_id"] = target_user_id
-    values[link_column] = new_link
+    if link_column:
+        values[link_column] = new_link
     return values
 
 
@@ -130,6 +133,8 @@ def _find_user(session: Session, label: str, raw_email: str):
 
 def _lookup_maps(spec: TableSpec, source: Session, target: Session, src_rows: list[dict]):
     link = spec.link_column
+    if spec.master is None:
+        return {}, {}
     used = {r[link] for r in src_rows if r[link] is not None}
     if spec.master is MFMaster:
         if not used:
@@ -168,7 +173,9 @@ def copy_table(spec: TableSpec, source: Session, target: Session, src_uid: int, 
             duplicates += 1
             listing.append(("skip (duplicate)", name))
             continue
-        if spec.master is MFMaster:
+        if link is None:
+            new_link, missing = None, False
+        elif spec.master is MFMaster:
             new_link, missing = relink_scheme(row[link], target_ids)
         else:
             new_link, missing = relink_master(row[link], source_keys, target_ids)

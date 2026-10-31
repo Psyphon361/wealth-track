@@ -133,6 +133,29 @@ def value_bond(bond: Any, today: date | None = None) -> dict[str, Any]:
     )
 
 
+def value_gold(
+    gold: Any,
+    today: date | None = None,
+    *,
+    rate: Decimal | None = None,
+    rate_date: date | None = None,
+) -> dict[str, Any]:
+    """Current value is weight x IBJA rate per gram for its purity; no rate means invested."""
+    today = today or date.today()
+    invested = Decimal(gold.invested_amount)
+    if rate is None:
+        out = _result(invested, invested)
+        out["rate_per_gram"] = None
+        out["rate_date"] = None
+    else:
+        out = _result(invested, Decimal(gold.weight_grams) * Decimal(rate))
+        out["rate_per_gram"] = _q(Decimal(rate))
+        out["rate_date"] = rate_date
+    pct = xirr([(gold.purchase_date, -invested), (today, out["current_value"])])
+    out["xirr"] = _q(pct * 100) if pct is not None else None
+    return out
+
+
 def value_stock(
     stock: Any, today: date | None = None, *, price: Decimal | None = None
 ) -> dict[str, Any]:

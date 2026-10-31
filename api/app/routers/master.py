@@ -1,13 +1,15 @@
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.schemas.assets import GoldPurity
+from app.schemas.gold import GoldRateOnDate
 from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.services import amfi, bond_master, fd_issuers, nav_history, stock_master
+from app.services import amfi, bond_master, fd_issuers, gold_rates, nav_history, stock_master
 
 router = APIRouter(prefix="/master", tags=["master"], dependencies=[Depends(current_user)])
 
@@ -126,3 +128,31 @@ def get_mf_nav(
             },
         )
     return {"scheme_code": scheme_code, "requested_date": on_date, **found}
+
+
+GOLD_RATE_MAX_GAP_DAYS = 7
+
+
+@router.get("/gold/rate", response_model=GoldRateOnDate)
+def get_gold_rate(
+    purity: GoldPurity,
+    on_date: date = Query(alias="date"),
+    db: Session = Depends(get_db),
+):
+    nav_history.validate_not_future(on_date)
+    found = gold_rates.rate_on_or_before(db, purity, on_date)
+    if found is None or (on_date - found[1]) > timedelta(days=GOLD_RATE_MAX_GAP_DAYS):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Gold rate not available",
+                "description": "No IBJA rate on or just before this date. Enter the amount yourself.",
+            },
+        )
+    rate, rate_date = found
+    return {
+        "purity": purity,
+        "requested_date": on_date,
+        "rate_date": rate_date,
+        "rate_per_gram": rate,
+    }
