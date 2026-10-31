@@ -3,7 +3,7 @@ import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { maturityKpi } from "@/components/holding-detail/utils";
 import { BOND_TYPE_LABELS, type BondItem, type BondMaster } from "@/lib/types";
 import type { GridConfig } from "../types";
-import { createColumnKit, STATUS_LABELS } from "./shared";
+import { createColumnKit } from "./shared";
 
 const labels = {
   name: "Name",
@@ -57,7 +57,6 @@ export const bondConfig: GridConfig<BondItem> = {
     },
     { kind: "facet", key: "issuer", title: "Issuer" },
     { kind: "facet", key: "platform", title: "Platform" },
-    { kind: "facet", key: "status", title: "Status", labels: STATUS_LABELS },
     { kind: "range", title: "YTM", minKey: "ytm_min", maxKey: "ytm_max" },
     {
       kind: "date",
@@ -66,6 +65,7 @@ export const bondConfig: GridConfig<BondItem> = {
       toKey: "maturity_to",
     },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [
