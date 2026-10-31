@@ -17,7 +17,11 @@ const head = "h-9 text-[12px] font-medium tracking-wider text-muted-foreground u
 
 export function HoldingsByType({ data }: { data: DashboardResponse }) {
   const totalCount = data.by_type.reduce((s, r) => s + r.count, 0);
-  const totalAllocation = data.by_type.reduce((s, r) => s + r.allocation_pct, 0);
+  // Per-type percentages are rounded, so their sum can drift from 100.
+  const totalAllocation =
+    data.total_current > 0
+      ? 100
+      : data.by_type.reduce((s, r) => s + r.allocation_pct, 0);
 
   return (
     <Card size="sm" className="gap-0 py-0">
@@ -80,19 +84,19 @@ export function HoldingsByType({ data }: { data: DashboardResponse }) {
             </TableRow>
           ))}
         </TableBody>
-        <TableFooter className="border-t border-border/60 bg-transparent">
-          <TableRow className="h-9 hover:bg-transparent">
-            <TableCell className="py-1.5 pl-4 font-medium">Total</TableCell>
-            <TableCell className="num py-1.5 text-right font-medium">
+        <TableFooter className="border-t-2 border-foreground/20 bg-muted/30 font-semibold">
+          <TableRow className="h-10 hover:bg-transparent">
+            <TableCell className="py-1.5 pl-4 text-base font-semibold">Total</TableCell>
+            <TableCell className="num py-1.5 text-right text-base font-semibold">
               {totalCount}
             </TableCell>
-            <TableCell className="num py-1.5 text-right font-medium">
+            <TableCell className="num py-1.5 text-right text-base font-semibold">
               {formatINR(data.total_invested)}
             </TableCell>
-            <TableCell className="num py-1.5 text-right font-medium">
+            <TableCell className="num py-1.5 text-right text-base font-semibold">
               {formatINR(data.total_current)}
             </TableCell>
-            <TableCell className="num py-1.5 pr-4 text-right font-medium">
+            <TableCell className="num py-1.5 pr-4 text-right text-base font-semibold">
               {formatPct(totalAllocation)}
             </TableCell>
           </TableRow>
