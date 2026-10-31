@@ -36,3 +36,17 @@ export function formatIstDateTime(iso: string): string {
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   return `${get("day")} ${get("month")}, ${get("hour")}:${get("minute")} ${get("dayPeriod").toLowerCase()}`;
 }
+
+function trim1(n: number): string {
+  return n.toFixed(1).replace(/\.0$/, "");
+}
+
+/** Compact Indian units for axes: ₹950, ₹12K, ₹12.4L, ₹1.2Cr. */
+export function formatINRCompact(n: number): string {
+  const sign = n < 0 ? "-" : "";
+  const a = Math.abs(n);
+  if (a >= 1e7) return `${sign}₹${trim1(a / 1e7)}Cr`;
+  if (a >= 1e5) return `${sign}₹${trim1(a / 1e5)}L`;
+  if (a >= 1e3) return `${sign}₹${trim1(a / 1e3)}K`;
+  return `${sign}₹${Math.round(a)}`;
+}

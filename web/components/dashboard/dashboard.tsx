@@ -8,6 +8,7 @@ import { apiGet, toApiMessage } from "@/lib/api";
 import type { DashboardResponse } from "@/lib/types";
 import { SummaryCards } from "./summary-cards";
 import { HoldingsByType } from "./holdings-by-type";
+import { NetWorthChart } from "./net-worth-chart";
 
 type State =
   | { status: "loading" }
@@ -88,6 +89,7 @@ export function Dashboard() {
   return (
     <div className="space-y-3">
       <SummaryCards data={data} />
+      <NetWorthChart />
       <HoldingsByType data={data} />
     </div>
   );

@@ -447,3 +447,19 @@ export interface HoldingDetailResponse<TItem extends HoldingRow = HoldingRow> {
   item: TItem;
   master: HoldingMaster | null;
 }
+
+// Net worth history (GET /networth/history)
+
+export type NetWorthRange = "1m" | "6m" | "1y" | "all";
+
+export interface NetWorthPoint {
+  date: string;
+  invested: number;
+  current: number;
+}
+
+export interface NetWorthHistory {
+  range: NetWorthRange;
+  points: NetWorthPoint[];
+  stocks_at_cost_before: string | null;
+}
