@@ -14,6 +14,7 @@ import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
 import { EditDialog } from "./edit-dialog";
 import { bondConfig } from "./grid/configs/bond";
+import { cashConfig } from "./grid/configs/cash";
 import { fdConfig } from "./grid/configs/fd";
 import { goldConfig } from "./grid/configs/gold";
 import { mfConfig } from "./grid/configs/mf";
@@ -301,5 +302,7 @@ export function Portfolio({ type }: { type: AssetType }) {
       return <TypedPortfolio config={mfConfig} />;
     case "gold":
       return <TypedPortfolio config={goldConfig} />;
+    case "cash":
+      return <TypedPortfolio config={cashConfig} />;
   }
 }

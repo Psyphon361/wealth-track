@@ -1,6 +1,7 @@
 import {
   Coins,
   Landmark,
+  Wallet,
   LineChart,
   PieChart,
   Repeat,
@@ -61,6 +62,13 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
     hint: "Jewellery, coins, bars, digital gold",
     icon: Coins,
     group: "Market-linked",
+  },
+  {
+    type: "cash",
+    title: "Cash & Savings",
+    hint: "Savings, current accounts, cash in hand",
+    icon: Wallet,
+    group: "Deposits",
   },
 ];
 

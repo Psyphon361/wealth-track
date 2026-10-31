@@ -9,6 +9,7 @@ import { useBreadcrumbLabel } from "@/components/breadcrumb-label";
 import { DeleteDialog, type DeleteTarget } from "@/components/portfolio/delete-dialog";
 import { EditDialog } from "@/components/portfolio/edit-dialog";
 import { bondConfig } from "@/components/portfolio/grid/configs/bond";
+import { cashConfig } from "@/components/portfolio/grid/configs/cash";
 import { fdConfig } from "@/components/portfolio/grid/configs/fd";
 import { goldConfig } from "@/components/portfolio/grid/configs/gold";
 import { mfConfig } from "@/components/portfolio/grid/configs/mf";
@@ -144,7 +145,11 @@ function TypedDetail<TRow extends HoldingRow>({
         </div>
       </div>
 
-      <KpiStrip item={item} fourth={detail.kpi(item)} />
+      <KpiStrip
+        item={item}
+        fourth={detail.kpi(item)}
+        showGain={config.type !== "cash"}
+      />
       {tenure ? <TenureBar start={tenure.start} end={tenure.end} /> : null}
 
       <Section title="Holding" fields={detail.holding(item)} />
@@ -185,5 +190,7 @@ export function HoldingDetail({ type, id }: { type: AssetType; id: number }) {
       return <TypedDetail config={mfConfig} id={id} />;
     case "gold":
       return <TypedDetail config={goldConfig} id={id} />;
+    case "cash":
+      return <TypedDetail config={cashConfig} id={id} />;
   }
 }

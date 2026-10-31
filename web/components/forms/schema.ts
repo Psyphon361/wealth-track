@@ -37,6 +37,7 @@ export const GOLD_FORM_ERROR = "Choose a form";
 export const GOLD_PURITY_ERROR = "Choose a purity";
 export const GOLD_WEIGHT_DECIMALS_ERROR =
   "Weight can have at most 3 decimal places";
+export const CASH_KIND_ERROR = "Choose an account type";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
@@ -236,6 +237,23 @@ export function rateNumber(max: number, message: string) {
     );
 }
 
+/** Optional percentage rate: blank becomes null, else same checks as rateNumber. */
+export function optionalRate(max: number, message: string) {
+  const rate = rateNumber(max, message);
+  return z
+    .string()
+    .trim()
+    .transform((v, ctx): number | null => {
+      if (v === "") return null;
+      const r = rate.safeParse(v);
+      if (!r.success) {
+        for (const i of r.error.issues) ctx.addIssue({ code: "custom", message: i.message });
+        return z.NEVER;
+      }
+      return r.data;
+    });
+}
+
 export const positiveInteger = positiveNumber
   .refine(Number.isInteger, "Must be a whole number")
   .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
@@ -305,6 +323,9 @@ export const goldFormEnum = z.enum(["jewellery", "coin", "bar", "digital"], {
 });
 export const goldPurityEnum = z.enum(["999", "995", "916", "750", "585"], {
   error: GOLD_PURITY_ERROR,
+});
+export const cashKindEnum = z.enum(["savings", "current", "cash", "other"], {
+  error: CASH_KIND_ERROR,
 });
 export const mfCategoryEnum =z.enum([
   "equity",

@@ -19,15 +19,22 @@ function Kpi({ label, children }: { label: string; children: React.ReactNode }) 
 export function KpiStrip({
   item,
   fourth,
+  showGain = true,
 }: {
   item: HoldingRow;
   fourth: DetailKpi;
+  showGain?: boolean;
 }) {
   const tone = gainTone(item.gain);
   const sign = item.gain > 0 ? "+" : "";
   const Icon = item.gain < 0 ? TrendingDown : TrendingUp;
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+    <div
+      className={cn(
+        "grid grid-cols-2 gap-3",
+        showGain ? "sm:grid-cols-4" : "sm:grid-cols-3",
+      )}
+    >
       <Kpi label="Invested">
         <p className="num truncate text-lg font-semibold whitespace-nowrap lg:text-xl">
           {formatINR(item.invested)}
@@ -38,6 +45,7 @@ export function KpiStrip({
           {formatINR(item.current_value)}
         </p>
       </Kpi>
+      {showGain ? (
       <Kpi label="Gain">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <p
@@ -56,6 +64,7 @@ export function KpiStrip({
           </p>
         </div>
       </Kpi>
+      ) : null}
       <Kpi label={fourth.label}>
         <p className="truncate text-lg font-semibold whitespace-nowrap lg:text-xl">
           {fourth.value}

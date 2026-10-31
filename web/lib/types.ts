@@ -1,4 +1,4 @@
-export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold";
+export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   fd: "Fixed Deposits",
@@ -7,6 +7,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   bond: "Bonds",
   mf: "Mutual Funds",
   gold: "Gold",
+  cash: "Cash & Savings",
 };
 
 export type Compounding =
@@ -50,6 +51,15 @@ export const BOND_TYPE_LABELS: Record<BondType, string> = {
   corporate: "Corporate",
   tax_free: "Tax-free",
   sgb: "SGB",
+  other: "Other",
+};
+
+export type CashKind = "savings" | "current" | "cash" | "other";
+
+export const CASH_KIND_LABELS: Record<CashKind, string> = {
+  savings: "Savings account",
+  current: "Current account",
+  cash: "Cash in hand",
   other: "Other",
 };
 
@@ -277,6 +287,15 @@ export interface GoldInput {
   notes: string | null;
 }
 
+export interface CashInput {
+  name: string;
+  kind: CashKind;
+  balance: number;
+  interest_rate: number | null;
+  balance_date: string;
+  notes: string | null;
+}
+
 // CAS import
 
 export interface CasExistingHolding {
@@ -356,6 +375,7 @@ export type Stock = StockInput & RecordFields;
 export type Bond = BondInput & RecordFields;
 export type MutualFund = MutualFundInput & RecordFields;
 export type Gold = GoldInput & RecordFields;
+export type Cash = CashInput & RecordFields;
 
 export type AssetRecord =
   | FixedDeposit
@@ -363,7 +383,8 @@ export type AssetRecord =
   | Stock
   | Bond
   | MutualFund
-  | Gold;
+  | Gold
+  | Cash;
 
 // Portfolio
 
@@ -452,13 +473,19 @@ export type GoldItem = Gold &
     xirr?: number | null;
   };
 
+export type CashItem = Cash &
+  ComputedFields & {
+    xirr?: number | null;
+  };
+
 export type HoldingRow =
   | FixedDepositItem
   | RecurringDepositItem
   | StockItem
   | BondItem
   | MutualFundItem
-  | GoldItem;
+  | GoldItem
+  | CashItem;
 
 export interface FacetValue {
   value: string;
