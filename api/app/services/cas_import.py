@@ -39,7 +39,7 @@ def read_statement(raw: bytes, password: str):
     except IncorrectPasswordError:
         raise _error(400, "Wrong password", "The CAS password is usually your PAN in capitals.")
     except Exception:
-        raise _error(422, "Couldn't read this statement", "Upload a CAMS or KFintech CAS PDF.")
+        return _read_mfcentral(raw, password)
     if not isinstance(data, CASData):
         if str(getattr(data, "file_type", "")) in ("NSDL", "CDSL", "FileType.NSDL", "FileType.CDSL"):
             raise _error(
@@ -48,6 +48,25 @@ def read_statement(raw: bytes, password: str):
                 "Download a CAMS or KFintech CAS from MF Central.",
             )
         raise _error(422, "Couldn't read this statement", "Upload a CAMS or KFintech CAS PDF.")
+    return data
+
+
+def _read_mfcentral(raw: bytes, password: str):
+    """Fallback for MF Central Detailed CAS PDFs, which casparser can't identify."""
+    from app.services import mfcentral_cas
+
+    unreadable = _error(422, "Couldn't read this statement", "Upload a CAMS or KFintech CAS PDF.")
+    try:
+        texts = mfcentral_cas.extract_page_texts(raw, password)
+        if not mfcentral_cas.is_mfcentral(texts):
+            raise unreadable
+        data = mfcentral_cas.parse_mfcentral(texts)
+    except HTTPException:
+        raise
+    except Exception:
+        raise unreadable from None
+    if not any(folio.schemes for folio in data.folios):
+        raise unreadable
     return data
 
 
@@ -187,6 +206,8 @@ def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
         issue = "Not found in the AMFI scheme list"
     elif units <= 0:
         issue = "Closing units are not positive"
+    elif any((getattr(s, "opening", None) or 0) > ZERO for s in items):
+        issue = "Statement starts after the first purchase. Download it from your first investment date."
     elif cost_missing:
         issue = "The statement has no invested amount for this fund"
     elif purchase is None:

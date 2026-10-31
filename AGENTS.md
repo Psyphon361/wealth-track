@@ -34,6 +34,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/routers/cron.py   /api/cron/amfi and /api/cron/securities: daily imports; /api/cron/issuers: weekly FD/RD issuer import; bearer CRON_SECRET (no X-API-Key)
   app/services/valuation.py  all money maths (maturity, status, invested, current, gain, interest_received)
   app/services/cas_import.py  CAS PDF import: casparser 1.4.1 parse in memory (file and password never stored), merge schemes across folios into MF preview rows, purchase date rule (SPEC §8)
+  app/services/mfcentral_cas.py  MF Central Detailed CAS text parser (fallback when casparser can't identify the PDF; FIFO invested, opening-balance rule; SPEC §8)
   app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest), plus scheme master CSV enrichment of plan/option
   app/services/stock_prices.py  latest stock prices: nightly NSE/BSE bhavcopy close stored in stock_price_latest by the securities import (upsert_closes); latest_prices reads it for /api/holdings/stock, /api/portfolio and /api/dashboard
   app/models/stock_price.py  stock_price_latest (one row per stock_master id: price, prev_close, price_time, source bhavcopy, updated_at)
