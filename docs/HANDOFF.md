@@ -1,10 +1,12 @@
 # HANDOFF — session resume notes (2026-10-29)
 
-## Resume notes — 2026-11-01 (gold)
+## Resume notes — 2026-11-01 (gold and cash)
+
+Shipped on `main`: the Cash & Savings asset in two commits, `4cfebd7` (API: migration `0020`, `cash_holdings`, `/api/assets/cash`, `/api/holdings/cash`, dashboard, portfolio and net worth; the balance counts from its balance date) and `1119850` (web: Cash tab after Gold, add form, grid and details page without gain). Pushed together with gold.
 
 Shipped on `main`: the Gold asset in three commits. `89d552b`: IBJA gold rates per purity (migration `0018`, `/api/cron/gold`, `app.jobs.gold_import`). `dc32a49`: gold holdings (migration `0019`), `GET /api/master/gold/rate`, gold in dashboard, portfolio and net worth. `ad7fa85`: web gold form, grid and details page; form selects open below their trigger.
 
-Next: Cash & savings, then EPF/PPF, then NPS. Open gap: no IBJA history before 27 Oct 2026 (STATUS backlog).
+Next: EPF/PPF (next session starts the planning), then NPS. Open gap: no IBJA history before 27 Oct 2026 (STATUS backlog).
 
 ## Resume notes — 2026-10-31 (session 4)
 

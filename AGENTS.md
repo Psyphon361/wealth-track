@@ -4,7 +4,7 @@ Guide for any AI coding agent working in this repo. Read this first, then `docs/
 
 ## What this is
 
-Personal wealth tracker for one user in India (INR only). Manual entry of six asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF), Gold (physical or digital, valued at the IBJA per-gram rate for its purity) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). Prices: stock current value = quantity × latest price (latest NSE/BSE bhavcopy close, stored nightly by the securities import); MF uses the latest AMFI NAV; a holding with no price is valued at invested.
+Personal wealth tracker for one user in India (INR only). Manual entry of seven asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF), Gold (physical or digital, valued at the IBJA per-gram rate for its purity), Cash & Savings (savings and current accounts, cash in hand; valued at its balance) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). Prices: stock current value = quantity × latest price (latest NSE/BSE bhavcopy close, stored nightly by the securities import); MF uses the latest AMFI NAV; a holding with no price is valued at invested.
 
 Philosophy: build fast, small steps, verify by build/lint, curl, and browser click-through. API has pytest in `api/tests` (run `cd api && .venv/bin/python -m pytest -q`); tests are added per bug fix, there is no full suite.
 
@@ -25,11 +25,12 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/models/mf_transaction.py  mf_transactions (one row per CAS-imported MF purchase or redemption; FK mutual_funds, ON DELETE CASCADE; SPEC §8)
   app/models/gold.py    gold_holdings (form, purity, weight_grams, purchase_date, invested_amount; no master link; migration 0019)
   app/models/gold_rate.py  gold_rate_latest (one row per purity) and gold_rate_history (purity + rate_date), IBJA rates per gram
+  app/models/cash.py    cash_holdings (name, kind savings|current|cash|other, balance, interest_rate?, balance_date; no master link; migration 0020)
   app/schemas/assets.py Pydantic Create/Read/Result models + ALL validation rules
   app/schemas/cas_import.py  CAS import preview and commit models (SPEC §8)
   app/schemas/gold.py  gold import result and rate-on-date read models
   app/schemas/messages.py, summary.py   outcome + portfolio/dashboard response models
-  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|gold}
+  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|gold|cash}
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
   app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
@@ -59,7 +60,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/jobs/gold_import.py  CLI: `python -m app.jobs.gold_import` runs the IBJA gold rate import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -72,11 +73,11 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   app/auth/google/start/route.ts, app/auth/google/callback/route.ts  Google OAuth: start sets state + PKCE verifier (httpOnly wt_oauth); callback checks state, calls POST /api/auth/google, sets the session cookies
   app/actions/auth.ts   login/signup/logout server actions (httpOnly cookies wt_access, wt_refresh)
   app/api/[...path]/route.ts  same-origin proxy to FastAPI; adds X-API-Key server-side; forwards raw request bytes so multipart uploads (CAS PDF) work
-  components/forms/     6 asset forms, shared fields (TextField w/ Indian digit grouping, DateField), zod schema.ts, master-picker.tsx (generic securities/scheme search picker), scheme-picker.tsx (MF scheme search, thin wrapper over master-picker), issuer-picker.tsx (FD/RD bank/issuer picker and "Not listed? Enter manually" toggle), use-nav-autofill.ts (MF Average NAV auto-fill from the NAV endpoint), gold-form.tsx + use-gold-rate-autofill.ts (Total invested = weight × IBJA rate)
+  components/forms/     7 asset forms, shared fields (TextField w/ Indian digit grouping, DateField), zod schema.ts, master-picker.tsx (generic securities/scheme search picker), scheme-picker.tsx (MF scheme search, thin wrapper over master-picker), issuer-picker.tsx (FD/RD bank/issuer picker and "Not listed? Enter manually" toggle), use-nav-autofill.ts (MF Average NAV auto-fill from the NAV endpoint), gold-form.tsx + use-gold-rate-autofill.ts (Total invested = weight × IBJA rate), cash-form.tsx (account type, balance as of)
   components/forms/cas-import/  MF "Import CAS" tab on /add/mf: cas-import.tsx (container), upload-step.tsx (file + password), preview-step.tsx (row checkboxes, New / In portfolio badges, Update existing / Add as new choice, Import N funds)
   components/user-menu.tsx  top-bar account menu right of "Add asset": email-initial avatar, "Signed in as <email>", Log out (fetches GET /api/me)
-  components/portfolio/ asset tabs; per-type grid configs (grid/configs/{fd,rd,stock,bond,mf,gold}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
-  components/holding-detail/ holding details page: shared layout for all six types (header, KPI strip, tenure bar, sections)
+  components/portfolio/ asset tabs; per-type grid configs (grid/configs/{fd,rd,stock,bond,mf,gold,cash}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
+  components/holding-detail/ holding details page: shared layout for all seven types (header, KPI strip, tenure bar, sections)
   components/asset-type-icon.tsx  shared tinted asset-type icon (details page and add form)
   components/breadcrumb-label.tsx  breadcrumb label context: BreadcrumbLabelProvider (in the (app) layout) and useBreadcrumbLabel (sets the last crumb while mounted)
   components/dashboard/ KPI cards, net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx) and holdings-by-type table
@@ -116,7 +117,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0019`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0020`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)

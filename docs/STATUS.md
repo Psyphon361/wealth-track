@@ -38,6 +38,7 @@
 - 2026-10-31: Net worth over time chart (migration 0017 stock price history, GET /api/networth/history, dashboard card).
 - 2026-10-31: FD, RD and bond pages have an Active (n) / Matured (m) switch (`statusTabs`, `?status=matured`); dashboard no longer shows "+N matured".
 - 2026-11-01: Gold asset, committed on `main`: IBJA per-gram rates by purity (`89d552b`, migration `0018`, `/api/cron/gold` daily); gold holdings with rate on a date, dashboard, portfolio and net worth (`dc32a49`, migration `0019`); web form, grid and details page, and select menus open below their trigger (`ad7fa85`). Six asset types now. SPEC §1–§5.
+- 2026-11-01: Cash & Savings asset, committed on `main`: `cash_holdings` (kind savings/current/cash/other, balance, optional interest rate, balance as of; migration `0020`), `/api/assets/cash` and `/api/holdings/cash`, in dashboard, portfolio and net worth (`4cfebd7`); web Cash tab after Gold, add form, grid and details page without gain (`1119850`). Seven asset types now. SPEC §1–§5.
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
@@ -72,7 +73,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next (planned assets)
 
-- Cash & savings, then EPF/PPF, then NPS (in that order).
+- EPF/PPF, then NPS (in that order).
 
 ## Next (auth)
 
