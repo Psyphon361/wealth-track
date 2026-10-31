@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models.bond import Bond
 from app.models.bond_master import BondMaster
+from app.models.cash import Cash
 from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
 from app.models.gold import Gold
@@ -51,6 +52,7 @@ TABLES = (
     TableSpec(Bond, "name", "master_id", BondMaster, "isin"),
     TableSpec(MutualFund, "scheme_name", "scheme_code", MFMaster, "scheme_code"),
     TableSpec(Gold, "name", None, None, None),
+    TableSpec(Cash, "name", None, None, None),
 )
 
 

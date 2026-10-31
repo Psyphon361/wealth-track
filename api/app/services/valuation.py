@@ -156,6 +156,13 @@ def value_gold(
     return out
 
 
+def value_cash(cash: Any, today: date | None = None) -> dict[str, Any]:
+    """A balance is worth itself: invested = current, no gain, no XIRR, always active."""
+    out = _result(Decimal(cash.balance), Decimal(cash.balance))
+    out["xirr"] = None
+    return out
+
+
 def value_stock(
     stock: Any, today: date | None = None, *, price: Decimal | None = None
 ) -> dict[str, Any]:

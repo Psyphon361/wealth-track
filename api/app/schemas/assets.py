@@ -517,3 +517,34 @@ class GoldCreate(_Create, GoldBase):
 
 class GoldRead(GoldBase, _Read):
     pass
+
+
+# --- Cash & savings ---------------------------------------------------------
+
+
+CASH_KIND_ERROR = "Choose an account type"
+CASH_KINDS = ("savings", "current", "cash", "other")
+
+CashKind = Annotated[
+    Literal["savings", "current", "cash", "other"],
+    BeforeValidator(_one_of(CASH_KINDS, CASH_KIND_ERROR)),
+]
+
+
+class CashBase(BaseModel):
+    name: Required
+    kind: Literal["savings", "current", "cash", "other"]
+    balance: Dec
+    interest_rate: Dec | None = None
+    balance_date: date
+
+
+class CashCreate(_Create, CashBase):
+    kind: CashKind
+    balance: Money
+    interest_rate: FdRate | None = None
+    balance_date: TradeDate
+
+
+class CashRead(CashBase, _Read):
+    pass

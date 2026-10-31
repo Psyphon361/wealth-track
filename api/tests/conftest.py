@@ -66,6 +66,17 @@ def make_gold(**kw):
     return _base(**fields)
 
 
+def make_cash(**kw):
+    from datetime import date
+
+    fields = dict(
+        name="Test Savings", kind="savings", balance=Decimal("25000"),
+        interest_rate=Decimal("3.5"), balance_date=date(2025, 10, 24),
+    )  # fmt: skip
+    fields.update(kw)
+    return _base(**fields)
+
+
 @pytest.fixture
 def auth_engine():
     """In-memory SQLite holding only the auth tables."""

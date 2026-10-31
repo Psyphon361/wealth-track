@@ -6,6 +6,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.models import (
     Bond,
+    Cash,
     FixedDeposit,
     Gold,
     GoldRateLatest,
@@ -35,7 +36,7 @@ def client(auth_engine, auth_settings):
         tables=[
             m.__table__
             for m in (
-                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, GoldRateLatest, MFNavLatest,
+                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, GoldRateLatest, MFNavLatest,
                 MFTransaction
             )
         ],

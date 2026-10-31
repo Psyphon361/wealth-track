@@ -1,6 +1,8 @@
 from app.schemas.assets import (
     BondCreate,
     BondRead,
+    CashCreate,
+    CashRead,
     FixedDepositCreate,
     FixedDepositRead,
     GoldCreate,
@@ -16,6 +18,8 @@ from app.schemas.assets import (
 __all__ = [
     "BondCreate",
     "BondRead",
+    "CashCreate",
+    "CashRead",
     "FixedDepositCreate",
     "FixedDepositRead",
     "GoldCreate",

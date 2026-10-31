@@ -8,7 +8,7 @@ from app.jobs.copy_holdings import (
     relink_master,
     relink_scheme,
 )
-from tests.conftest import make_bond, make_fd, make_gold, make_stock
+from tests.conftest import make_bond, make_cash, make_fd, make_gold, make_stock
 
 
 def _row(obj, **extra):
@@ -78,3 +78,16 @@ def test_gold_has_no_master_link_and_is_copied():
     values = build_insert(_row(gold, user_id=1), 42, None, None)
     assert values["user_id"] == 42 and "id" not in values
     assert values["name"] == gold.name and values["purity"] == "916"
+
+
+def test_cash_has_no_master_link_and_is_copied():
+    from app.models.cash import Cash
+
+    spec = next(t for t in TABLES if t.model is Cash)
+    assert spec.link_column is None and spec.master is None
+    cash = make_cash()
+    assert is_duplicate(_row(make_cash()), None, {business_key(_row(cash), None)})
+    assert not is_duplicate(_row(make_cash(balance=1)), None, {business_key(_row(cash), None)})
+    values = build_insert(_row(cash, user_id=1), 42, None, None)
+    assert values["user_id"] == 42 and "id" not in values
+    assert values["name"] == cash.name and values["kind"] == "savings"

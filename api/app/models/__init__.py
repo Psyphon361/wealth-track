@@ -1,5 +1,6 @@
 from app.models.bond import Bond
 from app.models.bond_master import BondMaster
+from app.models.cash import Cash
 from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
 from app.models.gold import Gold
@@ -19,6 +20,7 @@ from app.models.user import User
 __all__ = [
     "Bond",
     "BondMaster",
+    "Cash",
     "FdIssuerMaster",
     "FixedDeposit",
     "Gold",
