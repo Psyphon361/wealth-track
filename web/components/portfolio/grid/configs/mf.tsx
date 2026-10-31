@@ -21,6 +21,7 @@ const labels = {
   current_value: "Current",
   gain: "Gain",
   gain_pct: "Gain %",
+  xirr: "XIRR",
   purchase_date: "Purchase date",
 };
 
@@ -51,6 +52,7 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     "current_value",
     "gain",
     "gain_pct",
+    "xirr",
     "purchase_date",
   ],
   filters: [
@@ -92,6 +94,7 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),
     kit.gainPct(),
+    kit.nullablePercent("xirr", (r) => r.xirr),
     kit.date("purchase_date", (r) => r.purchase_date),
     kit.actions(handlers),
   ],

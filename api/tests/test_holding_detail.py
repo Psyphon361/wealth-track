@@ -1,3 +1,4 @@
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -26,13 +27,36 @@ def test_detail_item_equals_list_row(client, users, slug):  # noqa: F811
     detail = client.get(f"/api/holdings/{slug}/{item_id}", headers=a)
     assert detail.status_code == 200
     body = detail.json()
-    item = dict(body["item"])
-    if slug == "mf":  # the MF detail adds XIRR fields the grid row doesn't have
+    item = body["item"]
+    if slug == "mf":
         assert {"xirr", "xirr_basis", "xirr_transactions"} <= item.keys()
-        for key in ("xirr", "xirr_basis", "xirr_transactions"):
-            item.pop(key)
     assert item == row
     assert body["master"] is None
+
+
+def test_mf_grid_xirr_per_row_and_sort(client, users, monkeypatch):  # noqa: F811
+    a, _, _, _ = users
+    for name, units in (("Low Fund", 10), ("High Fund", 20), ("No Fund", 30)):
+        body = {**MF, "scheme_name": name, "units": units, "avg_nav": 100, "invested_amount": units * 100}
+        assert client.post("/api/assets/mf", json=body, headers=a).status_code == 201
+
+    def fake(units, invested, purchase_date, current, transactions, as_of):
+        return {10: (Decimal("5.00"), "purchase_date", 0), 20: (Decimal("12.50"), "transactions", 3)}.get(
+            int(units), (None, None, 0)
+        )
+
+    monkeypatch.setattr(holdings.valuation, "mf_xirr", fake)
+
+    def names(direction):
+        r = client.get(f"/api/holdings/mf?sort=xirr&dir={direction}", headers=a).json()
+        return [i["scheme_name"] for i in r["items"]], r["items"]
+
+    desc, items = names("desc")
+    assert desc == ["High Fund", "Low Fund", "No Fund"]
+    assert items[0]["xirr"] == 12.5 and items[0]["xirr_basis"] == "transactions"
+    assert items[0]["xirr_transactions"] == 3
+    assert items[2]["xirr"] is None
+    assert names("asc")[0] == ["Low Fund", "High Fund", "No Fund"]
 
 
 def test_detail_not_found_message(client, users):  # noqa: F811

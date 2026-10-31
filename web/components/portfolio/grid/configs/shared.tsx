@@ -187,6 +187,28 @@ export function createColumnKit<TRow extends HoldingRow>(
       },
     });
 
+  /** Signed, gain-coloured percent; "—" when null. */
+  const nullablePercent = (
+    id: string,
+    get: (row: TRow) => number | null | undefined,
+  ): GridColumn<TRow> =>
+    helper.accessor((row) => get(row) ?? null, {
+      id,
+      header: head(id),
+      sortUndefined: "last",
+      cell: ({ row }) => {
+        const v = get(row.original);
+        return v == null ? (
+          dash
+        ) : (
+          <span className={cn("num whitespace-nowrap", gainTone(v))}>
+            {v > 0 ? "+" : ""}
+            {formatPct(v)}
+          </span>
+        );
+      },
+    });
+
   const status = (): GridColumn<TRow> =>
     helper.accessor((row) => row.status, {
       id: "status",
@@ -221,6 +243,7 @@ export function createColumnKit<TRow extends HoldingRow>(
     percent,
     gain,
     gainPct,
+    nullablePercent,
     status,
     actions,
   };

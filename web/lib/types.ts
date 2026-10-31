@@ -401,7 +401,7 @@ export type MutualFundItem = MutualFund &
     prev_nav_date: string | null;
     day_change: number | null;
     day_change_pct: number | null;
-    // Detail response only
+    // MF XIRR (grid rows and details)
     xirr?: number | null;
     xirr_basis?: "transactions" | "purchase_date" | null;
     xirr_transactions?: number;

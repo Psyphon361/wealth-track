@@ -90,7 +90,7 @@ BondSort = Literal[
 ]  # fmt: skip
 MfSort = Literal[
     "scheme_name", "category", "platform", "units", "avg_nav", "invested",
-    "current_value", "gain", "gain_pct", "purchase_date",
+    "current_value", "gain", "gain_pct", "xirr", "purchase_date",
 ]  # fmt: skip
 
 Q = Annotated[str | None, Query(max_length=100)]
@@ -108,6 +108,33 @@ def _sort_value(item: dict[str, Any], key: str, text_keys: set[str]) -> Any:
     if value is not None and key in text_keys:
         return str(value).lower()
     return value
+
+
+def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Items with xirr, xirr_basis and xirr_transactions added (one transactions query)."""
+    by_holding: dict[int, list[MFTransaction]] = {}
+    if items:
+        rows = db.scalars(
+            select(MFTransaction)
+            .where(MFTransaction.mutual_fund_id.in_([i["id"] for i in items]))
+            .order_by(MFTransaction.txn_date, MFTransaction.id)
+        ).all()
+        for t in rows:
+            by_holding.setdefault(t.mutual_fund_id, []).append(t)
+    enriched = []
+    for item in items:
+        pct, basis, used = valuation.mf_xirr(
+            _dec(item["units"]), _dec(item["invested_amount"]), item["purchase_date"],
+            _dec(item["current_value"]), by_holding.get(item["id"], []),
+            item.get("nav_date") or date.today(),
+        )  # fmt: skip
+        enriched.append({
+            **item,
+            "xirr": float(pct) + 0.0 if pct is not None else None,
+            "xirr_basis": basis,
+            "xirr_transactions": used,
+        })
+    return enriched
 
 
 def _run(
@@ -129,6 +156,8 @@ def _run(
     cfg = CONFIG[slug]
     group = load_group(db, slug, user_id)
     rows: list[dict[str, Any]] = group["items"]
+    if slug == "mf":
+        rows = add_mf_xirr(db, rows)
     needle = (q or "").strip().lower()
     selected = {k: set(v) for k, v in multi.items() if v}
     m_from = maturity_from.isoformat() if maturity_from else None
@@ -365,19 +394,5 @@ def get_holding_detail(
         raise _not_found()
     record, item = loaded
     if slug == "mf":
-        transactions = db.scalars(
-            select(MFTransaction)
-            .where(MFTransaction.mutual_fund_id == record.id)
-            .order_by(MFTransaction.txn_date, MFTransaction.id)
-        ).all()
-        pct, basis, used = valuation.mf_xirr(
-            record.units, record.invested_amount, record.purchase_date,
-            item["current_value"], list(transactions), item.get("nav_date") or date.today(),
-        )  # fmt: skip
-        item = {
-            **item,
-            "xirr": float(pct) + 0.0 if pct is not None else None,
-            "xirr_basis": basis,
-            "xirr_transactions": used,
-        }
+        item = add_mf_xirr(db, [item])[0]
     return {"item": item, "master": linked_master(db, slug, record)}
