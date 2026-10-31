@@ -185,6 +185,11 @@ export function AuthForm({
               </Link>
             )}
           </p>
+          <p className="text-center text-xs text-muted-foreground">
+            <Link href="/" className="underline underline-offset-2">
+              ← Back to home
+            </Link>
+          </p>
         </form>
       </CardContent>
     </Card>

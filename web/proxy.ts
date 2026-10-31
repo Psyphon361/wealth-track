@@ -21,6 +21,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Files from web/public (og.png, logo.svg, ...) are public.
+  if (/\.[a-z0-9]+$/i.test(pathname)) return NextResponse.next();
+
+  const isWelcome = pathname === "/welcome" || pathname.startsWith("/welcome/");
+  if (isWelcome) {
+    if (hasRefresh) return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.next();
+  }
+  if (pathname === "/" && !hasRefresh) {
+    return NextResponse.rewrite(new URL("/welcome", request.url));
+  }
+
   const isAuthPage =
     pathname === "/login" ||
     pathname.startsWith("/login/") ||

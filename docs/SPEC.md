@@ -221,6 +221,13 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - Toasts (sonner, themed): title = API `message`, description = API `description`.
 - Theme: dark only, zinc palette, emerald primary, Geist Sans/Mono, root font-size 110%, sidebar 13.5rem.
 
+### Landing page
+
+- Public page at `/welcome` (`web/app/(marketing)/welcome/`), no sidebar and no sign-in. `proxy.ts` rewrites signed-out visitors to `/` onto `/welcome`; a signed-in user opening `/welcome` is redirected to `/`. Paths ending in a file extension (files in `web/public`) pass through.
+- Sections, top to bottom: nav, hero, sample-data dashboard preview, 6 features, how it works, privacy, closing CTA, footer (`web/components/landing/`).
+- The dashboard preview uses made-up sample figures, not user data. The Holdings table hides its "Current" column below `sm`.
+- Aurora background (`aurora.tsx`) is pure CSS. Reduced motion freezes it.
+
 ## 6. Environment variables
 
 | Where | Var | Notes |
