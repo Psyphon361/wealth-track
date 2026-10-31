@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { AuthCta } from "@/components/landing/auth-cta";
 import { Features } from "@/components/landing/features";
-import { Footer } from "@/components/landing/footer";
 import { Hero } from "@/components/landing/hero";
 import { Nav } from "@/components/landing/nav";
 
@@ -19,7 +18,6 @@ export default function LandingPage() {
         <Hero />
         <Features />
       </main>
-      <Footer />
     </>
   );
 }
