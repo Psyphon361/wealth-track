@@ -5,12 +5,13 @@ on:
     - cron: '0 14 * * *'
     - cron: '30 16 * * *'
     - cron: '0 3 * * 1'
+    - cron: '0 13 * * *'
   workflow_dispatch:
     inputs:
       job:
         description: Which import to run
         type: choice
-        options: [all, securities, amfi, issuers]
+        options: [all, securities, amfi, issuers, gold]
         default: all
 
 permissions:
@@ -63,3 +64,10 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
         run: ../.venv/bin/python -m app.jobs.issuers_import
+
+      - name: Import IBJA gold rates
+        if: github.event.schedule == '0 13 * * *' || inputs.job == 'gold' || inputs.job == 'all'
+        working-directory: api
+        env:
+          DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+        run: ../.venv/bin/python -m app.jobs.gold_import

@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.schemas.gold import GoldImportResult
 from app.schemas.mf_scheme import AmfiImportResult
 from app.schemas.market_master import FdIssuerImportResult, MarketImportResult
-from app.services import amfi, bond_master, fd_issuers, market_files, stock_history, stock_master
+from app.services import amfi, bond_master, fd_issuers, gold_rates, market_files, stock_history, stock_master
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -63,3 +64,12 @@ def refresh_issuers(db: Session = Depends(get_db)):
     if {"razorpay", "dicgc"} <= sources.errors.keys():  # both remote sources unreachable
         raise HTTPException(status_code=502, detail="Couldn't fetch the issuer files")
     return asdict(fd_issuers.import_issuers(db, sources, date.today()))
+
+
+@router.get("/gold", response_model=GoldImportResult, dependencies=[Depends(require_cron_secret)])
+def refresh_gold(db: Session = Depends(get_db)):
+    try:
+        parsed = gold_rates.parse_rates(gold_rates.fetch_page())
+    except (urllib.error.URLError, TimeoutError, OSError, gold_rates.GoldRatesError) as exc:
+        raise HTTPException(status_code=502, detail="Couldn't fetch the gold rates") from exc
+    return gold_rates.import_rates(db, parsed)

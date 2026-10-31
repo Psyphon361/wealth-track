@@ -2,6 +2,7 @@ from app.models.bond import Bond
 from app.models.bond_master import BondMaster
 from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
+from app.models.gold_rate import GoldRateHistory, GoldRateLatest
 from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNavLatest
 from app.models.login_attempt import LoginAttempt
 from app.models.mf_transaction import MFTransaction
@@ -19,6 +20,8 @@ __all__ = [
     "BondMaster",
     "FdIssuerMaster",
     "FixedDeposit",
+    "GoldRateHistory",
+    "GoldRateLatest",
     "MFMaster",
     "MFNavHistory",
     "MFNavHistorySync",
