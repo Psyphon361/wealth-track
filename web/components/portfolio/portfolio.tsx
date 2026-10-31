@@ -15,6 +15,7 @@ import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
 import { EditDialog } from "./edit-dialog";
 import { bondConfig } from "./grid/configs/bond";
 import { fdConfig } from "./grid/configs/fd";
+import { goldConfig } from "./grid/configs/gold";
 import { mfConfig } from "./grid/configs/mf";
 import { rdConfig } from "./grid/configs/rd";
 import { stockConfig } from "./grid/configs/stock";
@@ -298,5 +299,7 @@ export function Portfolio({ type }: { type: AssetType }) {
       return <TypedPortfolio config={bondConfig} />;
     case "mf":
       return <TypedPortfolio config={mfConfig} />;
+    case "gold":
+      return <TypedPortfolio config={goldConfig} />;
   }
 }

@@ -10,6 +10,7 @@ import { DeleteDialog, type DeleteTarget } from "@/components/portfolio/delete-d
 import { EditDialog } from "@/components/portfolio/edit-dialog";
 import { bondConfig } from "@/components/portfolio/grid/configs/bond";
 import { fdConfig } from "@/components/portfolio/grid/configs/fd";
+import { goldConfig } from "@/components/portfolio/grid/configs/gold";
 import { mfConfig } from "@/components/portfolio/grid/configs/mf";
 import { rdConfig } from "@/components/portfolio/grid/configs/rd";
 import { StatusBadge } from "@/components/portfolio/grid/configs/shared";
@@ -182,5 +183,7 @@ export function HoldingDetail({ type, id }: { type: AssetType; id: number }) {
       return <TypedDetail config={bondConfig} id={id} />;
     case "mf":
       return <TypedDetail config={mfConfig} id={id} />;
+    case "gold":
+      return <TypedDetail config={goldConfig} id={id} />;
   }
 }

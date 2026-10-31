@@ -81,7 +81,7 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
                     >
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent alignItemWithTrigger={false}>
                       {options.map((o) => (
                         <SelectItem key={o.value} value={o.value}>
                           {o.label}

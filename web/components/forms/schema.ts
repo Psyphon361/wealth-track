@@ -33,6 +33,10 @@ export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
 export const ISSUER_REQUIRED_ERROR = "Select a bank or issuer from the list";
+export const GOLD_FORM_ERROR = "Choose a form";
+export const GOLD_PURITY_ERROR = "Choose a purity";
+export const GOLD_WEIGHT_DECIMALS_ERROR =
+  "Weight can have at most 3 decimal places";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
@@ -243,6 +247,14 @@ export const positiveUnits = positiveNumber
   )
   .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
 
+/** Gold weight in grams: > 0, at most 3 decimals, at most 1 crore. */
+export const goldWeight = positiveNumber
+  .refine(
+    (n) => Math.abs(n * 1000 - Math.round(n * 1000)) < 1e-6,
+    GOLD_WEIGHT_DECIMALS_ERROR,
+  )
+  .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
+
 export const tenurePart = z.string().transform(Number);
 
 export function tenureIsPositive(v: {
@@ -288,7 +300,13 @@ export const bondTypeEnum = z.enum([
   "sgb",
   "other",
 ]);
-export const mfCategoryEnum = z.enum([
+export const goldFormEnum = z.enum(["jewellery", "coin", "bar", "digital"], {
+  error: GOLD_FORM_ERROR,
+});
+export const goldPurityEnum = z.enum(["999", "995", "916", "750", "585"], {
+  error: GOLD_PURITY_ERROR,
+});
+export const mfCategoryEnum =z.enum([
   "equity",
   "debt",
   "hybrid",

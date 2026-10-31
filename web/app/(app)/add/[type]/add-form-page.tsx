@@ -101,6 +101,14 @@ export function AddFormPage({ type }: { type: AssetType }) {
               onCancel={onCancel}
             />
           )}
+          {type === "gold" && (
+            <AssetForm
+              key={formKey}
+              type="gold"
+              onSaved={onSaved}
+              onCancel={onCancel}
+            />
+          )}
           {type === "mf" && mfTab === "manual" && (
             <AssetForm
               key={formKey}

@@ -1,4 +1,5 @@
 import {
+  Coins,
   Landmark,
   LineChart,
   PieChart,
@@ -52,6 +53,13 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
     title: "Mutual funds",
     hint: "Units at average NAV",
     icon: PieChart,
+    group: "Market-linked",
+  },
+  {
+    type: "gold",
+    title: "Gold",
+    hint: "Jewellery, coins, bars, digital gold",
+    icon: Coins,
     group: "Market-linked",
   },
 ];

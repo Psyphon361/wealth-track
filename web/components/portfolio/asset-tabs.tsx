@@ -7,7 +7,7 @@ import { apiGet } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { AssetType, DashboardResponse } from "@/lib/types";
 
-const TAB_ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf"];
+const TAB_ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf", "gold"];
 
 /** Width of every tab and of the sliding indicator, in rem. */
 const TAB_WIDTH_REM = 7.5;
@@ -18,12 +18,14 @@ export const TAB_LABELS: Record<AssetType, string> = {
   stock: "Stocks",
   bond: "Bonds",
   mf: "Mutual Funds",
+  gold: "Gold",
 };
 
 /** "Add FD", "Add RD", "Add stocks", "Add bonds", "Add mutual funds". */
 export function addLabel(type: AssetType): string {
   const label = TAB_LABELS[type];
-  return `Add ${type === "fd" || type === "rd" ? label : label.toLowerCase()}`;
+  const keepCase = type === "fd" || type === "rd" || type === "gold";
+  return `Add ${keepCase ? label : label.toLowerCase()}`;
 }
 
 type Counts = Partial<Record<AssetType, number>>;

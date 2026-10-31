@@ -7,7 +7,7 @@ import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
 import type { AssetType, DashboardResponse } from "@/lib/types";
 import { TableSkeleton } from "./grid/data-table";
 
-const ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf"];
+const ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf", "gold"];
 
 /** Sends /portfolio to the first asset type that has holdings. */
 export function PortfolioRedirect() {

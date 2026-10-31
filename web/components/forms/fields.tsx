@@ -159,9 +159,12 @@ export function TextField<TIn extends FieldValues, TOut>({
   maxLength,
   uppercase,
   hint,
+  placeholder,
 }: FieldProps<TIn, TOut> & {
   /** Muted helper text under the input. */
   hint?: string | null;
+  /** Placeholder shown while the input is empty. */
+  placeholder?: string;
   inputMode?: "decimal" | "numeric";
   adornment?: "₹" | "%";
   /** When set, groups digits Indian-style, allowing this many decimal places. */
@@ -189,6 +192,7 @@ export function TextField<TIn extends FieldValues, TOut>({
                 onBlur={field.onBlur}
                 onValueChange={field.onChange}
                 value={String(field.value ?? "")}
+                placeholder={placeholder}
                 decimals={decimals}
                 aria-invalid={fieldState.invalid}
                 className={cn(
@@ -210,6 +214,7 @@ export function TextField<TIn extends FieldValues, TOut>({
                   )
                 }
                 value={String(field.value ?? "")}
+                placeholder={placeholder}
                 maxLength={maxLength ?? MAX_TEXT}
                 aria-invalid={fieldState.invalid}
                 className={cn(
@@ -268,7 +273,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
             >
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent alignItemWithTrigger={false}>
               {options.map((o) => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}

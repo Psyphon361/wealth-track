@@ -4,12 +4,14 @@ import type {
   AssetType,
   Bond,
   FixedDeposit,
+  Gold,
   MutualFund,
   RecurringDeposit,
   Stock,
 } from "@/lib/types";
 import { BondForm } from "./bond-form";
 import { FdForm } from "./fd-form";
+import { GoldForm } from "./gold-form";
 import { MfForm } from "./mf-form";
 import { RdForm } from "./rd-form";
 import { StockForm } from "./stock-form";
@@ -25,7 +27,8 @@ export type AssetFormProps =
   | ({ type: "rd" } & Common<RecurringDeposit>)
   | ({ type: "stock" } & Common<Stock>)
   | ({ type: "bond" } & Common<Bond>)
-  | ({ type: "mf" } & Common<MutualFund>);
+  | ({ type: "mf" } & Common<MutualFund>)
+  | ({ type: "gold" } & Common<Gold>);
 
 export type { AssetType };
 
@@ -70,6 +73,14 @@ export function AssetForm(props: AssetFormProps) {
     case "mf":
       return (
         <MfForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
+    case "gold":
+      return (
+        <GoldForm
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}

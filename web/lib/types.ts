@@ -1,4 +1,4 @@
-export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf";
+export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   fd: "Fixed Deposits",
@@ -6,6 +6,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   stock: "Stocks",
   bond: "Bonds",
   mf: "Mutual Funds",
+  gold: "Gold",
 };
 
 export type Compounding =
@@ -50,6 +51,24 @@ export const BOND_TYPE_LABELS: Record<BondType, string> = {
   tax_free: "Tax-free",
   sgb: "SGB",
   other: "Other",
+};
+
+export type GoldForm = "jewellery" | "coin" | "bar" | "digital";
+export type GoldPurity = "999" | "995" | "916" | "750" | "585";
+
+export const GOLD_FORM_LABELS: Record<GoldForm, string> = {
+  jewellery: "Jewellery",
+  coin: "Coin",
+  bar: "Bar",
+  digital: "Digital gold",
+};
+
+export const GOLD_PURITY_LABELS: Record<GoldPurity, string> = {
+  "999": "24K (999)",
+  "995": "24K (995)",
+  "916": "22K (916)",
+  "750": "18K (750)",
+  "585": "14K (585)",
 };
 
 export const MF_CATEGORY_LABELS: Record<MFCategory, string> = {
@@ -229,6 +248,13 @@ export interface MfNavResponse {
   source: "latest" | "history";
 }
 
+export interface GoldRateResponse {
+  purity: string;
+  requested_date: string;
+  rate_date: string;
+  rate_per_gram: number;
+}
+
 export interface MutualFundInput {
   scheme_code: number | null;
   scheme_name: string;
@@ -238,6 +264,16 @@ export interface MutualFundInput {
   avg_nav: number;
   invested_amount: number;
   purchase_date: string;
+  notes: string | null;
+}
+
+export interface GoldInput {
+  name: string;
+  form: GoldForm;
+  purity: GoldPurity;
+  weight_grams: number;
+  purchase_date: string;
+  invested_amount: number;
   notes: string | null;
 }
 
@@ -319,13 +355,15 @@ export type RecurringDeposit = RecurringDepositInput & RecordFields;
 export type Stock = StockInput & RecordFields;
 export type Bond = BondInput & RecordFields;
 export type MutualFund = MutualFundInput & RecordFields;
+export type Gold = GoldInput & RecordFields;
 
 export type AssetRecord =
   | FixedDeposit
   | RecurringDeposit
   | Stock
   | Bond
-  | MutualFund;
+  | MutualFund
+  | Gold;
 
 // Portfolio
 
@@ -407,12 +445,20 @@ export type MutualFundItem = MutualFund &
     xirr_transactions?: number;
   };
 
+export type GoldItem = Gold &
+  ComputedFields & {
+    rate_per_gram: number | null;
+    rate_date: string | null;
+    xirr?: number | null;
+  };
+
 export type HoldingRow =
   | FixedDepositItem
   | RecurringDepositItem
   | StockItem
   | BondItem
-  | MutualFundItem;
+  | MutualFundItem
+  | GoldItem;
 
 export interface FacetValue {
   value: string;
