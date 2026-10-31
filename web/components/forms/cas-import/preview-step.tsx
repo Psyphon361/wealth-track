@@ -20,6 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { apiPost } from "@/lib/api";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import { formatDate, formatINR } from "@/lib/format";
 import { notify } from "@/lib/notify";
 import type {
@@ -124,6 +125,7 @@ export function CasPreviewStep({
       const result = await apiPost<CasCommitResult>("/import/cas/commit", {
         rows: body,
       });
+      invalidateNetWorth();
       notify.success(result);
       onImported(result);
     } catch (err) {

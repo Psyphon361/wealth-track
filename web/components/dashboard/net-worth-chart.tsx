@@ -10,8 +10,17 @@ import {
 } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { apiGet, toApiMessage } from "@/lib/api";
-import { formatDate, formatINR, formatINRCompact } from "@/lib/format";
+import { Loader2 } from "lucide-react";
+import { toApiMessage } from "@/lib/api";
+import { formatDateShortMonth as formatDate } from "@/lib/chart-ticks";
+import { pickTicks, tickLabel } from "@/lib/chart-ticks";
+import { formatINR, formatINRCompact } from "@/lib/format";
+import {
+  getCachedNetWorth,
+  loadNetWorth,
+  prefetchNetWorth,
+  subscribeNetWorth,
+} from "@/lib/networth-cache";
 import type { NetWorthHistory, NetWorthRange } from "@/lib/types";
 
 const RANGES: { value: NetWorthRange; label: string }[] = [
@@ -26,59 +35,57 @@ const config = {
   invested: { label: "Invested", color: "var(--muted-foreground)" },
 } satisfies ChartConfig;
 
-/** YYYY-MM-DD -> "12 Mar" or "Mar 25" without timezone shift. */
-function tickLabel(iso: string, range: NetWorthRange): string {
-  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  if (range === "1m") {
-    return dt.toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "short",
-      timeZone: "UTC",
-    });
-  }
-  const mon = dt.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" });
-  return `${mon} ${String(y).slice(2)}`;
-}
-
-type State = {
-  data: NetWorthHistory | null;
-  error: { message: string; description: string } | null;
-  loading: boolean;
-};
+type ErrorState = {
+  range: NetWorthRange;
+  message: string;
+  description: string;
+} | null;
 
 export function NetWorthChart() {
   const [range, setRange] = useState<NetWorthRange>("1y");
-  const [state, setState] = useState<State>({
-    data: null,
-    error: null,
-    loading: true,
-  });
+  const [last, setLast] = useState<NetWorthHistory | null>(null);
+  const [errorState, setErrorState] = useState<ErrorState>(null);
+  const [, setVersion] = useState(0);
+
+  useEffect(
+    () => subscribeNetWorth(() => setVersion((v) => v + 1)),
+    [],
+  );
+
+  const cached = getCachedNetWorth(range) ?? null;
+  // Remember the last chart shown so it stays (dimmed) while a new range loads.
+  if (cached && cached !== last) setLast(cached);
+
+  const hasCached = cached !== null;
+  const version = cached; // changes when the cache entry is replaced
 
   useEffect(() => {
     let cancelled = false;
-    apiGet<NetWorthHistory>(`/networth/history?range=${range}`)
-      .then((data) => {
-        if (!cancelled) setState({ data, error: null, loading: false });
+    loadNetWorth(range)
+      .then(() => {
+        if (!cancelled) setErrorState(null);
       })
       .catch((err: unknown) => {
-        if (!cancelled)
-          setState((s) => ({
-            data: s.data,
-            error: toApiMessage(err),
-            loading: false,
-          }));
+        if (!cancelled) setErrorState({ range, ...toApiMessage(err) });
       });
     return () => {
       cancelled = true;
     };
-  }, [range]);
+    // Re-run when the cache entry for this range appears or is cleared.
+  }, [range, hasCached, version]);
 
-  const { data, error, loading } = state;
-  const shown = data;
+  useEffect(() => {
+    if (hasCached) {
+      void prefetchNetWorth(RANGES.map((r) => r.value));
+    }
+  }, [hasCached]);
+
+  const shown = cached ?? last;
+  const error = !cached && errorState?.range === range ? errorState : null;
+  const loading = !cached && !error;
 
   return (
-    <Card size="sm" className="px-4">
+    <Card size="sm" className="px-4" aria-busy={loading}>
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">
           Net worth
@@ -90,16 +97,16 @@ export function NetWorthChart() {
           value={[range]}
           onValueChange={(v) => {
             const next = v[0] as NetWorthRange | undefined;
-            if (next && next !== range) {
-              setState((s) => ({ ...s, error: null, loading: true }));
-              setRange(next);
-            }
+            if (next && next !== range) setRange(next);
           }}
           aria-label="Range"
         >
           {RANGES.map((r) => (
             <ToggleGroupItem key={r.value} value={r.value} className="text-xs">
               {r.label}
+              {loading && r.value === range && (
+                <Loader2 className="size-3 animate-spin" />
+              )}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
@@ -132,6 +139,11 @@ export function NetWorthChart() {
                 axisLine={false}
                 tickMargin={8}
                 minTickGap={48}
+                ticks={pickTicks(
+                  shown.points.map((p) => p.date),
+                  shown.range,
+                )}
+                interval={shown.range === "1m" ? "preserveEnd" : 0}
                 tickFormatter={(v: string) => tickLabel(v, shown.range)}
               />
               <YAxis

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { notify } from "@/lib/notify";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import { ApiError, apiPost, apiPut, type ApiMessage } from "@/lib/api";
 import type { AssetType, RecordFields } from "@/lib/types";
 
@@ -36,6 +37,7 @@ export function useAssetSave<R extends RecordFields>(
       const saved = record
         ? await apiPut<R>(`/assets/${type}/${record.id}`, payload)
         : await apiPost<R>(`/assets/${type}`, payload);
+      invalidateNetWorth();
       notify.success(saved as Partial<ApiMessage>);
       onSaved?.(saved);
     } catch (e) {

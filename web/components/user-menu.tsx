@@ -4,6 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import { LogOut } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 import { Button } from "@/components/ui/button";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -65,7 +66,10 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           className="gap-1.5 py-1 text-xs"
-          onClick={() => startTransition(() => logout())}
+          onClick={() => {
+            invalidateNetWorth();
+            startTransition(() => logout());
+          }}
         >
           <LogOut className="size-3.5" />
           Log out

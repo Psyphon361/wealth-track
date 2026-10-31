@@ -6,6 +6,7 @@ import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { apiDelete } from "@/lib/api";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import { formatINR, formatIstDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
@@ -146,7 +147,10 @@ function TypedPortfolio<TRow extends HoldingRow>({
     setDeleting(null);
     const restore = removeItem(target.id);
     apiDelete(`/assets/${target.type}/${target.id}`)
-      .then((res) => notify.success(res))
+      .then((res) => {
+        invalidateNetWorth();
+        notify.success(res);
+      })
       .catch((err: unknown) => {
         restore();
         notify.error(err);
