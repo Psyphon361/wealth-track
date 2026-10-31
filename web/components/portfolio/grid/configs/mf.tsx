@@ -135,6 +135,25 @@ export const mfConfig: GridConfig<MutualFundItem> = {
         figure: true,
       },
       { label: "Purchase date", value: formatDate(r.purchase_date), figure: true },
+      {
+        label: "XIRR",
+        value:
+          r.xirr == null ? null : (
+            <>
+              <span className={cn("num", gainTone(r.xirr))}>
+                {r.xirr > 0 ? "+" : ""}
+                {formatPct(r.xirr)}
+              </span>
+              {r.xirr_basis ? (
+                <span className="ml-1.5 text-xs text-muted-foreground">
+                  {r.xirr_basis === "transactions"
+                    ? `from ${r.xirr_transactions ?? 0} ${r.xirr_transactions === 1 ? "transaction" : "transactions"}`
+                    : "from purchase date"}
+                </span>
+              ) : null}
+            </>
+          ),
+      },
     ],
     instrument: (m) => {
       const s = m as MfScheme;

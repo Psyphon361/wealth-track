@@ -30,6 +30,7 @@
 - 2026-10-31: AMFI import fills MF plan/option from AMFI's scheme master CSV where NAVAll.txt leaves them blank (`scheme_data_loaded`, `from_scheme_data` in result; SPEC §1 MF master). Uncommitted.
 - 2026-10-31: MF `invested_amount` (migration `0015`, `mutual_funds.invested_amount` Numeric(14,2), backfilled as round(units × avg_nav, 2)) is the MF invested value. The MF form has a "Total invested" field: any two of Units, Average NAV and Total invested compute the third (shared helper `web/lib/holding-amounts.ts`, also used by the bond form). Uncommitted.
 - 2026-10-31: MF import from a CAMS/KFintech CAS PDF (`/add/mf`, "Import CAS" tab; `/api/import/cas/preview` and `/commit`, SPEC §8). Uncommitted; not yet tested against a real CAS PDF.
+- 2026-10-31: MF XIRR on the details page (CAS-imported transactions; manual entries use the purchase date). Migration `0016` adds `mf_transactions`; `GET /api/holdings/mf/{id}` returns `xirr`, `xirr_basis`, `xirr_transactions`. SPEC §4, §5, §8.
 - Auth step 2: Sign in with Google (commits `45fd893` API, `3c17ac3` web, not pushed; migration `0012` adds `users.google_sub`). "Continue with Google" on /login and /signup; state and PKCE in the httpOnly cookie `wt_oauth`; the API verifies the ID token against Google's JWKS; signs in by Google id, links an existing account with the same verified email, or creates an allowlisted account without a password. Google sign-ins don't count toward the password rate limit. SPEC §7 ("Sign in with Google"), setup in DEPLOY §5b. API tests: 299 passing. Not yet tested with a real Google client (the user creates it).
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
@@ -71,7 +72,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Deferred (not started)
 
 - Pruning of unheld schemes' NAV history (see SPEC §1).
-- SIP support for MF; transaction history (each holding is one record).
+- SIP support for MF; per-transaction entry for manual holdings (each manual holding is one record). CAS imports now store MF transactions (for XIRR; SPEC §8).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only).
 - Matured holdings view (pinned for later)
 - Matured bonds list from NSDL (optional source; not built).: matured items are currently listed in grids but excluded from totals.

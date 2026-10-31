@@ -4,6 +4,7 @@ from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
 from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNavLatest
 from app.models.login_attempt import LoginAttempt
+from app.models.mf_transaction import MFTransaction
 from app.models.mutual_fund import MutualFund
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.refresh_token import RefreshToken
@@ -21,6 +22,7 @@ __all__ = [
     "MFNavHistory",
     "MFNavHistorySync",
     "MFNavLatest",
+    "MFTransaction",
     "LoginAttempt",
     "MutualFund",
     "RecurringDeposit",

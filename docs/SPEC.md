@@ -121,6 +121,7 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **Bond**: invested = `invested_amount` (the stored total); current = invested × (1 + ytm/100)^t, t from purchase to min(today, maturity). face_value is display-only.
 - **Stock**: invested = qty × avg_buy_price; current = quantity × latest price when the holding is linked (`master_id`) and has a row in `stock_price_latest`; otherwise (manual stock, no master link, no price row) current = invested. Latest price is the nightly NSE/BSE bhavcopy close, stored in `stock_price_latest` (`source` = `bhavcopy`) by the securities import (cron 19:30 IST); a row is overwritten only by a newer close. A live intraday source is a possible later addition (Yahoo blocks server clients; an Upstox analytics token needs an Upstox account). Stock items carry `price`, `prev_close`, `day_change_pct`, `price_time` and `price_source`; `HoldingsResponse.prices_as_of` is set for stocks.
 - **MF**: invested = `invested_amount` (the stored total; within rule 21's tolerance of units × avg_nav). If `scheme_code` is set and the scheme has a row in `mf_nav_latest`, current = units × latest NAV (used even if stale); otherwise (manual entry, or no NAV) current = invested. `prev_nav` / `prev_nav_date` = the stored `mf_nav_history` NAV on the latest date strictly before the current NAV date (DB only, no network); `day_change` = units × (nav − prev_nav) (2 dp), `day_change_pct` = (nav / prev_nav − 1) × 100 (2 dp); all null when nav or prev_nav is missing.
+- **MF XIRR**: computed for the holding details page only (not the grid); rules in §5.
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested). Outputs rounded to 2 dp.
 - **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
 
@@ -164,7 +165,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - (`*` = free-text values whose options come from the data.)
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf).
-- `GET /holdings/{fd|rd|stock|bond|mf}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row; `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
+- `GET /holdings/{fd|rd|stock|bond|mf}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row, plus `xirr`, `xirr_basis` and `xirr_transactions` for MF (§5; grid rows don't have them); `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 - Sign-in: every route except `/api/health`, `/api/cron/*`, `/api/auth/*` and OPTIONS needs `Authorization: Bearer <access token>` (401 otherwise). Holdings are per user; see §7.
 
@@ -200,6 +201,10 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Tenure bar for FD, RD and bonds.
   - Sections: Holding, Instrument (only when linked to master data), Notes.
   - Edit opens the shared edit dialog (`web/components/portfolio/edit-dialog.tsx`, also used by the grid). Delete returns to the grid.
+  - **XIRR (MF only).** The API returns `xirr` (annual %, 2 dp), `xirr_basis` (`transactions` | `purchase_date`) and `xirr_transactions` (number of stored transactions used). Actual/365; solved by Newton with a bisection fallback (`valuation.py`: `xirr`, `mf_xirr`). Null when it can't be computed.
+    - Basis `transactions`: used when the stored `mf_transactions` (SPEC §8) have net units equal to the holding's units within 0.01. Cash flows: −amount on each purchase date, +amount on each redemption date, +current value on the NAV date (today when there is no NAV date).
+    - Basis `purchase_date`: used otherwise, including all manual entries. Cash flows: −invested on the purchase date, +current value on the NAV date (or today).
+    - Display: a row "XIRR" in the Holding section, right after "Purchase date", shows the signed % in `text-gain` / `text-loss`, with a muted note "from N transactions" (basis `transactions`) or "from purchase date" (basis `purchase_date`). It shows "—" when null. Shown for every holding, matured or not.
 - `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`, `/signup` (both without the sidebar).
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Sign-in is required everywhere, local dev included: `proxy.ts` redirects pages without the `wt_refresh` cookie to `/login?next=…`; cookies, refresh and the proxy rules are in §7. The top bar, right of the "Add asset" button, has an account menu (`web/components/user-menu.tsx`): a round avatar with the email's first letter (from `GET /api/me`) opens a dropdown with "Signed in as <email>" and "Log out".
@@ -315,6 +320,7 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - purchase date = earliest PURCHASE, PURCHASE_SIP, SWITCH_IN or SWITCH_IN_MERGER after the running balance last reached zero; falls back to the valuation date when there is none.
   - name, AMC, plan, option and category come from `mf_master`; an unmatched scheme gets category `other` and its statement name.
 - Each row has `existing` (the user's MF holdings in the same scheme: id, units, invested, avg NAV, purchase date), `importable` and `issue`. `importable` is true when the row passes the manual MF rules (§2, rule 21 included). Otherwise `issue` gives the first reason: "Not found in the AMFI scheme list", "Closing units are not positive", "The statement has no invested amount for this fund", "The statement has no purchase date for this fund", or the first rule message.
+- Each row also carries `transactions`: the purchases and redemptions of all merged folios, sorted by date (`date`, `type` = `purchase` | `redemption`, `amount`, `units`). Zero-unit and zero-amount rows are dropped.
 - Response: `statement_from`, `statement_to`, `rows`, `hidden_zero`.
 
 ### Review (web)
@@ -328,6 +334,12 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
 - Each row has `action`: `create` or `update` (update names the existing holding).
 - Every row is validated like manual MF entry (§2). Validation is all-or-nothing: one failing row saves nothing.
   - 422 "Couldn't import — nothing was saved" / "<fund> — <reason>", where the reason is a field message (for example "Average NAV: …"), "Not found in the AMFI scheme list", or "The existing holding wasn't found".
-- create: a new MF holding with platform empty.
-- update: replaces units, avg NAV, invested and purchase date; platform and notes are kept.
+- create: a new MF holding with platform empty, and its `transactions` saved to `mf_transactions` (table `mf_transactions`: one row per purchase or redemption, `txn_date`, `kind`, `amount`, `units`; FK to `mutual_funds`, ON DELETE CASCADE).
+- update: replaces units, avg NAV, invested and purchase date, and replaces the holding's stored transactions with the row's `transactions`; platform and notes are kept.
+- Manual entries never get transactions (no per-transaction entry).
+- Transaction checks, in the same all-or-nothing 422 (`<fund name> — <reason>`):
+  - "Transaction date can't be in the future"
+  - "Transaction amount must be greater than 0"
+  - "Transaction units must be greater than 0"
+  - "Transactions: at most 2000 per fund"
 - 200 → `message` "Imported N funds" ("Imported 1 fund" for one), `description` "X added, Y updated.", `created`, `updated`.

@@ -4,7 +4,15 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import Base, get_db
 from app.main import app
-from app.models import Bond, FixedDeposit, MFNavLatest, MutualFund, RecurringDeposit, Stock
+from app.models import (
+    Bond,
+    FixedDeposit,
+    MFNavLatest,
+    MFTransaction,
+    MutualFund,
+    RecurringDeposit,
+    Stock,
+)
 
 PASSWORD = "a-long-password"
 FD = {
@@ -24,7 +32,9 @@ def client(auth_engine, auth_settings):
         auth_engine,
         tables=[
             m.__table__
-            for m in (FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, MFNavLatest)
+            for m in (
+                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, MFNavLatest, MFTransaction
+            )
         ],
     )
     factory = sessionmaker(bind=auth_engine, expire_on_commit=False)

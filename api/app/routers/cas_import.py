@@ -109,18 +109,21 @@ def commit(
             if holding is None:
                 raise _reject(422, title, f"{name} — The existing holding wasn't found")
             seen_holdings.add(holding.id)
-        prepared.append((holding, payload, scheme))
+        problem = cas_import.transaction_error(row.transactions)
+        if problem:
+            raise _reject(422, title, f"{name} — {problem}")
+        prepared.append((holding, payload, scheme, row.transactions))
 
     created = updated = 0
-    for holding, payload, scheme in prepared:
+    for holding, payload, scheme, transactions in prepared:
         if holding is None:
-            db.add(
-                MutualFund(
-                    **payload.model_dump(exclude={"scheme_name"}),
-                    scheme_name=scheme.name[:200],
-                    user_id=user.id,
-                )
+            holding = MutualFund(
+                **payload.model_dump(exclude={"scheme_name"}),
+                scheme_name=scheme.name[:200],
+                user_id=user.id,
             )
+            db.add(holding)
+            db.flush()
             created += 1
         else:
             holding.units = payload.units
@@ -128,6 +131,7 @@ def commit(
             holding.invested_amount = payload.invested_amount
             holding.purchase_date = payload.purchase_date
             updated += 1
+        cas_import.save_transactions(db, holding.id, transactions)
     db.commit()
 
     total = created + updated

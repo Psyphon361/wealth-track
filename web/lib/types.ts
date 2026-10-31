@@ -251,6 +251,13 @@ export interface CasExistingHolding {
   purchase_date: string;
 }
 
+export interface CasTransaction {
+  date: string;
+  type: "purchase" | "redemption";
+  amount: number;
+  units: number;
+}
+
 export interface CasPreviewRow {
   key: string;
   scheme_code: number | null;
@@ -267,6 +274,7 @@ export interface CasPreviewRow {
   purchase_date: string | null;
   current_value: number | null;
   existing: CasExistingHolding[];
+  transactions: CasTransaction[];
   importable: boolean;
   issue: string | null;
 }
@@ -288,6 +296,7 @@ export interface CasCommitRow {
   avg_nav: number;
   invested_amount: number;
   purchase_date: string | null;
+  transactions: CasTransaction[];
 }
 
 export interface CasCommitResult {
@@ -392,6 +401,10 @@ export type MutualFundItem = MutualFund &
     prev_nav_date: string | null;
     day_change: number | null;
     day_change_pct: number | null;
+    // Detail response only
+    xirr?: number | null;
+    xirr_basis?: "transactions" | "purchase_date" | null;
+    xirr_transactions?: number;
   };
 
 export type HoldingRow =

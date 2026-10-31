@@ -43,7 +43,7 @@ export type FilterDef = FacetFilterDef | RangeFilterDef | DateFilterDef;
 /** A label/value pair on the details page; empty values render as a dash. */
 export interface DetailField {
   label: string;
-  value: string | null | undefined;
+  value: ReactNode | null | undefined;
   /** Numeric value: rendered with the `num` utility. */
   figure?: boolean;
 }

@@ -15,6 +15,13 @@ class ExistingHolding(BaseModel):
     purchase_date: date
 
 
+class CasTransaction(BaseModel):
+    date: date
+    type: Literal["purchase", "redemption"]
+    amount: Dec
+    units: Dec
+
+
 class CasPreviewRow(BaseModel):
     key: str
     scheme_code: int | None
@@ -31,6 +38,7 @@ class CasPreviewRow(BaseModel):
     purchase_date: date | None
     current_value: Dec | None
     existing: list[ExistingHolding]
+    transactions: list[CasTransaction]
     importable: bool
     issue: str | None
 
@@ -52,6 +60,7 @@ class CasCommitRow(BaseModel):
     avg_nav: Dec
     invested_amount: Dec
     purchase_date: date
+    transactions: list[CasTransaction] = []
 
 
 class CasCommit(BaseModel):

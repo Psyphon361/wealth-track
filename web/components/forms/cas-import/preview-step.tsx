@@ -116,6 +116,7 @@ export function CasPreviewStep({
           avg_nav: r.avg_nav,
           invested_amount: r.invested_amount,
           purchase_date: r.purchase_date,
+          transactions: r.transactions,
         };
       });
     setImporting(true);

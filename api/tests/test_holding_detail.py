@@ -26,7 +26,12 @@ def test_detail_item_equals_list_row(client, users, slug):  # noqa: F811
     detail = client.get(f"/api/holdings/{slug}/{item_id}", headers=a)
     assert detail.status_code == 200
     body = detail.json()
-    assert body["item"] == row
+    item = dict(body["item"])
+    if slug == "mf":  # the MF detail adds XIRR fields the grid row doesn't have
+        assert {"xirr", "xirr_basis", "xirr_transactions"} <= item.keys()
+        for key in ("xirr", "xirr_basis", "xirr_transactions"):
+            item.pop(key)
+    assert item == row
     assert body["master"] is None
 
 

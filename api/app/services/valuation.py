@@ -203,3 +203,101 @@ def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
         "gain": _q(gain),
         "gain_pct": gain_pct,
     }
+
+
+_XIRR_LOW = -0.9999
+_XIRR_HIGH = 100.0  # +10000 %
+
+
+def xirr(flows: list[tuple[date, Decimal]]) -> Decimal | None:
+    """Annualised return (a fraction, e.g. 0.1842) for dated cash flows, Actual/365.
+
+    Negative amounts are money out, positive money in. Newton's method with a bisection
+    fallback; None when there are fewer than 2 flows, no sign change, a single date or no
+    convergence.
+    """
+    if len(flows) < 2:
+        return None
+    amounts = [float(a) for _, a in flows]
+    if not (any(a < 0 for a in amounts) and any(a > 0 for a in amounts)):
+        return None
+    first = min(d for d, _ in flows)
+    years = [(d - first).days / 365 for d, _ in flows]
+    if max(years) == 0:
+        return None
+
+    def npv(rate: float) -> float:
+        return sum(a / (1 + rate) ** t for a, t in zip(amounts, years))
+
+    def slope(rate: float) -> float:
+        return sum(-t * a / (1 + rate) ** (t + 1) for a, t in zip(amounts, years))
+
+    rate = 0.1
+    for _ in range(50):
+        try:
+            value, d = npv(rate), slope(rate)
+        except (OverflowError, ZeroDivisionError):
+            break
+        if abs(value) < 1e-9:
+            return Decimal(str(rate))
+        if d == 0:
+            break
+        nxt = rate - value / d
+        if not _XIRR_LOW < nxt < _XIRR_HIGH:
+            break
+        if abs(nxt - rate) < 1e-12:
+            return Decimal(str(nxt))
+        rate = nxt
+
+    low, high = _XIRR_LOW, _XIRR_HIGH
+    try:
+        f_low, f_high = npv(low), npv(high)
+    except (OverflowError, ZeroDivisionError):
+        return None
+    if f_low * f_high > 0:
+        return None
+    for _ in range(200):
+        mid = (low + high) / 2
+        f_mid = npv(mid)
+        if abs(f_mid) < 1e-9 or (high - low) < 1e-12:
+            return Decimal(str(mid))
+        if f_low * f_mid < 0:
+            high = mid
+        else:
+            low, f_low = mid, f_mid
+    return None
+
+
+def mf_xirr(
+    units: Decimal,
+    invested: Decimal,
+    purchase_date: date,
+    current_value: Decimal,
+    transactions: list[Any],
+    as_of: date,
+) -> tuple[Decimal | None, str | None, int]:
+    """(xirr %, basis, transactions used) for a mutual fund holding.
+
+    Uses the stored transactions when their net units match the holding, else treats the
+    invested amount as one purchase on the purchase date.
+    """
+    current = Decimal(current_value)
+    if transactions:
+        net = sum(
+            (Decimal(t.units) if t.kind == "purchase" else -Decimal(t.units) for t in transactions),
+            Decimal(0),
+        )
+        if abs(net - Decimal(units)) <= Decimal("0.01"):
+            flows = [
+                (t.txn_date, -Decimal(t.amount) if t.kind == "purchase" else Decimal(t.amount))
+                for t in transactions
+            ]
+            flows.append((as_of, current))
+            rate = xirr(flows)
+            if rate is not None:
+                return _q(rate * 100), "transactions", len(transactions)
+            return None, None, 0
+    rate = xirr([(purchase_date, -Decimal(invested)), (as_of, current)])
+    if rate is None:
+        return None, None, 0
+    return _q(rate * 100), "purchase_date", 0

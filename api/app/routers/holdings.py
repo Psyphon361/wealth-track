@@ -3,16 +3,18 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.models.mf_transaction import MFTransaction
 from app.models.user import User
 from app.routers.portfolio import _q, load_group, load_holding
 from app.schemas.holdings import HoldingDetailResponse, HoldingsResponse
 from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
 from app.schemas.mf_scheme import MFSchemeRead
-from app.services import amfi, bond_master, fd_issuers, stock_master
+from app.services import amfi, bond_master, fd_issuers, stock_master, valuation
 
 router = APIRouter(tags=["holdings"])
 
@@ -362,4 +364,20 @@ def get_holding_detail(
     if loaded is None:
         raise _not_found()
     record, item = loaded
+    if slug == "mf":
+        transactions = db.scalars(
+            select(MFTransaction)
+            .where(MFTransaction.mutual_fund_id == record.id)
+            .order_by(MFTransaction.txn_date, MFTransaction.id)
+        ).all()
+        pct, basis, used = valuation.mf_xirr(
+            record.units, record.invested_amount, record.purchase_date,
+            item["current_value"], list(transactions), item.get("nav_date") or date.today(),
+        )  # fmt: skip
+        item = {
+            **item,
+            "xirr": float(pct) + 0.0 if pct is not None else None,
+            "xirr_basis": basis,
+            "xirr_transactions": used,
+        }
     return {"item": item, "master": linked_master(db, slug, record)}

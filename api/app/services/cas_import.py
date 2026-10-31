@@ -187,6 +187,68 @@ def build_rows(data, by_code: dict, by_isin: dict, existing_by_code: dict[int, l
     return rows, hidden_zero
 
 
+def _transactions(items: list) -> list[dict]:
+    """Purchases and redemptions of the merged schemes, sorted by date.
+
+    The sign of the units decides the type (casparser's PURCHASE*/SWITCH_IN* are positive,
+    REDEMPTION/SWITCH_OUT* negative). Rows without units or amount (stamp duty, STT, dividends,
+    address changes) are dropped.
+    """
+    out = []
+    for scheme in items:
+        for txn in scheme.transactions or []:
+            if not txn.units or not txn.amount:
+                continue
+            units, amount = Decimal(txn.units), Decimal(txn.amount)
+            when = _as_date(txn.date)
+            if units == 0 or amount == 0 or when is None:
+                continue
+            out.append(
+                {
+                    "date": when,
+                    "type": "purchase" if units > 0 else "redemption",
+                    "amount": abs(amount).quantize(MONEY_DP),
+                    "units": abs(units).quantize(UNITS_DP),
+                }
+            )
+    out.sort(key=lambda t: (t["date"], t["type"] != "purchase"))
+    return out
+
+
+MAX_TRANSACTIONS = 2000
+
+
+def transaction_error(transactions: list, today: date | None = None) -> str | None:
+    """First problem in a commit row's transactions, or None."""
+    today = today or date.today()
+    if len(transactions) > MAX_TRANSACTIONS:
+        return f"Transactions: at most {MAX_TRANSACTIONS} per fund"
+    for txn in transactions:
+        if txn.date > today:
+            return "Transaction date can't be in the future"
+        if txn.amount <= 0:
+            return "Transaction amount must be greater than 0"
+        if txn.units <= 0:
+            return "Transaction units must be greater than 0"
+    return None
+
+
+def save_transactions(db, holding_id: int, transactions: list) -> None:
+    """Replace a holding's stored transactions with the given list (empty deletes them)."""
+    from sqlalchemy import delete
+
+    from app.models import MFTransaction
+
+    db.execute(delete(MFTransaction).where(MFTransaction.mutual_fund_id == holding_id))
+    db.add_all(
+        MFTransaction(
+            mutual_fund_id=holding_id, txn_date=t.date, kind=t.type,
+            amount=t.amount.quantize(MONEY_DP), units=t.units.quantize(UNITS_DP),
+        )  # fmt: skip
+        for t in transactions
+    )
+
+
 def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
     master = group["master"]
     items = group["items"]
@@ -245,6 +307,7 @@ def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
         "purchase_date": purchase,
         "current_value": current_value,
         "existing": existing,
+        "transactions": _transactions(items),
         "importable": issue is None,
         "issue": issue,
     }  # fmt: skip
