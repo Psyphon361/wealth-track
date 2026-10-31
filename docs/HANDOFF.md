@@ -1,5 +1,11 @@
 # HANDOFF — session resume notes (2026-10-29)
 
+## Resume notes — 2026-11-01 (gold)
+
+Shipped on `main`: the Gold asset in three commits. `89d552b`: IBJA gold rates per purity (migration `0018`, `/api/cron/gold`, `app.jobs.gold_import`). `dc32a49`: gold holdings (migration `0019`), `GET /api/master/gold/rate`, gold in dashboard, portfolio and net worth. `ad7fa85`: web gold form, grid and details page; form selects open below their trigger.
+
+Next: Cash & savings, then EPF/PPF, then NPS. Open gap: no IBJA history before 27 Oct 2026 (STATUS backlog).
+
 ## Resume notes — 2026-10-31 (session 4)
 
 Shipped and pushed (main at 5ba7303 plus whatever follows this note): landing hero reworked (cursor-following faint green light rays in components/landing/aurora.tsx replace the green blobs; neutral headline gradient; white primary buttons on the landing only; "Built for Indian investors" badge, footer and the duplicate hero CTA removed — auth buttons live only in the nav); expired session → any API 401 in the browser redirects to /login?next=<page> (web/lib/api.ts); FD, RD and bond pages have an Active (n) / Matured (m) switch (grid config `statusTabs`, `?status=matured`), Matured hides the active-only totals; dashboard no longer shows "+N matured". Prod migration 0016 confirmed applied (API deploy run for f3fde0a succeeded).

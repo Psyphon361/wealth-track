@@ -4,7 +4,7 @@ Guide for any AI coding agent working in this repo. Read this first, then `docs/
 
 ## What this is
 
-Personal wealth tracker for one user in India (INR only). Manual entry of five asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). Prices: stock current value = quantity × latest price (latest NSE/BSE bhavcopy close, stored nightly by the securities import); MF uses the latest AMFI NAV; a holding with no price is valued at invested.
+Personal wealth tracker for one user in India (INR only). Manual entry of six asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF), Gold (physical or digital, valued at the IBJA per-gram rate for its purity) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). Prices: stock current value = quantity × latest price (latest NSE/BSE bhavcopy close, stored nightly by the securities import); MF uses the latest AMFI NAV; a holding with no price is valued at invested.
 
 Philosophy: build fast, small steps, verify by build/lint, curl, and browser click-through. API has pytest in `api/tests` (run `cd api && .venv/bin/python -m pytest -q`); tests are added per bug fix, there is no full suite.
 
@@ -23,17 +23,20 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/db.py             lazy SQLAlchemy engine (psycopg3, prepare_threshold=None, pool tuned for Vercel)
   app/models/           one table per asset type (+ base.py mixin: id, notes, created_at, updated_at)
   app/models/mf_transaction.py  mf_transactions (one row per CAS-imported MF purchase or redemption; FK mutual_funds, ON DELETE CASCADE; SPEC §8)
+  app/models/gold.py    gold_holdings (form, purity, weight_grams, purchase_date, invested_amount; no master link; migration 0019)
+  app/models/gold_rate.py  gold_rate_latest (one row per purity) and gold_rate_history (purity + rate_date), IBJA rates per gram
   app/schemas/assets.py Pydantic Create/Read/Result models + ALL validation rules
   app/schemas/cas_import.py  CAS import preview and commit models (SPEC §8)
+  app/schemas/gold.py  gold import result and rate-on-date read models
   app/schemas/messages.py, summary.py   outcome + portfolio/dashboard response models
-  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf}
+  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|gold}
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
-  app/routers/portfolio.py /api/portfolio, /api/dashboard (5 type queries run concurrently)
+  app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
   app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
-  app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup
-  app/routers/cron.py   /api/cron/amfi and /api/cron/securities: daily imports; /api/cron/issuers: weekly FD/RD issuer import; bearer CRON_SECRET (no X-API-Key)
+  app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?purity&date: IBJA gold rate on or up to 7 days before a date (gold form auto-fill)
+  app/routers/cron.py   /api/cron/amfi and /api/cron/securities: daily imports; /api/cron/issuers: weekly FD/RD issuer import; /api/cron/gold: daily IBJA gold rates; bearer CRON_SECRET (no X-API-Key)
   app/services/valuation.py  all money maths (maturity, status, invested, current, gain, interest_received, xirr, mf_xirr)
   app/services/cas_import.py  CAS PDF import: casparser 1.4.1 parse in memory (file and password never stored), merge schemes across folios into MF preview rows, purchase date rule (SPEC §8)
   app/services/mfcentral_cas.py  MF Central Detailed CAS text parser (fallback when casparser can't identify the PDF; FIFO invested, opening-balance rule; SPEC §8)
@@ -47,14 +50,16 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/stock_master.py  stock_master import: NSE EQUITY_L, ETF list, UDiFF bhavcopy (SME), BSE bhavcopy; ISIN merge
   app/services/bond_master.py  bond_master import merged by ISIN from seeds, NSDL, NSE DEBT, NSE ratings/SGB JSON and bhavcopy GB (sources listed in its docstring); bond_type derivation
   app/jobs/amfi_import.py  CLI: `python -m app.jobs.amfi_import` runs the same import
+  app/services/gold_rates.py  IBJA gold rate import: scrapes ibjarates.com (AM and PM tables, per 10 g ÷ 10, PM over AM), keyed by the date the page states; latest rates to gold_rate_latest, every date to gold_rate_history; rate on or before a date for valuation, net worth and the gold form
   app/services/fd_issuers.py  fd_issuer_master import (Razorpay IFSC banks, DICGC insured flag, seed files; sources in its docstring), issuer search and require_issuer for FD/RD
   app/jobs/copy_holdings.py  one-off CLI: copies one user's holdings from SOURCE_DATABASE_URL to TARGET_DATABASE_URL, re-linking masters by ISIN/issuer code/scheme_code (dry run unless --apply)
   app/jobs/securities_import.py  CLI: `python -m app.jobs.securities_import` runs the stock and bond master imports
   app/jobs/stock_history_backfill.py  CLI: `python -m app.jobs.stock_history_backfill [--months 12]` runs the stock price history backfill for held stocks
   app/jobs/issuers_import.py  CLI: `python -m app.jobs.issuers_import` runs the FD/RD issuer master import
+  app/jobs/gold_import.py  CLI: `python -m app.jobs.gold_import` runs the IBJA gold rate import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -67,11 +72,11 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   app/auth/google/start/route.ts, app/auth/google/callback/route.ts  Google OAuth: start sets state + PKCE verifier (httpOnly wt_oauth); callback checks state, calls POST /api/auth/google, sets the session cookies
   app/actions/auth.ts   login/signup/logout server actions (httpOnly cookies wt_access, wt_refresh)
   app/api/[...path]/route.ts  same-origin proxy to FastAPI; adds X-API-Key server-side; forwards raw request bytes so multipart uploads (CAS PDF) work
-  components/forms/     5 asset forms, shared fields (TextField w/ Indian digit grouping, DateField), zod schema.ts, master-picker.tsx (generic securities/scheme search picker), scheme-picker.tsx (MF scheme search, thin wrapper over master-picker), issuer-picker.tsx (FD/RD bank/issuer picker and "Not listed? Enter manually" toggle), use-nav-autofill.ts (MF Average NAV auto-fill from the NAV endpoint)
+  components/forms/     6 asset forms, shared fields (TextField w/ Indian digit grouping, DateField), zod schema.ts, master-picker.tsx (generic securities/scheme search picker), scheme-picker.tsx (MF scheme search, thin wrapper over master-picker), issuer-picker.tsx (FD/RD bank/issuer picker and "Not listed? Enter manually" toggle), use-nav-autofill.ts (MF Average NAV auto-fill from the NAV endpoint), gold-form.tsx + use-gold-rate-autofill.ts (Total invested = weight × IBJA rate)
   components/forms/cas-import/  MF "Import CAS" tab on /add/mf: cas-import.tsx (container), upload-step.tsx (file + password), preview-step.tsx (row checkboxes, New / In portfolio badges, Update existing / Add as new choice, Import N funds)
   components/user-menu.tsx  top-bar account menu right of "Add asset": email-initial avatar, "Signed in as <email>", Log out (fetches GET /api/me)
-  components/portfolio/ asset tabs; per-type grid configs (grid/configs/{fd,rd,stock,bond,mf}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
-  components/holding-detail/ holding details page: shared layout for all five types (header, KPI strip, tenure bar, sections)
+  components/portfolio/ asset tabs; per-type grid configs (grid/configs/{fd,rd,stock,bond,mf,gold}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
+  components/holding-detail/ holding details page: shared layout for all six types (header, KPI strip, tenure bar, sections)
   components/asset-type-icon.tsx  shared tinted asset-type icon (details page and add form)
   components/breadcrumb-label.tsx  breadcrumb label context: BreadcrumbLabelProvider (in the (app) layout) and useBreadcrumbLabel (sets the last crumb while mounted)
   components/dashboard/ KPI cards, net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx) and holdings-by-type table
@@ -83,7 +88,7 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/auth.ts           server-only: auth cookie names and options, token types, safeNext, apiAuthFetch (replaces lib/session.ts)
 docs/           SPEC.md (behaviour), STATUS.md (progress/open items), HANDOFF.md (session resume notes), DEPLOY.md (Vercel+Neon), PLAN.md (original plan, historical)
 .github/workflows/api-deploy.yml   on push to main touching api/: alembic upgrade head on prod, then Vercel API deploy hook
-.github/workflows/dev-data-refresh.yml   scheduled (and manual) market-data imports (securities, AMFI, issuers) against the Neon dev branch; secret DEV_DATABASE_URL
+.github/workflows/dev-data-refresh.yml   scheduled (and manual) market-data imports (securities, AMFI, issuers, gold) against the Neon dev branch; secret DEV_DATABASE_URL
 .claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md)
 package.json    root: `npm run dev` runs api + web together (concurrently)
 ```
@@ -111,7 +116,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0017`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0019`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)
@@ -132,7 +137,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - **npm peer conflict** (@hookform/resolvers): `web/.npmrc` sets `legacy-peer-deps=true`. Keep it (Vercel needs it too).
 - **Python 3.12 via uv**: system python3 is 3.9 — never use it for the API.
 - **Dates** are `YYYY-MM-DD` strings end to end; never use `toISOString()` for the date part (timezone shift).
-- **Decimals**: API serialises Decimal as JSON numbers. Money 2 dp, rates 2 dp (column 3), MF units 3 dp, MF avg_nav 4 dp.
+- **Decimals**: API serialises Decimal as JSON numbers. Money 2 dp, rates 2 dp (column 3), MF units 3 dp, MF avg_nav 4 dp, gold weight 3 dp, IBJA rate 2 dp.
 - **Neon latency** from local dev is ~0.28 s per round trip; `/api/portfolio` ≈ 0.8 s locally. On Vercel (iad1, next to Neon us-east) it's fast.
 - **Dev server stale state**: after moving files between route groups, Turbopack can serve stale output (e.g. duplicated sidebar) — restart `npm run dev`. Running `npm run build` while dev runs can also confuse it.
 - **Stale dev output fix**: if `npm run dev` serves stale output, stop it, run `npm run clean`, then start `npm run dev` again.

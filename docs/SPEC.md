@@ -13,8 +13,9 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 | Stock (`stock`) | `stocks` | name, symbol?, exchange (`NSE`\|`BSE`, default NSE), broker?, quantity (int), avg_buy_price, buy_date, master_id? (FK → `stock_master`, ON DELETE SET NULL) |
 | Bond (`bond`) | `bonds` | name, isin?, issuer, bond_type (`government`\|`corporate`\|`tax_free`\|`sgb`\|`other`), platform?, quantity (int), face_value? (per unit; nullable; not a form input, saved from the bond master on pick when available), purchase_price (per unit), invested_amount (total invested; NOT NULL; migration 0013, backfilled as quantity × purchase_price), purchase_date, ytm (% p.a.), maturity_date, master_id? (FK → `bond_master`, ON DELETE SET NULL) |
 | Mutual Fund (`mf`) | `mutual_funds` | scheme_code? (FK → `mf_master.scheme_code`), scheme_name, platform?, category (`equity`\|`debt`\|`hybrid`\|`index`\|`elss`\|`liquid`\|`other`), units (3 dp), avg_nav (4 dp), invested_amount (total invested; NOT NULL; migration 0015, backfilled as round(units × avg_nav, 2)), purchase_date |
+| Gold (`gold`) | `gold_holdings` | name, form (`jewellery`\|`coin`\|`bar`\|`digital`), purity (`999`\|`995`\|`916`\|`750`\|`585`; labels 24K (999), 24K (995), 22K (916), 18K (750), 14K (585)), weight_grams (3 dp), purchase_date, invested_amount (gold value on the purchase day, excluding making charges and GST; NOT NULL). No master link. |
 
-Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4). Enums are VARCHAR + CHECK (not native PG enums).
+Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4), gold weight_grams Numeric(12,3), gold rate_per_gram Numeric(12,2). Enums are VARCHAR + CHECK (not native PG enums).
 
 Removed by user decision: FD maturity amount & status inputs, stock current price (future API), MF AMC/folio/plan/option, SIP support, bond coupon rate/frequency (YTM used instead).
 
@@ -74,6 +75,13 @@ One master table per asset class; they are never merged (keeps each table's colu
 - **Known gaps:** Unity Small Finance Bank is only in Razorpay's `banknames.json` (not `banks.json`), so it is not listed; enter it manually. Razorpay RRB names are pre-amalgamation. NBFC and HFC `reg_no` is empty (CoR numbers not obtained; RBI files block automated access and the NHB page has none).
 - **Cron:** `GET /api/cron/issuers` (§4), weekly. CLI: `python -m app.jobs.issuers_import`.
 
+### Master data (gold rates)
+
+- **`gold_rate_latest`** (purity PK, rate_per_gram, rate_date, session `AM`|`PM`, source, updated_at; one row per purity) and **`gold_rate_history`** (purity + rate_date PK, rate_per_gram). Global, no `user_id`. Models `api/app/models/gold_rate.py`, migration 0018.
+- **Source:** IBJA rates from `https://ibjarates.com/`. The AM and PM tables are per 10 g and are divided by 10 to give rupees per gram; PM overrides AM for the same date. Rows are keyed by the date the page states, so weekends and holidays keep the last published rate. Parser and importer: `api/app/services/gold_rates.py`.
+- **Cron:** `GET /api/cron/gold` (bearer `CRON_SECRET`), Vercel `0 13 * * *` UTC (18:30 IST). CLI: `python -m app.jobs.gold_import`.
+- **History** is stored from 27 Oct 2026 only. A purchase dated earlier has no stored rate, so its invested amount must be entered by hand.
+
 ## 2. Validation rules (API and forms, identical wording)
 
 Base: required text non-empty ("Required"); numbers must parse ("Enter a valid number"); amounts/rates/quantities > 0 ("Must be greater than 0"); quantity whole ("Must be a whole number").
@@ -100,6 +108,9 @@ Base: required text non-empty ("Required"); numbers must parse ("Enter a valid n
 | 19 | Bond `master_id` (optional) must exist in `bond_master` | Select a bond from the list |
 | 20 | FD/RD `issuer_id` (optional) must exist in `fd_issuer_master` and accept deposits | Select a bank or issuer from the list |
 | 21 | MF `invested_amount` must equal units × avg_nav: \|units × avg_nav − total\| ≤ units × 0.00005 + avg_nav × 0.0005 + 0.01 (field `invested_amount`) | Total invested must equal units × average NAV |
+| G1 | Gold `form` and `purity` must be from the lists | Choose a form / Choose a purity |
+| G2 | Gold `weight_grams` > 0, at most 3 dp, ≤ 1 crore | Must be greater than 0 / Weight can have at most 3 decimal places / Must be at most 1 crore |
+| G3 | Gold `purchase_date` follows rules 7 and 8 | As rules 7 and 8 |
 | P | Payout FD cannot use `simple` | Choose a payout frequency |
 | A1 | Auth email (sign-up and login): trimmed, lower-cased, address shape, ≤ 320 chars | Enter a valid email address |
 | A2 | Sign-up password: 10–128 characters (login only requires non-empty, "Required") | Password must be at least 10 characters / Password must be at most 128 characters |
@@ -122,6 +133,7 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **Stock**: invested = qty × avg_buy_price; current = quantity × latest price when the holding is linked (`master_id`) and has a row in `stock_price_latest`; otherwise (manual stock, no master link, no price row) current = invested. Latest price is the nightly NSE/BSE bhavcopy close, stored in `stock_price_latest` (`source` = `bhavcopy`) by the securities import (cron 19:30 IST); a row is overwritten only by a newer close. A live intraday source is a possible later addition (Yahoo blocks server clients; an Upstox analytics token needs an Upstox account). Stock items carry `price`, `prev_close`, `day_change_pct`, `price_time` and `price_source`; `HoldingsResponse.prices_as_of` is set for stocks. The same import appends that night's close for held stocks to `stock_price_history` (migration 0017; one close per held stock per trading day). After a cron or CLI run, a one-time 12-month month-end backfill (NSE bhavcopy, BSE fallback) runs for held stocks without a `stock_price_history_sync` row (`python -m app.jobs.stock_history_backfill [--months 12]`).
 - **MF**: invested = `invested_amount` (the stored total; within rule 21's tolerance of units × avg_nav). If `scheme_code` is set and the scheme has a row in `mf_nav_latest`, current = units × latest NAV (used even if stale); otherwise (manual entry, or no NAV) current = invested. `prev_nav` / `prev_nav_date` = the stored `mf_nav_history` NAV on the latest date strictly before the current NAV date (DB only, no network); `day_change` = units × (nav − prev_nav) (2 dp), `day_change_pct` = (nav / prev_nav − 1) × 100 (2 dp); all null when nav or prev_nav is missing.
 - **MF XIRR**: computed for the MF grid (an "XIRR" column after Gain %, sortable, nulls last) and the holding details page; grid rows carry `xirr`, `xirr_basis` and `xirr_transactions` (transactions loaded in one query); /api/portfolio and /api/dashboard don't; rules in §5.
+- **Gold**: invested = `invested_amount` (gold value on the purchase day, excluding making charges and GST). Current = weight × latest IBJA rate for the purity (`gold_rate_latest`, shown with `rate_date`); with no rate, current = invested and `rate_per_gram` / `rate_date` are null. XIRR is one cash flow: −invested on the purchase date, +current value today. Net worth uses the rate on or before each date (`gold_rate_history`); before the first stored rate, the holding counts at cost.
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested). Outputs rounded to 2 dp.
 - **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
 
@@ -143,13 +155,15 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET /master/bond/{id}` → one bond; 404 "Bond not found" / "The requested resource doesn't exist."
 - `GET /master/fd-issuer?q=&limit=20` → deposit-taking banks, NBFCs, HFCs and India Post from `fd_issuer_master`; `limit` 1–50. `q` ≥ 2 characters (else `[]`); search and ranking rules in §1.
 - `GET /master/fd-issuer/{id}` → one issuer (with `merged_into` when set); 404 "Issuer not found" / "The requested resource doesn't exist."
+- `GET /master/gold/rate?purity=999|995|916|750|585&date=YYYY-MM-DD` → `{purity, requested_date, rate_date, rate_per_gram}`: the IBJA rate on the date, or the last one up to 7 days before it. 422 for an unknown purity or a future date. 404 "Gold rate not available" / "No IBJA rate on or just before this date. Enter the amount yourself."
 - `GET /cron/amfi` → runs the AMFI import and returns counts. No X-API-Key; requires `Authorization: Bearer $CRON_SECRET`. Vercel Cron runs it daily at `30 16 * * *` UTC (22:00 IST).
 - `GET /cron/securities` → runs the stock and bond master imports (see Master data). Same bearer auth; Vercel Cron `0 14 * * *` UTC. Returns `{stocks: {...}, bonds: {...}}`.
 - `GET /cron/issuers` → runs the FD/RD issuer master import (§1) and returns its counts. Same bearer auth; Vercel Cron `0 3 * * 1` UTC (Mondays 08:30 IST, weekly). 502 "Couldn't fetch the issuer files" when both the Razorpay and DICGC sources fail.
+- `GET /cron/gold` → runs the IBJA gold rate import (see Master data (gold rates)) and returns `{rate_date, session, rows_upserted}`. Same bearer auth; Vercel Cron `0 13 * * *` UTC. 502 "Couldn't fetch the gold rates" when the page can't be fetched or parsed.
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
-- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 5 groups in order fd, rd, stock, bond, mf. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf: latest NAV, 4 dp, and its date; null when no NAV). The NAV lookup is one extra query over held schemes only.
+- `GET /portfolio` → `{groups:[{type,label,items[],totals{invested,current_value,gain,gain_pct},count,matured_count}]}` (totals and count cover active holdings only) — always 6 groups in order fd, rd, stock, bond, mf, gold. Items = record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf: latest NAV, 4 dp, and its date; null when no NAV). Gold items carry `rate_per_gram` and `rate_date`. The NAV lookup is one extra query over held schemes only.
 - `GET /dashboard` → `{total_invested,total_current,total_gain,gain_pct,by_type:[{type,label,count,matured_count,invested,current,allocation_pct}]}`.
-- `GET /holdings/{fd|rd|stock|bond|mf}` → server-side grid for one asset type. Values all holdings of that type, then filters, sorts and paginates in Python.
+- `GET /holdings/{fd|rd|stock|bond|mf|gold}` → server-side grid for one asset type. Values all holdings of that type, then filters, sorts and paginates in Python.
   - Common params:
     - `q` (search)
     - `sort` (default current_value)
@@ -162,15 +176,16 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - stock: `exchange`, `broker*`
     - bond: `bond_type`, `issuer*`, `platform*`, `status`, `ytm_min`/`ytm_max`, `maturity_from`/`maturity_to`
     - mf: `category`, `platform*`
+    - gold: `form`, `purity` (enum facets)
     - (`*` = free-text values whose options come from the data.)
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
-  - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), and `nav` + `nav_date` (mf).
-- `GET /holdings/{fd|rd|stock|bond|mf}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row, plus `xirr`, `xirr_basis` and `xirr_transactions` for MF (§5; MF grid rows carry them too); `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
+  - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), `nav` + `nav_date` (mf), and `rate_per_gram` + `rate_date` (gold).
+- `GET /holdings/{fd|rd|stock|bond|mf|gold}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row, plus `xirr`, `xirr_basis` and `xirr_transactions` for MF (§5; MF grid rows carry them too); `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 - Sign-in: every route except `/api/health`, `/api/cron/*`, `/api/auth/*` and OPTIONS needs `Authorization: Bearer <access token>` (401 otherwise). Holdings are per user; see §7.
 
 ### Message contract (toasts render these verbatim)
-- POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name).
+- POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added" / "Gold added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name, gold name).
 - PUT 200 → record + `message: "Changes saved"` + description.
 - DELETE **200** → `{message: "<Type> deleted", description}`.
 - Errors always: `{message, description, detail}`. 422 → "Couldn't save — check the highlighted fields" + first field error ("Principal: Must be at most ₹100 crore"), `detail` = list of {loc,msg,type}. 422 on `GET /holdings/*` → "Invalid filters" + first error. 404 → "<Type> not found" / "It may have been deleted already." 401 → "Not authorised" / "Your session may have expired. Log in again." 500 → "Something went wrong on the server" (+ error class only). Other HTTP errors → "Request failed".
@@ -188,7 +203,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 - Pages: `/dashboard` Dashboard (KPI cards, holdings-by-type table with allocation bars; asset-type rows link to `/portfolio/{type}`).
   - `/portfolio` redirects to the first asset type you hold.
-  - `/portfolio/{type}` shows Groww-style fixed-width tabs (FD, RD, Stocks, Bonds, Mutual Funds, with counts) and a sliding underline. The content fades in when the type changes; reduced motion is respected.
+  - `/portfolio/{type}` shows Groww-style fixed-width tabs (FD, RD, Stocks, Bonds, Mutual Funds, Gold, with counts) and a sliding underline. The content fades in when the type changes; reduced motion is respected.
   - Each type has a summary strip (count, invested, current, gain) and an "Add FD"/"Add RD"/"Add stocks"/… button linking to `/add/{type}`.
   - FD, RD and bond pages replace the "N active · M matured" text with an Active (n) / Matured (m) segmented control (config `statusTabs`). Active is the default (URL has no `status`; the request sends `status=active`); Matured sets `?status=matured`, resets to page 1, and hides the Invested/Current/Gain totals. Reset keeps the tab. An empty Matured tab shows "No matured {noun}". The FD/RD/bond toolbar has no status filter (the Status column stays). The dashboard holdings-by-type table shows only the active count (no matured note).
   - Its own grid has type-specific columns and filters. Stocks include Price (latest price with day change %), Current/Gain/Gain %; a note under the stocks summary reads "Prices are the NSE/BSE closing price, updated nightly. Last updated <IST time>." Stocks without a price show current = invested. MF Current/Gain use the latest NAV where available (see §3). The MF grid has a sortable "XIRR" column after Gain % (signed %, `text-gain` / `text-loss`, "—" when null). It has a visible-by-default, non-sortable "NAV" column after Avg NAV: latest NAV with a muted "as of {date}" line, "—" when null.
@@ -203,7 +218,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Stocks = quantity × stored close on or before the date (`stock_price_history`), else at cost. `stocks_at_cost_before` is the first point after the last point where any stock was at cost (null if none).
   - Daily points for 1M, 6M and 1Y; weekly points back from today for All (from the earliest holding, max 10 years). The last point equals the `/api/dashboard` totals.
   - Chart: current value area, dashed invested line, range switch 1M / 6M / 1Y / All (default 1Y), Indian-format tooltip, compact axis (`formatINRCompact` in `web/lib/format.ts`). Caption "Stocks valued at cost before {date}" when `stocks_at_cost_before` is set; "No history yet" when there are no points.
-- Holding details page `/portfolio/{type}/{id}` (`web/app/(app)/portfolio/[type]/[id]/`): one shared layout for all five types (`web/components/holding-detail/`), with per-type content from the `detail` block of each grid config (`web/components/portfolio/grid/configs/`). Data from `GET /api/holdings/{type}/{id}`. MF 4th card is "1-day change" (`day_change` ₹ with `day_change_pct` below); the latest NAV shows in the Holding section as "Current NAV".
+- Holding details page `/portfolio/{type}/{id}` (`web/app/(app)/portfolio/[type]/[id]/`): one shared layout for all six types (`web/components/holding-detail/`), with per-type content from the `detail` block of each grid config (`web/components/portfolio/grid/configs/`). Data from `GET /api/holdings/{type}/{id}`. MF 4th card is "1-day change" (`day_change` ₹ with `day_change_pct` below); the latest NAV shows in the Holding section as "Current NAV".
   - Header: back link to the type's grid, type icon (`web/components/asset-type-icon.tsx`), name, sub-line, status badge, Edit and Delete.
   - KPI strip: Invested, Current value, Gain, and a type card: FD/RD/bond Maturity with days left; stock Price with day change; MF NAV with its as-of date.
   - Tenure bar for FD, RD and bonds.
@@ -213,10 +228,12 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - Basis `transactions`: used when the stored `mf_transactions` (SPEC §8) have net units equal to the holding's units within 0.01. Cash flows: −amount on each purchase date, +amount on each redemption date, +current value on the NAV date (today when there is no NAV date).
     - Basis `purchase_date`: used otherwise, including all manual entries. Cash flows: −invested on the purchase date, +current value on the NAV date (or today).
     - Display: a row "XIRR" in the Holding section, right after "Purchase date", shows the signed % in `text-gain` / `text-loss`, with a muted note "from N transactions" (basis `transactions`) or "from purchase date" (basis `purchase_date`). It shows "—" when null. Shown for every holding, matured or not.
-- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`, `/signup` (both without the sidebar).
+- `/add` (gallery of asset-type tiles grouped Deposits / Market-linked, each with an "N held" count from `/api/dashboard`; registry in `web/lib/asset-catalog.ts`), `/add/{fd|rd|stock|bond|mf|gold}` (form for that type; back link to `/add`; save → `/portfolio/{type}` (that type's tab), cancel → `/add`; unknown type → 404; legacy `/add?type=x` redirects to `/add/x`), `/login`, `/signup` (both without the sidebar).
 - Browser calls only same-origin `/api/*`; `app/api/[...path]/route.ts` forwards to `API_URL` with `X-API-Key`.
 - Sign-in is required everywhere, local dev included: `proxy.ts` redirects pages without the `wt_refresh` cookie to `/login?next=…`; cookies, refresh and the proxy rules are in §7. The top bar, right of the "Add asset" button, has an account menu (`web/components/user-menu.tsx`): a round avatar with the email's first letter (from `GET /api/me`) opens a dropdown with "Signed in as <email>" and "Log out".
 - MF form (`components/forms/scheme-picker.tsx`): scheme picker is a server search over `/api/master/mf`, showing AMC · Plan · Option and the latest NAV. Picking sets the name and category (category stays editable). "Not listed? Enter manually" switches to free text.
+- Gold form (`components/forms/gold-form.tsx`): fields in a 2×3 layout (Name, Purchase date, Form, Purity, Weight (grams), Total invested). Form and Purity are themed selects. Total invested fills with weight × the IBJA rate for the purity on the purchase date (`components/forms/use-gold-rate-autofill.ts`; the hint shows the rate and its date). It fills until the user types their own total, and stays editable. Errors show the API message as a muted hint.
+- Gold grid and details (`components/portfolio/grid/configs/gold.tsx`): the rate column shows ₹/g with "IBJA, {date}"; the details page shows the rate used in the type card. Facets are form and purity. Gold has no status tabs.
 - Stock form (`components/forms/stock-form.tsx`, picker from `components/forms/master-picker.tsx`): picker by default ("Search stocks and ETFs…"; rows show name, NSE/BSE symbols, ISIN, ETF badge). Picking sets name, symbol and the exchange default; changing the exchange re-derives the symbol. "Not listed? Enter manually" switches to free text; "Search the stock list instead" switches back.
 - Bond form (`components/forms/bond-form.tsx`): picker ("Search bonds…"; rows show name, ISIN · type · coupon · maturity). Picking sets name, ISIN, issuer, bond type and maturity date (always), and fills purchase date (issue date, if not in the future) only when empty. All stay editable.
 - Bond amounts: enter any two of Quantity, Purchase price per unit and Total invested; the third is calculated (price = total ÷ quantity, 2 dp; total = quantity × price; quantity = total ÷ price, rounded to a whole number). Pure helper `web/lib/holding-amounts.ts`, unit tests `web/lib/holding-amounts.test.ts` (`cd web && npm test`). Face value is not an input.
@@ -225,7 +242,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - FD and RD forms (`components/forms/fd-form.tsx`, `rd-form.tsx`): "Bank / issuer" picker (shared `components/forms/issuer-picker.tsx`, a server search over `/api/master/fd-issuer`; rows show the short name or name, the category, "DICGC insured" and "Merged into" when set). Picking sets `issuer_id` and copies the short name (or name) into Bank. "Not listed? Enter manually" switches to free text ("Search the bank list instead" switches back). New holdings open in picker mode; existing holdings without an issuer link open in manual mode. Editing loads the linked issuer from `/master/fd-issuer/{id}`, and falls back to the stored bank text if that fails.
 - Edit dialog for stocks/bonds shows the linked security (fetched from `/master/stock/{id}` or `/master/bond/{id}`).
 - MF Average NAV auto-fill (`components/forms/use-nav-autofill.ts`): once a scheme and purchase date are set, Average NAV fills from `/api/master/mf/{scheme_code}/nav` with the hint "NAV on {date} · AMFI". It stays editable and never overwrites a value the user typed or computed (see "MF amounts" above). Errors show the API message as a muted hint.
-- Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple.
+- Inputs: money/quantity/units use Indian digit grouping while typing (`components/forms/number-format.ts`); dates via themed DateField (Popover + Calendar, Monday first, month/year custom dropdowns, days outside allowed range disabled); payout FDs relabel Compounding → "Payout frequency" without Simple. Select menus open below their trigger, not over it.
 - Toasts (sonner, themed): title = API `message`, description = API `description`.
 - Theme: dark only, zinc palette, emerald primary, Geist Sans/Mono, root font-size 110%, sidebar 13.5rem.
 
@@ -263,8 +280,8 @@ Users sign in with email and password. Every holding belongs to one user.
 - **`users`** (model `api/app/models/user.py`): id, email (unique, lower-cased, ≤ 320), password_hash (argon2id; NULL = no password set yet), google_sub (unique, nullable; migration 0012; Google's stable user id), is_active, last_login_at, created_at, updated_at.
 - **`refresh_tokens`** (`refresh_token.py`): id, user_id (FK, ON DELETE CASCADE), family_id (shared by every token rotated from one sign-in), token_hash (SHA-256; the raw token is never stored), expires_at, revoked_at, replaced_at, created_at.
 - **`login_attempts`** (`login_attempt.py`): id, email, attempted_at, succeeded. Feeds the rate limit.
-- **Holdings:** `fixed_deposits`, `recurring_deposits`, `stocks`, `bonds`, `mutual_funds` each have `user_id` (NOT NULL, FK → users, ON DELETE CASCADE).
-- Master tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) stay global, with no `user_id`.
+- **Holdings:** `fixed_deposits`, `recurring_deposits`, `stocks`, `bonds`, `mutual_funds`, `gold_holdings` each have `user_id` (NOT NULL, FK → users, ON DELETE CASCADE).
+- Master tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`, `gold_rate_latest`, `gold_rate_history`) stay global, with no `user_id`.
 
 ### Scoping
 

@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-10-31)
+# STATUS — handoff notes (last updated 2026-11-01)
 
 ## Done (all committed on `main`)
 
@@ -37,6 +37,7 @@
 - 2026-10-31: Expired session: any API 401 in the browser redirects to `/login?next=<page>` (`web/lib/api.ts`).
 - 2026-10-31: Net worth over time chart (migration 0017 stock price history, GET /api/networth/history, dashboard card).
 - 2026-10-31: FD, RD and bond pages have an Active (n) / Matured (m) switch (`statusTabs`, `?status=matured`); dashboard no longer shows "+N matured".
+- 2026-11-01: Gold asset, committed on `main`: IBJA per-gram rates by purity (`89d552b`, migration `0018`, `/api/cron/gold` daily); gold holdings with rate on a date, dashboard, portfolio and net worth (`dc32a49`, migration `0019`); web form, grid and details page, and select menus open below their trigger (`ad7fa85`). Six asset types now. SPEC §1–§5.
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
@@ -69,6 +70,10 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Some NSE ETF names in `stock_master` are raw codes (e.g. "NIPINDETFNIFTYBEES").
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
 
+## Next (planned assets)
+
+- Cash & savings, then EPF/PPF, then NPS (in that order).
+
 ## Next (auth)
 
 - Auth step 2 is built and verified with a real Google OAuth client (2026-10-31).
@@ -80,6 +85,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Password reset and email verification (research an email provider later; same as auth step 3).
 - Pruning NAV history of unheld schemes (see Deferred).
 - Stock/bond import from CDSL/NSDL CAS or broker tradebooks: parked. CDSL/NSDL statements have no buy price or date; tradebooks need one parser per broker and miss splits/bonuses. Don't re-offer unless the user raises it.
+- Gold rate history before 27 Oct 2026: the user is looking for a historical source to seed `gold_rate_history`. Until then, older gold purchases need the amount typed in.
 
 ## Deferred (not started)
 
