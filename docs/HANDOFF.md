@@ -1,5 +1,108 @@
 # HANDOFF — session resume notes (2026-10-29)
 
+## Resume here — 2026-11-01 (silver planning; caching WIP)
+
+This section supersedes the "Next:" lines in the older sections below.
+
+### 1. Next task
+- Silver is built, merged into the gold asset as "Gold & Silver" (design record in §8).
+  - Purities: gold 999/995/916/750/585; silver 999 and 925.
+  - API committed: `375707b` (rates, migration 0022) and `84935e9` (holdings, grid filter, master rate route).
+  - Web (Metal select, grid Metal column, catalog title) is uncommitted, awaiting the user's browser check on localhost:3000. Then commit as "Web: Gold & Silver (metal select, grid metal column)".
+- Next: NPS (the last asset in the agreed order). Plan it first.
+
+### 2. Work in progress, uncommitted (do not revert)
+Built-in client caching, with no new dependency. Two files are modified:
+- **`web/components/portfolio/grid/use-holdings-query.ts`:**
+  - Removed the effect whose cleanup wiped `data`/`error`/`settled` when Next (cacheComponents / React Activity) hid the route. That wipe forced the skeleton on every return.
+  - `load()` now sets `refreshing` when data already exists, so a revisit shows the old rows at once with the thin progress bar while it refetches.
+  - Filter/sort/page changes already kept the old rows (`settled !== qs`). The request-id guard is unchanged.
+- **`web/components/dashboard/dashboard.tsx`:** a failed background refresh with data already on screen now shows `notify.error` (toast) and keeps the data. It used to swap to the error panel. Uses a `hasData` ref.
+- **Status:**
+  - `npm run lint`, `npx tsc --noEmit` and `npm test` (19) pass.
+  - Not checked in a browser. The user needs to try Dashboard → FD → Dashboard → FD on localhost:3000; each return should be instant.
+- **After the user's OK, commit as** "Web: keep grid and dashboard data across route hide (built-in stale-while-revalidate)".
+- `use-holding-detail.ts` and `net-worth-chart.tsx` already kept their data, so they are unchanged.
+
+### 3. Unpushed commits (push only on the user's explicit OK)
+- `94c656d` API: EPF & PPF holdings (migration 0021)
+- `4c0e720` Web: EPF & PPF asset, pill asset tabs, deposits-first order
+- `f219cb3` Docs: EPF & PPF asset and pill asset tabs
+- `375707b` API: silver IBJA rates and metal column (migration 0022)
+- `84935e9` API: silver holdings (metal field, filter, rate auto-fill)
+
+`origin/main` is at `aaae997`. Prod migrations run on push (api-deploy workflow), so pushing applies 0021 and 0022 to prod. Dev DB is already at 0022.
+
+### 4. Done this session (2026-11-01)
+- **EPF & PPF asset** (slug `pf`):
+  - EPF/VPF/PPF; balance + simple interest since the balance date.
+  - Optional "Total deposited" (`contributed`) drives gain.
+  - PPF opening date, with maturity on 1 April, 15 FYs after opening.
+  - A PPF is never "matured"; past maturity `extended_until` shows the current 5-year block ("Extended · till <date>").
+- **Portfolio tab redesign:**
+  - Compact pills with catalog icons and round green-tint count badges (`bg-primary/15 text-primary`), with a pulsing placeholder while counts load.
+  - Groups Deposits (FD, RD, Cash, EPF & PPF) | Market-linked (Stocks, Mutual funds, Bonds, Gold), with a thin divider.
+  - Order comes from `web/lib/asset-catalog.ts` and drives the tabs, the Add menu, the /add gallery and the /portfolio redirect.
+- **Text sizes:** grid rows, totals strip, tab labels and sidebar nav (incl. the "Wealth Tracker" title) are 13.5px.
+
+### 5. Decisions and user preferences learned
+- **EPF/PPF design:** one type with a kind field; accrued-interest valuation; an optional contributions field; PPF maturity shown.
+- **PPF past 15 years:** must not be "matured". It keeps earning, and contributions are allowed only via a formal extension.
+- **PF form labels:** "Current balance" (hint "Passbook total, including interest") and "Total deposited" (hint "Excluding interest. EPF: employee + employer share (not EPS)"). DateField has no hint prop, so "Balance as of" has none.
+- **Tabs:**
+  - No "+ N more" overflow menu; show all types inline.
+  - Don't dim zero-count types; they looked disabled.
+  - Counts must be badges, not bare numbers.
+  - Deposits come first.
+  - The divider was questioned and kept, because it mirrors the Add menu's "Deposits"/"Market-linked" headings. Removing it is a one-line change if the user asks again.
+- **Font size:** the user tunes it in 0.5px steps. 13px was too small; 13.5px is accepted.
+- **Fetch:** the app uses plain `fetch` via `web/lib/api.ts`. The user asked fetch vs axios; we recommended staying on fetch.
+- **Caching approach:** the user chose the built-in approach (keep state on routes Next keeps mounted) over a library.
+
+### 6. Tried and abandoned
+- **SWR:** it was built fully, then discarded at the user's request, in favour of the built-in approach.
+  - The working tree was reset to HEAD for web/ and `swr` removed from package.json and node_modules.
+  - `web/lib/networth-cache.ts` still exists and is in use.
+  - There is no `lib/swr.ts` and no `swr-provider.tsx`.
+
+### 7. Open questions waiting on the user
+- **Caching WIP:** is it good to commit (§2)?
+- **Silver:** answered. Merged "Gold & Silver" was chosen and is built (§1).
+- **Push:** the 3 unpushed commits (§3) need the user's OK.
+- **Leftover probe login** from the EPF API check (`probe-pf-…@example.com`) is in the dev DB. Never delete accounts without the user's say.
+
+### 8. Silver: design notes (built, see §1)
+- **Source:** ibjarates.com, the page `api/app/services/gold_rates.py` already scrapes, has a "Silver 999" rate. The test fixture `api/tests/fixtures/ibja_home.html` contains it (SilverDiv, "Silver Rates (PM)"). IBJA quotes silver per kg, so per gram = ÷ 1000. Gold is quoted per 10 g (÷ 10).
+- **Recommended design:**
+  - Keep slug `gold`, table `gold_holdings` and URLs.
+  - A migration adds `metal` (gold|silver, default gold) to `gold_holdings`, and adds metal to the key of `gold_rate_latest` / `gold_rate_history`. Today their keys are purity and purity+rate_date; "999" exists for both metals.
+  - The importer also stores Silver 999.
+  - Silver purities: 999 (fine) and 925 (sterling), perhaps 900 and 800. IBJA publishes only 999, so lower silver purities are valued at 999 rate × purity/999.
+  - The form gets a Metal select; purity options depend on the metal. Auto-fill (`/api/master/gold/rate`) needs a metal param.
+  - The grid gets a Metal column and filter. The label becomes "Gold & Silver" (tab, catalog, dashboard).
+  - Net worth and valuation are as for gold.
+  - Silver ETFs/funds stay under Stocks/MF.
+- **Gaps:** silver history starts from the first import (gold history starts 27 Oct 2026). The user is looking for a historical gold source, which may cover silver too.
+- **Touchpoints for an asset change:** see the memory file `new-assets-plan.md` and the Cash commit `4cfebd7`/`1119850` pattern.
+- **Gold rate code:**
+  - `api/app/services/gold_rates.py` (PURITIES, parse_rates, import_rates, latest_rates, history_between, rate_on_or_before)
+  - `api/app/models/gold_rate.py`, `api/app/models/gold.py`
+  - `api/app/services/valuation.py` value_gold
+  - `api/app/services/networth.py`
+  - `api/app/routers/master.py` (gold rate)
+  - `web/components/forms/gold-form.tsx`, `use-gold-rate-autofill.ts`
+  - `web/components/portfolio/grid/configs/gold.tsx`
+
+### 9. Gotchas hit this session
+- **Commit hook:** commits must be exactly `git add <paths> && git commit -F <file>`, with paths relative to the shell cwd, which drifts between api/ and web/. Use absolute message-file paths.
+- **Don't run `npm run build`** while the user's dev server runs; it confuses Turbopack. Use lint + tsc + tests, then the user's browser check.
+- **Subagent pipe exit codes:** builders sometimes report "pass" from piped output. Re-run the checks yourself before committing.
+- **Shared files force combined commits:** when two web changes touch the same files (asset-tabs, portfolio, asset-catalog), they can't be split without interactive staging, which the hook doesn't allow. Commit EPF-type work before starting unrelated UI work on the same files.
+
+### 10. Verification state at handover
+- API: `cd api && .venv/bin/python -m pytest -q` gives 449 passed.
+- Web: `cd web && npm run lint && npx tsc --noEmit && npm test` all pass (19 tests).
+
 ## Resume notes — 2026-11-01 (gold, cash and EPF & PPF)
 
 Shipped on `main`: the EPF & PPF asset in two commits, `94c656d` (API: migration `0021`, `pf_holdings`, `/api/assets/pf`, `/api/holdings/pf`, dashboard, portfolio and net worth; PPF maturity and 5-year extension blocks in `valuation.value_pf`) and `4c0e720` (web: form with the account-type rate pre-fill, grid, details page with a PPF tenure bar, and pill asset tabs in catalog order, Deposits | Market-linked).
