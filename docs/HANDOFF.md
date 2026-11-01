@@ -1,6 +1,24 @@
 # HANDOFF — session resume notes (2026-10-29)
 
-## Resume here — 2026-11-01 (silver planning; caching WIP)
+## Resume here — 2026-11-01 (NPS shipped)
+
+### 1. Shipped (all pushed to origin/main)
+- NPS, ninth asset type (`nps`, Market-linked after Mutual funds): `2834677` API master and daily NAV import (migration 0023), `f501006` API holdings (migration 0024), `b9b0114` web form, grid, details page and fresh data after saves and deletes.
+- `4df7b2b`: grids and dashboard keep data across route hide (stale-while-revalidate).
+- Silver (`375707b`, `84935e9`, `7e539b6`) is pushed too.
+- Docs for NPS (SPEC, STATUS, AGENTS, this file) are uncommitted until the orchestrator commits them.
+
+### 2. Prod
+- Migrations 0023 and 0024 run on push via the deploy workflow.
+- NPS data arrives with the first `/api/cron/nps` run (Vercel 16:45 UTC nightly, or one manual trigger with CRON_SECRET by the user). Until then the NPS scheme picker is empty and NPS holdings value at contributed.
+
+### 3. Open items
+- Motilal Oswal Midcap XIRR gap (3.87% here vs 4.49% on Groww; STATUS backlog).
+- Gold and silver rate history before 27 Oct 2026 (needs a historical source).
+- NAV history prune for unheld schemes (MF and NPS; deferred).
+- A probe login from the EPF & PPF check may still be on the dev DB. Remove only that probe account by its exact email, never the owner's.
+
+## Resume here — 2026-11-01 (silver planning; caching WIP) — superseded by the NPS section above
 
 This section supersedes the "Next:" lines in the older sections below.
 

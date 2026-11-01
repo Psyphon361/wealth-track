@@ -40,8 +40,10 @@
 - 2026-11-01: Gold asset, committed on `main`: IBJA per-gram rates by purity (`89d552b`, migration `0018`, `/api/cron/gold` daily); gold holdings with rate on a date, dashboard, portfolio and net worth (`dc32a49`, migration `0019`); web form, grid and details page, and select menus open below their trigger (`ad7fa85`). Six asset types now. SPEC §1–§5.
 - 2026-11-01: Cash & Savings asset, committed on `main`: `cash_holdings` (kind savings/current/cash/other, balance, optional interest rate, balance as of; migration `0020`), `/api/assets/cash` and `/api/holdings/cash`, in dashboard, portfolio and net worth (`4cfebd7`); web Cash tab after Gold, add form, grid and details page without gain (`1119850`). Seven asset types now. SPEC §1–§5.
 - 2026-11-01: EPF & PPF asset, committed on `main`: `pf_holdings` (kind epf/vpf/ppf, balance as of, interest rate, optional total deposited, PPF opening date; migration `0021`), `/api/assets/pf` and `/api/holdings/pf`, in dashboard, portfolio and net worth (`94c656d`); web form, grid and details page with a PPF tenure bar, and pill asset tabs in catalog order (Deposits | Market-linked) (`4c0e720`). Eight asset types now. SPEC §1–§5.
-- 2026-11-01: Silver merged into the gold asset as "Gold & Silver" (migration `0022`: `metal` on gold holdings and rates; IBJA Silver 999 stored per gram, 925 derived on read; `/api/master/gold/rate?metal=`). API committed `375707b` and `84935e9`, not pushed; web (Metal select, grid Metal column, catalog title) uncommitted, pending the user's browser check. SPEC §1–§5.
+- 2026-11-01: Silver merged into the gold asset as "Gold & Silver" (migration `0022`: `metal` on gold holdings and rates; IBJA Silver 999 stored per gram, 925 derived on read; `/api/master/gold/rate?metal=`). Committed and pushed: API `375707b` and `84935e9`, web `7e539b6`. SPEC §1–§5.
 
+- 2026-11-01: NPS asset, committed and pushed: `nps_master` + `nps_nav_latest` / `nps_nav_history` from the NPS Trust NAV report, daily `/api/cron/nps` (`2834677`, migration `0023`); `nps_holdings` (units, contributed, start date; `f501006`, migration `0024`); web form, grid and details page, and fresh data after saves and deletes (`b9b0114`). Value = units × latest NAV; net worth builds up linearly from the start date. Nine asset types now. Prod NPS data arrives with the first `/api/cron/nps` run (nightly, or one manual trigger). SPEC §1–§5.
+- 2026-11-01: Grids and dashboard keep their data across route hide, built-in stale-while-revalidate, no new dependency (`4df7b2b`). After a create, update, delete or CAS import outside the grid, the next reveal shows loading instead of stale data (`b9b0114`, `web/lib/holdings-cache.ts`). SPEC §5 ("Fresh data after changes").
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -75,11 +77,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next (planned assets)
 
-- NPS is next (EPF & PPF shipped 2026-11-01).
-
-## Next (planned work)
-
-- Next task: plan client-side data caching (planning only, no code yet).
+- All planned assets are shipped (NPS last, 2026-11-01).
 
 ## Next (auth)
 
