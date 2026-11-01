@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet, toApiMessage } from "@/lib/api";
+import { notify } from "@/lib/notify";
 import type { DashboardResponse } from "@/lib/types";
 import { SummaryCards } from "./summary-cards";
 import { HoldingsByType } from "./holdings-by-type";
@@ -18,19 +19,20 @@ type State =
 export function Dashboard() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const hasData = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     apiGet<DashboardResponse>("/dashboard")
       .then((data) => {
-        if (!cancelled) setState({ status: "ready", data });
+        if (cancelled) return;
+        hasData.current = true;
+        setState({ status: "ready", data });
       })
       .catch((err: unknown) => {
-        if (!cancelled)
-          setState({
-            status: "error",
-            ...toApiMessage(err),
-          });
+        if (cancelled) return;
+        if (hasData.current) notify.error(err);
+        else setState({ status: "error", ...toApiMessage(err) });
       });
     return () => {
       cancelled = true;

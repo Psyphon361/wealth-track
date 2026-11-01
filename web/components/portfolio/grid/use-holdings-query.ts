@@ -124,6 +124,8 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   const load = useCallback(
     (query: string) => {
       const id = ++requestId.current;
+      // Data already shown (e.g. route revealed again): refresh in the background.
+      if (hasData.current) setRefreshing(true);
       apiGet<HoldingsResponse<TRow>>(`${endpoint}${query ? `?${query}` : ""}`)
         .then((res) => {
           if (id !== requestId.current) return;
@@ -143,19 +145,6 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     },
     [endpoint],
   );
-
-  // With cacheComponents the route stays mounted (hidden) after navigating
-  // away, keeping state. Effect cleanups run on hide, so drop the cached
-  // result here: on reveal the grid shows the skeleton until fresh data lands.
-  useEffect(() => {
-    return () => {
-      setData(null);
-      setError(null);
-      setSettled(null);
-      setRefreshing(false);
-      hasData.current = false;
-    };
-  }, []);
 
   useEffect(() => {
     const counter = requestId;
