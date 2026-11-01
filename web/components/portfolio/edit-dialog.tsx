@@ -33,7 +33,9 @@ export function EditDialog<TRow extends HoldingRow>({
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Edit {title.toLowerCase()}</DialogTitle>
+          <DialogTitle>
+            Edit {config.type === "gold" ? title : title.toLowerCase()}
+          </DialogTitle>
           <DialogDescription>{row ? config.rowName(row) : ""}</DialogDescription>
         </DialogHeader>
         {row ? config.renderEditForm(row, onSaved) : null}

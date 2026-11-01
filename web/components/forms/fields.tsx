@@ -252,7 +252,12 @@ export function SelectField<TIn extends FieldValues, TOut>({
   label,
   required,
   options,
-}: FieldProps<TIn, TOut> & { options: Option[] }) {
+  onChange,
+}: FieldProps<TIn, TOut> & {
+  options: Option[];
+  /** Called with the new value after the field changes. */
+  onChange?: (value: string) => void;
+}) {
   return (
     <Controller
       control={control}
@@ -263,7 +268,10 @@ export function SelectField<TIn extends FieldValues, TOut>({
           <Select
             items={options}
             value={String(field.value ?? "")}
-            onValueChange={(v) => field.onChange(v ?? "")}
+            onValueChange={(v) => {
+              field.onChange(v ?? "");
+              onChange?.(v ?? "");
+            }}
           >
             <SelectTrigger
               id={name}

@@ -14,11 +14,12 @@ type RateResult =
   | { key: string; kind: "error"; message: string };
 
 /**
- * Fills Total invested = weight x IBJA rate per gram for the purity on the
+ * Fills Total invested = weight x IBJA rate per gram for the metal and purity on the
  * purchase date. Returns the hint text to show under the field (or null).
  */
 export function useGoldRateAutofill({
   enabled,
+  metal,
   purity,
   purchaseDate,
   weight,
@@ -26,6 +27,7 @@ export function useGoldRateAutofill({
   setValue,
 }: {
   enabled: boolean;
+  metal: string;
   purity: string;
   purchaseDate: string;
   weight: string;
@@ -37,13 +39,14 @@ export function useGoldRateAutofill({
   // Value we filled in ourselves.
   const [autoText, setAutoText] = useState<string | null>(null);
   // Saved record (edit mode) as the dialog opened.
-  const [initial] = useState({ invested, purity, purchaseDate });
+  const [initial] = useState({ invested, metal, purity, purchaseDate });
 
   // The user's own value: anything non-empty that we didn't fill and isn't the saved one.
   const manual =
     invested !== "" && invested !== autoText && invested !== initial.invested;
   const untouchedSaved =
     initial.invested !== "" &&
+    metal === initial.metal &&
     purity === initial.purity &&
     purchaseDate === initial.purchaseDate;
   const wantKey =
@@ -52,15 +55,15 @@ export function useGoldRateAutofill({
     ISO_DATE.test(purchaseDate) &&
     !manual &&
     !untouchedSaved
-      ? `${purity}|${purchaseDate}`
+      ? `${metal}|${purity}|${purchaseDate}`
       : null;
 
   useEffect(() => {
     if (wantKey === null) return;
-    const [p, date] = wantKey.split("|");
+    const [m, p, date] = wantKey.split("|");
     let cancelled = false;
     const timer = setTimeout(() => {
-      apiGet<GoldRateResponse>(`/master/gold/rate?purity=${p}&date=${date}`)
+      apiGet<GoldRateResponse>(`/master/gold/rate?metal=${m}&purity=${p}&date=${date}`)
         .then((rate) => {
           if (cancelled) return;
           setResult({ key: wantKey, kind: "ok", rate });
@@ -103,7 +106,7 @@ export function useGoldRateAutofill({
   }, [fillText, invested, setValue]);
 
   if (wantKey === null) return null;
-  if (!result || result.key !== wantKey) return "Fetching gold rate…";
+  if (!result || result.key !== wantKey) return `Fetching ${metal} rate…`;
   if (result.kind === "error") return result.message;
   if (!readyRate || fillText === null || invested !== autoText) return null;
   const base = `${formatINR(readyRate.rate_per_gram)}/g × ${weightNum.toFixed(3)} g (IBJA, ${formatDate(readyRate.rate_date)})`;

@@ -22,7 +22,7 @@ export const TAB_LABELS: Record<AssetType, string> = {
   stock: "Stocks",
   bond: "Bonds",
   mf: "Mutual funds",
-  gold: "Gold",
+  gold: "Gold & Silver",
   cash: "Cash",
   pf: "EPF & PPF",
 };

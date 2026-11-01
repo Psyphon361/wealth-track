@@ -6,7 +6,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   stock: "Stocks",
   bond: "Bonds",
   mf: "Mutual Funds",
-  gold: "Gold",
+  gold: "Gold & Silver",
   cash: "Cash & Savings",
   pf: "EPF & PPF",
 };
@@ -73,13 +73,25 @@ export const PF_KIND_LABELS: Record<PfKind, string> = {
 };
 
 export type GoldForm = "jewellery" | "coin" | "bar" | "digital";
-export type GoldPurity = "999" | "995" | "916" | "750" | "585";
+export type GoldMetal = "gold" | "silver";
+export type GoldPurity = "999" | "995" | "916" | "750" | "585" | "925";
+
+export const GOLD_METAL_LABELS: Record<GoldMetal, string> = {
+  gold: "Gold",
+  silver: "Silver",
+};
+
+/** Purities valid per metal (same rule as the API). */
+export const GOLD_PURITIES_BY_METAL: Record<GoldMetal, GoldPurity[]> = {
+  gold: ["999", "995", "916", "750", "585"],
+  silver: ["999", "925"],
+};
 
 export const GOLD_FORM_LABELS: Record<GoldForm, string> = {
   jewellery: "Jewellery",
   coin: "Coin",
   bar: "Bar",
-  digital: "Digital gold",
+  digital: "Digital",
 };
 
 export const GOLD_PURITY_LABELS: Record<GoldPurity, string> = {
@@ -88,6 +100,19 @@ export const GOLD_PURITY_LABELS: Record<GoldPurity, string> = {
   "916": "22K (916)",
   "750": "18K (750)",
   "585": "14K (585)",
+  "925": "925 (sterling)",
+};
+
+/** Purity label for a holding; 999 reads differently for gold (24K) and silver (fine). */
+export function goldPurityLabel(metal: GoldMetal, purity: GoldPurity): string {
+  if (metal === "silver" && purity === "999") return "999 (fine)";
+  return GOLD_PURITY_LABELS[purity];
+}
+
+/** Purity filter facet labels: 999 is shared by both metals. */
+export const GOLD_PURITY_FACET_LABELS: Record<GoldPurity, string> = {
+  ...GOLD_PURITY_LABELS,
+  "999": "999 (24K / fine)",
 };
 
 export const MF_CATEGORY_LABELS: Record<MFCategory, string> = {
@@ -268,6 +293,7 @@ export interface MfNavResponse {
 }
 
 export interface GoldRateResponse {
+  metal?: GoldMetal;
   purity: string;
   requested_date: string;
   rate_date: string;
@@ -288,6 +314,7 @@ export interface MutualFundInput {
 
 export interface GoldInput {
   name: string;
+  metal: GoldMetal;
   form: GoldForm;
   purity: GoldPurity;
   weight_grams: number;

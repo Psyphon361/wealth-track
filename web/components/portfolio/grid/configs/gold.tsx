@@ -3,7 +3,9 @@ import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import {
   GOLD_FORM_LABELS,
-  GOLD_PURITY_LABELS,
+  GOLD_METAL_LABELS,
+  GOLD_PURITY_FACET_LABELS,
+  goldPurityLabel,
   type GoldItem,
 } from "@/lib/types";
 import { gainTone } from "../gain-cell";
@@ -12,6 +14,7 @@ import { createColumnKit } from "./shared";
 
 const labels = {
   name: "Name",
+  metal: "Metal",
   form: "Form",
   purity: "Purity",
   weight_grams: "Weight (g)",
@@ -33,10 +36,11 @@ const kit = createColumnKit<GoldItem>("gold", labels, rowName);
 
 export const goldConfig: GridConfig<GoldItem> = {
   type: "gold",
-  noun: "gold holdings",
-  searchPlaceholder: "Search gold…",
+  noun: "Gold & Silver holdings",
+  searchPlaceholder: "Search Gold & Silver…",
   sortKeys: [
     "name",
+    "metal",
     "purchase_date",
     "weight_grams",
     "invested",
@@ -45,8 +49,9 @@ export const goldConfig: GridConfig<GoldItem> = {
     "xirr",
   ],
   filters: [
+    { kind: "facet", key: "metal", title: "Metal", labels: GOLD_METAL_LABELS },
     { kind: "facet", key: "form", title: "Form", labels: GOLD_FORM_LABELS },
-    { kind: "facet", key: "purity", title: "Purity", labels: GOLD_PURITY_LABELS },
+    { kind: "facet", key: "purity", title: "Purity", labels: GOLD_PURITY_FACET_LABELS },
   ],
   columnLabels: labels,
   rowName,
@@ -56,8 +61,9 @@ export const goldConfig: GridConfig<GoldItem> = {
       (r) => r.name,
       () => null,
     ),
+    kit.text("metal", (r) => GOLD_METAL_LABELS[r.metal]),
     kit.text("form", (r) => GOLD_FORM_LABELS[r.form]),
-    kit.text("purity", (r) => GOLD_PURITY_LABELS[r.purity]),
+    kit.text("purity", (r) => goldPurityLabel(r.metal, r.purity)),
     kit.number("weight_grams", (r) => r.weight_grams, (n) => weight.format(n)),
     kit.date("purchase_date", (r) => r.purchase_date),
     kit.money("invested", (r) => r.invested),
@@ -68,7 +74,11 @@ export const goldConfig: GridConfig<GoldItem> = {
   ],
   detail: {
     subtitle: (r) =>
-      [GOLD_FORM_LABELS[r.form], GOLD_PURITY_LABELS[r.purity]].join(" · "),
+      [
+        GOLD_METAL_LABELS[r.metal],
+        GOLD_FORM_LABELS[r.form],
+        goldPurityLabel(r.metal, r.purity),
+      ].join(" · "),
     kpi: (r) => ({
       label: "Rate",
       value:
@@ -80,8 +90,9 @@ export const goldConfig: GridConfig<GoldItem> = {
       sub: r.rate_date ? `IBJA, ${formatDate(r.rate_date)}` : undefined,
     }),
     holding: (r) => [
+      { label: "Metal", value: GOLD_METAL_LABELS[r.metal] },
       { label: "Form", value: GOLD_FORM_LABELS[r.form] },
-      { label: "Purity", value: GOLD_PURITY_LABELS[r.purity] },
+      { label: "Purity", value: goldPurityLabel(r.metal, r.purity) },
       { label: "Weight", value: `${weight.format(r.weight_grams)} g`, figure: true },
       { label: "Purchase date", value: formatDate(r.purchase_date), figure: true },
       { label: "Total invested", value: formatINR(r.invested), figure: true },

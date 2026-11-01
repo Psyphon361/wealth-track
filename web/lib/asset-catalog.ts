@@ -72,8 +72,8 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
   },
   {
     type: "gold",
-    title: "Gold",
-    hint: "Jewellery, coins, bars, digital gold",
+    title: "Gold & Silver",
+    hint: "Jewellery, coins, bars, digital gold and silver",
     icon: Coins,
     group: "Market-linked",
   },

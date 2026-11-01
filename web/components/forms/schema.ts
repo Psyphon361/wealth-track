@@ -1,4 +1,9 @@
 import { z } from "zod";
+import {
+  GOLD_PURITIES_BY_METAL,
+  type GoldMetal,
+  type GoldPurity,
+} from "@/lib/types";
 
 // ---- Limits and messages (shared with API validation rules) ----
 
@@ -33,6 +38,7 @@ export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
 export const ISSUER_REQUIRED_ERROR = "Select a bank or issuer from the list";
+export const GOLD_METAL_ERROR = "Choose a metal";
 export const GOLD_FORM_ERROR = "Choose a form";
 export const GOLD_PURITY_ERROR = "Choose a purity";
 export const GOLD_WEIGHT_DECIMALS_ERROR =
@@ -337,9 +343,17 @@ export const bondTypeEnum = z.enum([
 export const goldFormEnum = z.enum(["jewellery", "coin", "bar", "digital"], {
   error: GOLD_FORM_ERROR,
 });
-export const goldPurityEnum = z.enum(["999", "995", "916", "750", "585"], {
+export const goldMetalEnum = z.enum(["gold", "silver"], {
+  error: GOLD_METAL_ERROR,
+});
+export const goldPurityEnum = z.enum(["999", "995", "916", "750", "585", "925"], {
   error: GOLD_PURITY_ERROR,
 });
+/** Purity must belong to the metal (same rule as the API). */
+export function isPurityForMetal(metal: string, purity: string): boolean {
+  const allowed = GOLD_PURITIES_BY_METAL[metal as GoldMetal];
+  return !!allowed && allowed.includes(purity as GoldPurity);
+}
 export const cashKindEnum = z.enum(["savings", "current", "cash", "other"], {
   error: CASH_KIND_ERROR,
 });

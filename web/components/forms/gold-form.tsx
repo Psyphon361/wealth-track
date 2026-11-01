@@ -5,10 +5,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
   GOLD_FORM_LABELS,
-  GOLD_PURITY_LABELS,
+  GOLD_METAL_LABELS,
+  GOLD_PURITIES_BY_METAL,
+  goldPurityLabel,
   type Gold,
   type GoldForm as GoldFormValue,
   type GoldInput,
+  type GoldMetal,
   type GoldPurity,
 } from "@/lib/types";
 import { FormShell } from "./form-shell";
@@ -20,7 +23,10 @@ import {
   toOptions,
 } from "./fields";
 import {
+  GOLD_PURITY_ERROR,
   goldFormEnum,
+  goldMetalEnum,
+  isPurityForMetal,
   goldPurityEnum,
   goldWeight,
   maxFutureDateISO,
@@ -32,25 +38,44 @@ import {
 import { useAssetSave } from "./use-asset-form";
 import { useGoldRateAutofill } from "./use-gold-rate-autofill";
 
-const schema = z.object({
+const schema = z
+  .object({
   name: requiredText,
+  metal: goldMetalEnum,
   form: goldFormEnum,
   purity: goldPurityEnum,
   weight_grams: goldWeight,
   purchase_date: startDateString,
   invested_amount: moneyNumber,
   notes: notesText,
-});
+  })
+  .superRefine((v, ctx) => {
+    if (!isPurityForMetal(v.metal, v.purity)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["purity"],
+        message: GOLD_PURITY_ERROR,
+      });
+    }
+  });
 
 type FormIn = z.input<typeof schema>;
 type FormOut = z.output<typeof schema>;
 
 const FORM_OPTIONS = toOptions(GOLD_FORM_LABELS);
-const PURITY_OPTIONS = toOptions(GOLD_PURITY_LABELS);
+const METAL_OPTIONS = toOptions(GOLD_METAL_LABELS);
+
+function purityOptions(metal: GoldMetal) {
+  return GOLD_PURITIES_BY_METAL[metal].map((p) => ({
+    value: p,
+    label: goldPurityLabel(metal, p),
+  }));
+}
 
 function toDefaults(r?: Gold): FormIn {
   return {
     name: r?.name ?? "",
+    metal: r?.metal ?? "gold",
     // Blank until chosen; the schema then reports "Choose a form/purity".
     form: r?.form ?? ("" as GoldFormValue),
     purity: r?.purity ?? ("" as GoldPurity),
@@ -74,12 +99,13 @@ export function GoldForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const [purity, purchaseDate, weight, invested] = useWatch({
+  const [metal, purity, purchaseDate, weight, invested] = useWatch({
     control,
-    name: ["purity", "purchase_date", "weight_grams", "invested_amount"],
+    name: ["metal", "purity", "purchase_date", "weight_grams", "invested_amount"],
   });
   const rateHint = useGoldRateAutofill({
     enabled: true,
+    metal: String(metal ?? "gold"),
     purity: String(purity ?? ""),
     purchaseDate: String(purchaseDate ?? ""),
     weight: String(weight ?? ""),
@@ -91,6 +117,7 @@ export function GoldForm({
   const onSubmit = handleSubmit((values) => {
     const payload: GoldInput = {
       name: values.name,
+      metal: values.metal,
       form: values.form,
       purity: values.purity,
       weight_grams: values.weight_grams,
@@ -112,7 +139,7 @@ export function GoldForm({
         control={control}
         name="name"
         label="Name"
-        placeholder="e.g. Wedding necklace"
+        placeholder="e.g. Wedding necklace, silver coins"
         required
       />
       <DateField
@@ -121,6 +148,18 @@ export function GoldForm({
         label="Purchase date"
         maxDate={maxFutureDateISO()}
         required
+      />
+      <SelectField
+        control={control}
+        name="metal"
+        label="Metal"
+        options={METAL_OPTIONS}
+        required
+        onChange={(next) => {
+          if (!isPurityForMetal(next, String(purity ?? ""))) {
+            setValue("purity", "" as GoldPurity);
+          }
+        }}
       />
       <SelectField
         control={control}
@@ -133,7 +172,7 @@ export function GoldForm({
         control={control}
         name="purity"
         label="Purity"
-        options={PURITY_OPTIONS}
+        options={purityOptions((metal as GoldMetal) ?? "gold")}
         required
       />
       <TextField
@@ -153,7 +192,7 @@ export function GoldForm({
         decimals={2}
         hint={
           rateHint ??
-          "Gold value on the purchase day, excluding making charges and GST"
+          "Metal value on the purchase day, excluding making charges and GST"
         }
         required
       />
