@@ -39,6 +39,7 @@
 - 2026-10-31: FD, RD and bond pages have an Active (n) / Matured (m) switch (`statusTabs`, `?status=matured`); dashboard no longer shows "+N matured".
 - 2026-11-01: Gold asset, committed on `main`: IBJA per-gram rates by purity (`89d552b`, migration `0018`, `/api/cron/gold` daily); gold holdings with rate on a date, dashboard, portfolio and net worth (`dc32a49`, migration `0019`); web form, grid and details page, and select menus open below their trigger (`ad7fa85`). Six asset types now. SPEC §1–§5.
 - 2026-11-01: Cash & Savings asset, committed on `main`: `cash_holdings` (kind savings/current/cash/other, balance, optional interest rate, balance as of; migration `0020`), `/api/assets/cash` and `/api/holdings/cash`, in dashboard, portfolio and net worth (`4cfebd7`); web Cash tab after Gold, add form, grid and details page without gain (`1119850`). Seven asset types now. SPEC §1–§5.
+- 2026-11-01: EPF & PPF asset, committed on `main`: `pf_holdings` (kind epf/vpf/ppf, balance as of, interest rate, optional total deposited, PPF opening date; migration `0021`), `/api/assets/pf` and `/api/holdings/pf`, in dashboard, portfolio and net worth (`94c656d`); web form, grid and details page with a PPF tenure bar, and pill asset tabs in catalog order (Deposits | Market-linked) (`4c0e720`). Eight asset types now. SPEC §1–§5.
 
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
@@ -73,7 +74,11 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next (planned assets)
 
-- EPF/PPF, then NPS (in that order).
+- NPS is next (EPF & PPF shipped 2026-11-01).
+
+## Next (planned work)
+
+- Next task: plan client-side data caching (planning only, no code yet).
 
 ## Next (auth)
 
