@@ -13,6 +13,7 @@ from app.models import (
     MFNavLatest,
     MFTransaction,
     MutualFund,
+    Pf,
     RecurringDeposit,
     Stock,
 )
@@ -36,7 +37,7 @@ def client(auth_engine, auth_settings):
         tables=[
             m.__table__
             for m in (
-                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, GoldRateLatest, MFNavLatest,
+                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, Pf, GoldRateLatest, MFNavLatest,
                 MFTransaction
             )
         ],

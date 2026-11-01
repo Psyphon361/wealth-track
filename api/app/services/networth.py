@@ -127,6 +127,7 @@ def _holding_start(slug: str, record: Any) -> date:
         "mf": lambda r: r.purchase_date,
         "gold": lambda r: r.purchase_date,
         "cash": lambda r: r.balance_date,
+        "pf": lambda r: r.balance_date,
     }[slug](record)
 
 
@@ -147,7 +148,7 @@ def earliest_start(
 ) -> date | None:
     """Earliest start date over every holding (MF with matching txns: its first txn)."""
     starts = [
-        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "gold", "cash") for r in holdings.get(slug, ())
+        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "gold", "cash", "pf") for r in holdings.get(slug, ())
     ]
     starts += [m.start for m in _prepare_mfs(holdings.get("mf", ()), txns or {})]
     return min(starts) if starts else None
@@ -229,6 +230,12 @@ def build_history(
             balance = _q(Decimal(r.balance))
             invested += balance
             current += balance
+        for r in holdings.get("pf", ()):
+            if r.balance_date > d:
+                continue
+            v = valuation.value_pf(r, d)
+            invested += v["invested"]
+            current += v["current_value"]
         for m in mfs:
             pair = _mf_at(m, d, navs)
             if pair is not None:

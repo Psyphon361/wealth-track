@@ -77,6 +77,17 @@ def make_cash(**kw):
     return _base(**fields)
 
 
+def make_pf(**kw):
+    from datetime import date
+
+    fields = dict(
+        name="Test EPF", kind="epf", balance=Decimal("100000"), balance_date=date(2025, 10, 24),
+        interest_rate=Decimal("8.25"), contributed=None, opened_on=None,
+    )  # fmt: skip
+    fields.update(kw)
+    return _base(**fields)
+
+
 @pytest.fixture
 def auth_engine():
     """In-memory SQLite holding only the auth tables."""

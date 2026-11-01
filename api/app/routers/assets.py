@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.db import Base, get_db
 from app.deps import current_user
-from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, RecurringDeposit, Stock, User
+from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Pf, RecurringDeposit, Stock, User
 from app.schemas.messages import Outcome
 from app.services import amfi, bond_master, fd_issuers, stock_master
 
@@ -21,6 +21,7 @@ REGISTRY = {
     "mf": (MutualFund, schemas.MutualFundCreate, schemas.MutualFundRead),
     "gold": (Gold, schemas.GoldCreate, schemas.GoldRead),
     "cash": (Cash, schemas.CashCreate, schemas.CashRead),
+    "pf": (Pf, schemas.PfCreate, schemas.PfRead),
 }
 
 
@@ -32,6 +33,7 @@ ASSET_LABELS = {
     "mf": "Mutual fund",
     "gold": "Gold",
     "cash": "Cash & Savings",
+    "pf": "EPF & PPF",
 }
 
 

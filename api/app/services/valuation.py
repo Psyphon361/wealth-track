@@ -163,6 +163,38 @@ def value_cash(cash: Any, today: date | None = None) -> dict[str, Any]:
     return out
 
 
+def _ppf_maturity(opened_on: date) -> date:
+    """A PPF matures 15 financial years after the one it was opened in (FY ends 31 Mar)."""
+    fy_end_year = opened_on.year + 1 if opened_on.month >= 4 else opened_on.year
+    return date(fy_end_year + 15, 4, 1)
+
+
+def value_pf(pf: Any, today: date | None = None) -> dict[str, Any]:
+    """Balance plus simple interest since balance_date; invested = contributed, else current."""
+    today = today or date.today()
+    balance = Decimal(pf.balance)
+    days = max((today - pf.balance_date).days, 0)
+    accrued = (balance * Decimal(pf.interest_rate) / 100 * days / 365).quantize(
+        _CENT, rounding=ROUND_HALF_UP
+    )
+    current = balance + accrued
+    invested = Decimal(pf.contributed) if pf.contributed is not None else current
+    maturity = _ppf_maturity(pf.opened_on) if pf.kind == "ppf" and pf.opened_on else None
+    # A PPF is extended in 5-year blocks after maturity and keeps earning: never "matured".
+    extended_until = None
+    if maturity is not None and today >= maturity:
+        n = 1
+        while maturity + relativedelta(years=5 * n) <= today:
+            n += 1
+        extended_until = maturity + relativedelta(years=5 * n)
+    out = _result(invested, current, maturity, "active")
+    out["xirr"] = None
+    out["accrued_interest"] = accrued
+    out["maturity_date"] = maturity
+    out["extended_until"] = extended_until
+    return out
+
+
 def value_stock(
     stock: Any, today: date | None = None, *, price: Decimal | None = None
 ) -> dict[str, Any]:

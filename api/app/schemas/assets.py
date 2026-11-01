@@ -548,3 +548,47 @@ class CashCreate(_Create, CashBase):
 
 class CashRead(CashBase, _Read):
     pass
+
+
+# --- EPF & PPF --------------------------------------------------------------
+
+
+PF_KIND_ERROR = "Choose an account type"
+PPF_OPENED_ERROR = "Enter the opening date"
+PF_KINDS = ("epf", "vpf", "ppf")
+
+PfKind = Annotated[
+    Literal["epf", "vpf", "ppf"],
+    BeforeValidator(_one_of(PF_KINDS, PF_KIND_ERROR)),
+]
+
+
+class PfBase(BaseModel):
+    name: Required
+    kind: Literal["epf", "vpf", "ppf"]
+    balance: Dec
+    balance_date: date
+    interest_rate: Dec
+    contributed: Dec | None = None
+    opened_on: date | None = None
+
+
+class PfCreate(_Create, PfBase):
+    kind: PfKind
+    balance: Money
+    balance_date: TradeDate
+    interest_rate: FdRate
+    contributed: Money | None = None
+    opened_on: TradeDate | None = None
+
+    @model_validator(mode="after")
+    def _opened_rule(self):
+        if self.kind != "ppf":
+            self.opened_on = None
+        elif self.opened_on is None:
+            _field_error(self, "opened_on", PPF_OPENED_ERROR)
+        return self
+
+
+class PfRead(PfBase, _Read):
+    pass

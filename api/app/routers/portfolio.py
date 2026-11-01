@@ -27,6 +27,7 @@ LABELS = {
     "mf": "Mutual Funds",
     "gold": "Gold",
     "cash": "Cash & Savings",
+    "pf": "EPF & PPF",
 }
 _VALUERS = {
     "fd": valuation.value_fd,
@@ -36,6 +37,7 @@ _VALUERS = {
     "mf": valuation.value_mf,
     "gold": valuation.value_gold,
     "cash": valuation.value_cash,
+    "pf": valuation.value_pf,
 }
 _CENT = Decimal("0.01")
 

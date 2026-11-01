@@ -28,6 +28,7 @@ from app.models.fixed_deposit import FixedDeposit
 from app.models.gold import Gold
 from app.models.mf_master import MFMaster
 from app.models.mutual_fund import MutualFund
+from app.models.pf import Pf
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.stock import Stock
 from app.models.stock_master import StockMaster
@@ -53,6 +54,7 @@ TABLES = (
     TableSpec(MutualFund, "scheme_name", "scheme_code", MFMaster, "scheme_code"),
     TableSpec(Gold, "name", None, None, None),
     TableSpec(Cash, "name", None, None, None),
+    TableSpec(Pf, "name", None, None, None),
 )
 
 
