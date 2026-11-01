@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import create_model
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -6,9 +6,9 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.db import Base, get_db
 from app.deps import current_user
-from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Pf, RecurringDeposit, Stock, User
+from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Nps, Pf, RecurringDeposit, Stock, User
 from app.schemas.messages import Outcome
-from app.services import amfi, bond_master, fd_issuers, stock_master
+from app.services import amfi, bond_master, fd_issuers, nps, stock_master
 
 router = APIRouter(prefix="/assets")
 
@@ -19,6 +19,7 @@ REGISTRY = {
     "stock": (Stock, schemas.StockCreate, schemas.StockRead),
     "bond": (Bond, schemas.BondCreate, schemas.BondRead),
     "mf": (MutualFund, schemas.MutualFundCreate, schemas.MutualFundRead),
+    "nps": (Nps, schemas.NpsCreate, schemas.NpsRead),
     "gold": (Gold, schemas.GoldCreate, schemas.GoldRead),
     "cash": (Cash, schemas.CashCreate, schemas.CashRead),
     "pf": (Pf, schemas.PfCreate, schemas.PfRead),
@@ -31,6 +32,7 @@ ASSET_LABELS = {
     "stock": "Stock",
     "bond": "Bond",
     "mf": "Mutual fund",
+    "nps": "NPS",
     "gold": "Gold & Silver",
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
@@ -70,6 +72,8 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     def _values(db: Session, body) -> dict:
         """Body as column values; a linked AMFI scheme overwrites scheme_name (snapshot)."""
         data = body.model_dump()
+        if slug == "nps":
+            nps.require_scheme(db, data["scheme_id"])
         if data.get("scheme_code") is not None:
             data["scheme_name"] = amfi.require_scheme(db, data["scheme_code"]).name[:200]
         if data.get("issuer_id") is not None:
@@ -95,6 +99,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     @sub.post("", response_model=result, status_code=201)
     def create_item(
         body: create,  # type: ignore[valid-type]
+        background: BackgroundTasks,
         db: Session = Depends(get_db),
         user: User = Depends(current_user),
     ):
@@ -102,6 +107,8 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         db.add(obj)
         db.commit()
         db.refresh(obj)
+        if slug == "nps":
+            background.add_task(nps.sync_scheme_safely, obj.scheme_id)
         return _with_message(obj, f"{_label(obj)} added")
 
     @sub.get("/{item_id}", response_model=read)
@@ -112,6 +119,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     def replace_item(
         item_id: int,
         body: create,  # type: ignore[valid-type]
+        background: BackgroundTasks,
         db: Session = Depends(get_db),
         user: User = Depends(current_user),
     ):
@@ -120,6 +128,8 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
             setattr(obj, key, value)
         db.commit()
         db.refresh(obj)
+        if slug == "nps":
+            background.add_task(nps.sync_scheme_safely, obj.scheme_id)
         return _with_message(obj, "Changes saved")
 
     @sub.delete("/{item_id}", response_model=Outcome)

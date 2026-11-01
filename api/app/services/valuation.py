@@ -229,6 +229,30 @@ def value_mf(
     return out
 
 
+def value_nps(
+    nps: Any,
+    today: date | None = None,
+    *,
+    nav: Decimal | None = None,
+    nav_date: date | None = None,
+    prev_nav: Decimal | None = None,
+    prev_nav_date: date | None = None,
+) -> dict[str, Any]:
+    """Units x latest NAV; invested = contributed; no NAV means valued at contributed. No XIRR."""
+    contributed = Decimal(nps.contributed)
+    if nav is not None:
+        out = _result(contributed, Decimal(nps.units) * Decimal(nav))
+        out["nav"] = Decimal(nav).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        out["nav_date"] = nav_date
+        out.update(_mf_day_change(Decimal(nps.units), nav, prev_nav, prev_nav_date))
+        return out
+    out = _result(contributed, contributed)
+    out["nav"] = None
+    out["nav_date"] = None
+    out.update(_mf_day_change(Decimal(nps.units), None, None, None))
+    return out
+
+
 def _mf_day_change(
     units: Decimal, nav: Decimal | None, prev_nav: Decimal | None, prev_nav_date: date | None
 ) -> dict[str, Any]:

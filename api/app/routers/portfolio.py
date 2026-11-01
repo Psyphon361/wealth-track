@@ -12,10 +12,12 @@ from app.deps import current_user
 from app.models.user import User
 from app.models.mf_master import MFNavLatest
 from app.models.mutual_fund import MutualFund
+from app.models.nps import Nps
+from app.models.nps_master import NpsNavLatest
 from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
-from app.services import gold_rates, nav_history, stock_prices, valuation
+from app.services import gold_rates, nav_history, nps as nps_service, stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
 
@@ -25,6 +27,7 @@ LABELS = {
     "stock": "Stocks",
     "bond": "Bonds",
     "mf": "Mutual Funds",
+    "nps": "NPS",
     "gold": "Gold & Silver",
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
@@ -35,6 +38,7 @@ _VALUERS = {
     "stock": valuation.value_stock,
     "bond": valuation.value_bond,
     "mf": valuation.value_mf,
+    "nps": valuation.value_nps,
     "gold": valuation.value_gold,
     "cash": valuation.value_cash,
     "pf": valuation.value_pf,
@@ -77,6 +81,21 @@ def _fetch_prev_navs(bind: Any, user_id: int) -> dict[int, tuple[date, Decimal]]
         return nav_history.previous_navs(session, codes)
 
 
+def _fetch_nps_navs(bind: Any, user_id: int) -> dict[str, tuple[Decimal, date]]:
+    """Latest NAV for only the NPS schemes this user holds, in a single query."""
+    held = select(Nps.scheme_id).where(Nps.user_id == user_id)
+    stmt = select(NpsNavLatest).where(NpsNavLatest.scheme_id.in_(held))
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return {r.scheme_id: (r.nav, r.nav_date) for r in session.scalars(stmt).all()}
+
+
+def _fetch_nps_prev_navs(bind: Any, user_id: int) -> dict[str, tuple[date, Decimal]]:
+    """Previous-day NAV for the NPS schemes this user holds, in a single DB query."""
+    held = select(Nps.scheme_id).where(Nps.user_id == user_id)
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return nps_service.previous_navs(session, list(session.scalars(held).all()))
+
+
 def _fetch_gold_rates(bind: Any) -> dict[tuple[str, str], tuple[Decimal, date]]:
     """Latest IBJA rate per (metal, purity), on this part's own session."""
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
@@ -91,7 +110,15 @@ def _value(
     prices: dict[int, StockPriceLatest],
     prev_navs: dict[int, tuple[date, Decimal]],
     rates: dict[tuple[str, str], tuple[Decimal, date]],
+    nps_navs: dict[str, tuple[Decimal, date]],
+    nps_prev: dict[str, tuple[date, Decimal]],
 ):
+    if slug == "nps":
+        nav, nav_date = nps_navs.get(record.scheme_id, (None, None))
+        prev_date, prev_nav = nps_prev.get(record.scheme_id, (None, None))
+        return valuation.value_nps(
+            record, today, nav=nav, nav_date=nav_date, prev_nav=prev_nav, prev_nav_date=prev_date
+        )
     if slug == "gold":
         rate, rate_date = rates.get((record.metal, record.purity), (None, None))
         return valuation.value_gold(record, today, rate=rate, rate_date=rate_date)
@@ -141,8 +168,12 @@ def build_groups(
     prices: dict[int, StockPriceLatest] | None = None,
     prev_navs: dict[int, tuple[date, Decimal]] | None = None,
     rates: dict[tuple[str, str], tuple[Decimal, date]] | None = None,
+    nps_navs: dict[str, tuple[Decimal, date]] | None = None,
+    nps_prev: dict[str, tuple[date, Decimal]] | None = None,
 ) -> list[dict[str, Any]]:
     """Value every holding; returns the groups in REGISTRY order."""
+    nps_navs = nps_navs or {}
+    nps_prev = nps_prev or {}
     rates = rates or {}
     navs = navs or {}
     prices = prices or {}
@@ -150,7 +181,8 @@ def build_groups(
     groups = []
     for slug, (_model, _create, read_schema) in REGISTRY.items():
         computed = [
-            _value(slug, r, today, navs, prices, prev_navs, rates) for r in records_by_type.get(slug, [])
+            _value(slug, r, today, navs, prices, prev_navs, rates, nps_navs, nps_prev)
+            for r in records_by_type.get(slug, [])
         ]
         items = [
             _item(r, read_schema, c)
@@ -185,7 +217,7 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
             stmt = select(model).where(model.user_id == user_id).order_by(model.id)
             return list(session.scalars(stmt).all())
 
-    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 3) as pool:
+    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 5) as pool:
         futures = {
             slug: pool.submit(fetch, model)
             for slug, (model, _c, _r) in REGISTRY.items()
@@ -195,12 +227,18 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
         nav_future = pool.submit(_fetch_navs, bind, user_id)
         prev_future = pool.submit(_fetch_prev_navs, bind, user_id)
         rates_future = pool.submit(_fetch_gold_rates, bind)
+        nps_future = pool.submit(_fetch_nps_navs, bind, user_id)
+        nps_prev_future = pool.submit(_fetch_nps_prev_navs, bind, user_id)
         records = {slug: future.result() for slug, future in futures.items()}
         records["stock"], prices = stock_future.result()
         navs = nav_future.result()
         prev_navs = prev_future.result()
         rates = rates_future.result()
-    return build_groups(records, today or date.today(), navs, prices, prev_navs, rates)
+        nps_navs = nps_future.result()
+        nps_prev = nps_prev_future.result()
+    return build_groups(
+        records, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
+    )
 
 
 def load_group(
@@ -220,9 +258,19 @@ def load_group(
         records = list(db.scalars(stmt).all())
         navs = {}
         prev_navs = {}
+    nps_navs: dict[str, tuple[Decimal, date]] = {}
+    nps_prev: dict[str, tuple[date, Decimal]] = {}
+    if slug == "nps":
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            nav_future = pool.submit(_fetch_nps_navs, db.get_bind(), user_id)
+            prev_future = pool.submit(_fetch_nps_prev_navs, db.get_bind(), user_id)
+            nps_navs = nav_future.result()
+            nps_prev = prev_future.result()
     prices = _prices_for(db, records) if slug == "stock" else {}
     rates = gold_rates.latest_rates(db) if slug == "gold" else {}
-    groups = build_groups({slug: records}, today or date.today(), navs, prices, prev_navs, rates)
+    groups = build_groups(
+        {slug: records}, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
+    )
     return next(g for g in groups if g["type"] == slug)
 
 
@@ -243,9 +291,18 @@ def load_holding(
         if row is not None:
             navs[row.scheme_code] = (row.nav, row.nav_date)
             prev_navs = nav_history.previous_navs(db, [record.scheme_code])
+    nps_navs: dict[str, tuple[Decimal, date]] = {}
+    nps_prev: dict[str, tuple[date, Decimal]] = {}
+    if slug == "nps":
+        row = db.get(NpsNavLatest, record.scheme_id)
+        if row is not None:
+            nps_navs[row.scheme_id] = (row.nav, row.nav_date)
+            nps_prev = nps_service.previous_navs(db, [record.scheme_id])
     prices = _prices_for(db, [record]) if slug == "stock" else {}
     rates = gold_rates.latest_rates(db) if slug == "gold" else {}
-    groups = build_groups({slug: [record]}, today or date.today(), navs, prices, prev_navs, rates)
+    groups = build_groups(
+        {slug: [record]}, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
+    )
     group = next(g for g in groups if g["type"] == slug)
     return record, group["items"][0]
 

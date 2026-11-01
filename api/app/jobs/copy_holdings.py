@@ -28,6 +28,8 @@ from app.models.fixed_deposit import FixedDeposit
 from app.models.gold import Gold
 from app.models.mf_master import MFMaster
 from app.models.mutual_fund import MutualFund
+from app.models.nps import Nps
+from app.models.nps_master import NpsMaster
 from app.models.pf import Pf
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.stock import Stock
@@ -52,6 +54,7 @@ TABLES = (
     TableSpec(Stock, "name", "master_id", StockMaster, "isin"),
     TableSpec(Bond, "name", "master_id", BondMaster, "isin"),
     TableSpec(MutualFund, "scheme_name", "scheme_code", MFMaster, "scheme_code"),
+    TableSpec(Nps, "scheme_id", None, NpsMaster, "scheme_id"),
     TableSpec(Gold, "name", None, None, None),
     TableSpec(Cash, "name", None, None, None),
     TableSpec(Pf, "name", None, None, None),
@@ -137,6 +140,11 @@ def _find_user(session: Session, label: str, raw_email: str):
 
 def _lookup_maps(spec: TableSpec, source: Session, target: Session, src_rows: list[dict]):
     link = spec.link_column
+    if spec.master is NpsMaster:
+        # scheme_id is the natural key and is copied as-is; only check the target has the scheme.
+        ids = {r["scheme_id"] for r in src_rows}
+        found = target.scalars(select(NpsMaster.scheme_id).where(NpsMaster.scheme_id.in_(ids))) if ids else []
+        return None, set(found)
     if spec.master is None:
         return {}, {}
     used = {r[link] for r in src_rows if r[link] is not None}
@@ -177,7 +185,12 @@ def copy_table(spec: TableSpec, source: Session, target: Session, src_uid: int, 
             duplicates += 1
             listing.append(("skip (duplicate)", name))
             continue
-        if link is None:
+        if spec.master is NpsMaster:
+            if row["scheme_id"] not in target_ids:
+                listing.append(("skip (scheme not found)", name))
+                continue
+            new_link, missing = None, False
+        elif link is None:
             new_link, missing = None, False
         elif spec.master is MFMaster:
             new_link, missing = relink_scheme(row[link], target_ids)

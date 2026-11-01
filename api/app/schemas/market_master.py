@@ -131,3 +131,15 @@ class FdIssuerImportResult(BaseModel):
 class MarketImportResult(BaseModel):
     stocks: StockImportResult
     bonds: BondImportResult
+
+
+class NpsMasterRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    scheme_id: str
+    scheme_name: str
+    pfm_name: str
+    tier: str | None = None
+    asset_class: str
+    nav: Dec | None = None
+    nav_date: date | None = None

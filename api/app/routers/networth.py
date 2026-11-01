@@ -10,6 +10,7 @@ from app.db import get_db
 from app.deps import current_user
 from app.models.mf_master import MFNavHistory
 from app.models.mf_transaction import MFTransaction
+from app.models.nps_master import NpsNavHistory
 from app.models.user import User
 from app.routers.assets import REGISTRY
 from app.routers.portfolio import build_dashboard, load_groups
@@ -49,6 +50,27 @@ def _fetch_navs(
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         for code, nav_date, nav in session.execute(stmt).all():
             out.setdefault(code, []).append((nav_date, nav))
+    return out
+
+
+def _fetch_nps_navs(
+    bind: Any, ids: set[str], start: date, end: date
+) -> dict[str, list[tuple[date, Any]]]:
+    out: dict[str, list[tuple[date, Any]]] = {}
+    if not ids:
+        return out
+    stmt = (
+        select(NpsNavHistory.scheme_id, NpsNavHistory.nav_date, NpsNavHistory.nav)
+        .where(
+            NpsNavHistory.scheme_id.in_(ids),
+            NpsNavHistory.nav_date >= start,
+            NpsNavHistory.nav_date <= end,
+        )
+        .order_by(NpsNavHistory.scheme_id, NpsNavHistory.nav_date)
+    )
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        for scheme_id, nav_date, nav in session.execute(stmt).all():
+            out.setdefault(scheme_id, []).append((nav_date, nav))
     return out
 
 
@@ -97,9 +119,17 @@ def load_history(
         closes_future = pool.submit(
             _fetch_closes, bind, {s.master_id for s in stocks if s.master_id is not None}, today
         )
+        nps_future = pool.submit(
+            _fetch_nps_navs,
+            bind,
+            {n.scheme_id for n in records["nps"]},
+            first - timedelta(days=14),
+            today,
+        )
         groups = groups_future.result()
         navs = nav_future.result()
         closes = closes_future.result()
+        nps_navs = nps_future.result()
         golds = records["gold"]
         rates = (
             _fetch_gold_rates(bind, {(g.metal, g.purity) for g in golds}, first - timedelta(days=14), today)
@@ -116,6 +146,7 @@ def load_history(
         txns,
         (totals["total_invested"], totals["total_current"]),
         rates,
+        nps_navs,
     )
 
 

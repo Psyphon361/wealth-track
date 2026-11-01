@@ -22,9 +22,11 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 import sqlalchemy as sa
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.orm import Session
 
+from app.models.nps import Nps
 from app.models.nps_master import NpsMaster, NpsNavHistory, NpsNavHistorySync, NpsNavLatest
 from app.schemas.nps import NpsImportResult
 from app.services.nav_history import HISTORY_YEARS, _years_ago
@@ -204,8 +206,8 @@ def fetch_history(scheme_id: str) -> list[tuple[date, Decimal]]:
 
 
 def held_scheme_ids(session: Session) -> set[str]:
-    """Scheme ids held by any user. Single hook point: nothing is held until nps_holdings exists."""
-    return set()
+    """Scheme ids held by any user (nps_holdings)."""
+    return set(session.scalars(sa.select(Nps.scheme_id).distinct()))
 
 
 def _append_today(session: Session, navs: list[NavRow], held: set[str]) -> int:
@@ -348,3 +350,134 @@ def sync_missing_history(session: Session) -> int:
             session.rollback()
             logger.warning("NPS history sync failed for scheme %s", scheme_id, exc_info=True)
     return count
+
+
+def sync_scheme_history(session: Session, scheme_id: str) -> bool:
+    """Backfill one scheme's history if it was never synced. Returns True when it ran."""
+    if session.get(NpsNavHistorySync, scheme_id) is not None:
+        return False
+    rows = fetch_history(scheme_id)
+    now = datetime.now(timezone.utc)
+    store_history(session, scheme_id, rows, now.date(), now)
+    return True
+
+
+def sync_scheme_safely(scheme_id: str) -> None:
+    """Background task after a holding is saved: own session, failures logged and swallowed
+    (the nightly import retries unsynced held schemes)."""
+    from app.db import SessionLocal
+
+    try:
+        with SessionLocal() as session:
+            try:
+                sync_scheme_history(session, scheme_id)
+            except Exception:
+                session.rollback()
+                raise
+    except Exception:  # noqa: BLE001 - best effort, never fail the request
+        logger.warning("NPS history sync failed for scheme %s", scheme_id, exc_info=True)
+
+
+# --- Lookups -------------------------------------------------------------------
+
+UNKNOWN_SCHEME_MESSAGE = "Choose a scheme"
+
+
+def get_scheme(session: Session, scheme_id: str) -> NpsMaster | None:
+    if not scheme_id or len(scheme_id) > 20:
+        return None
+    return session.get(NpsMaster, scheme_id)
+
+
+def require_scheme(session: Session, scheme_id: str) -> NpsMaster:
+    """Used by NPS create/update: unknown scheme -> 422 on `scheme_id`."""
+    scheme = get_scheme(session, scheme_id)
+    if scheme is None:
+        raise RequestValidationError(
+            [
+                {
+                    "type": "value_error",
+                    "loc": ("body", "scheme_id"),
+                    "msg": UNKNOWN_SCHEME_MESSAGE,
+                    "input": scheme_id,
+                }
+            ]
+        )
+    return scheme
+
+
+def _with_nav(scheme: NpsMaster, nav, nav_date) -> dict:
+    return {
+        "scheme_id": scheme.scheme_id,
+        "scheme_name": scheme.scheme_name,
+        "pfm_name": scheme.pfm_name,
+        "tier": scheme.tier,
+        "asset_class": scheme.asset_class,
+        "nav": nav,
+        "nav_date": nav_date,
+    }
+
+
+def get_scheme_with_nav(session: Session, scheme_id: str) -> dict | None:
+    if not scheme_id or len(scheme_id) > 20:
+        return None
+    row = session.execute(
+        sa.select(NpsMaster, NpsNavLatest.nav, NpsNavLatest.nav_date)
+        .outerjoin(NpsNavLatest, NpsNavLatest.scheme_id == NpsMaster.scheme_id)
+        .where(NpsMaster.scheme_id == scheme_id)
+    ).first()
+    return _with_nav(*row) if row else None
+
+
+def search_schemes(session: Session, q: str, limit: int = 20) -> list[dict]:
+    if len(q.strip()) < 2:
+        return []
+    limit = max(1, min(limit, 50))
+    statement = (
+        sa.select(NpsMaster, NpsNavLatest.nav, NpsNavLatest.nav_date)
+        .outerjoin(NpsNavLatest, NpsNavLatest.scheme_id == NpsMaster.scheme_id)
+        .where(NpsMaster.is_active)
+    )
+    for token in q.split():
+        statement = statement.where(
+            sa.or_(
+                NpsMaster.scheme_name.icontains(token, autoescape=True),
+                NpsMaster.pfm_name.icontains(token, autoescape=True),
+            )
+        )
+    statement = statement.order_by(
+        sa.func.similarity(sa.func.lower(NpsMaster.scheme_name), q.strip().lower()).desc(),
+        NpsMaster.scheme_name,
+        NpsMaster.scheme_id,
+    ).limit(limit)
+    return [_with_nav(*row) for row in session.execute(statement)]
+
+
+def previous_navs(session: Session, scheme_ids) -> dict[str, tuple[date, Decimal]]:
+    """Per scheme, the stored NAV on the latest date strictly before its latest NAV date.
+
+    One query, DB only. Schemes without such a row are omitted.
+    """
+    ids = [i for i in scheme_ids if i is not None]
+    if not ids:
+        return {}
+    ranked = (
+        sa.select(
+            NpsNavHistory.scheme_id.label("scheme_id"),
+            NpsNavHistory.nav_date.label("nav_date"),
+            NpsNavHistory.nav.label("nav"),
+            sa.func.row_number()
+            .over(
+                partition_by=NpsNavHistory.scheme_id,
+                order_by=NpsNavHistory.nav_date.desc(),
+            )
+            .label("rn"),
+        )
+        .join(NpsNavLatest, NpsNavLatest.scheme_id == NpsNavHistory.scheme_id)
+        .where(NpsNavHistory.scheme_id.in_(ids), NpsNavHistory.nav_date < NpsNavLatest.nav_date)
+        .subquery()
+    )
+    rows = session.execute(
+        sa.select(ranked.c.scheme_id, ranked.c.nav_date, ranked.c.nav).where(ranked.c.rn == 1)
+    ).all()
+    return {r[0]: (r[1], r[2]) for r in rows}

@@ -13,9 +13,8 @@ _ids = iter(range(1, 10_000))
 
 
 def _base(**fields):
-    return SimpleNamespace(
-        id=next(_ids), created_at=_STAMP, updated_at=_STAMP, notes=None, **fields
-    )
+    fields.setdefault("updated_at", _STAMP)
+    return SimpleNamespace(id=next(_ids), created_at=_STAMP, notes=None, **fields)
 
 
 def make_fd(**kw):
@@ -83,6 +82,18 @@ def make_pf(**kw):
     fields = dict(
         name="Test EPF", kind="epf", balance=Decimal("100000"), balance_date=date(2025, 10, 24),
         interest_rate=Decimal("8.25"), contributed=None, opened_on=None,
+    )  # fmt: skip
+    fields.update(kw)
+    return _base(**fields)
+
+
+def make_nps(**kw):
+    from datetime import date
+
+    fields = dict(
+        scheme_id="SM001003", scheme_name="SBI PENSION FUND SCHEME E - TIER I",
+        pfm_name="SBI Pension Funds Pvt. Ltd.", tier="I", asset_class="E",
+        units=Decimal("1000"), contributed=Decimal("40000"), start_date=date(2025, 10, 24),
     )  # fmt: skip
     fields.update(kw)
     return _base(**fields)

@@ -9,6 +9,7 @@ from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNav
 from app.models.login_attempt import LoginAttempt
 from app.models.mf_transaction import MFTransaction
 from app.models.mutual_fund import MutualFund
+from app.models.nps import Nps
 from app.models.nps_master import NpsMaster, NpsNavHistory, NpsNavHistorySync, NpsNavLatest
 from app.models.pf import Pf
 from app.models.recurring_deposit import RecurringDeposit
@@ -35,6 +36,7 @@ __all__ = [
     "MFTransaction",
     "LoginAttempt",
     "MutualFund",
+    "Nps",
     "NpsMaster",
     "NpsNavHistory",
     "NpsNavHistorySync",

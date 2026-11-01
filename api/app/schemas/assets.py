@@ -609,3 +609,45 @@ class PfCreate(_Create, PfBase):
 
 class PfRead(PfBase, _Read):
     pass
+
+
+# --- NPS --------------------------------------------------------------------
+
+
+NPS_SCHEME_ERROR = "Choose a scheme"
+
+NpsUnits = Annotated[
+    Decimal,
+    AfterValidator(_positive),
+    AfterValidator(_decimals(4)),
+    AfterValidator(_max_quantity),
+    Number,
+]
+
+
+class NpsBase(BaseModel):
+    scheme_id: str
+    units: Dec
+    contributed: Dec
+    start_date: date
+
+
+class NpsCreate(_Create, NpsBase):
+    # Blank or missing -> "Choose a scheme" (checked in the model validator below).
+    scheme_id: Annotated[str | None, BeforeValidator(_blank_to_none)] = None  # type: ignore[assignment]
+    units: NpsUnits
+    contributed: Money
+    start_date: TradeDate
+
+    @model_validator(mode="after")
+    def _scheme_rule(self):
+        if self.scheme_id is None:
+            _field_error(self, "scheme_id", NPS_SCHEME_ERROR)
+        return self
+
+
+class NpsRead(NpsBase, _Read):
+    scheme_name: str
+    pfm_name: str
+    tier: str | None = None
+    asset_class: str

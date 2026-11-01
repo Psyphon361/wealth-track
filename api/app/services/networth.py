@@ -24,6 +24,15 @@ def _q(value: Decimal) -> Decimal:
     return value.quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
+def _nps_fraction(r: Any, d: date, today: date) -> Decimal:
+    """Linear build-up share of an NPS holding on d: 0 at start_date, 1 from its updated_at date."""
+    stamp = getattr(r, "updated_at", None)
+    anchor = max(stamp.date() if stamp is not None else today, r.start_date)
+    if d >= anchor:
+        return Decimal(1)
+    return Decimal((d - r.start_date).days) / Decimal((anchor - r.start_date).days)
+
+
 def on_or_before(series: Series, on_date: date) -> Decimal | None:
     """Value of the last (date, value) entry with date <= on_date; series sorted by date."""
     index = bisect_right([d for d, _ in series], on_date)
@@ -125,6 +134,7 @@ def _holding_start(slug: str, record: Any) -> date:
         "stock": lambda r: r.buy_date,
         "bond": lambda r: r.purchase_date,
         "mf": lambda r: r.purchase_date,
+        "nps": lambda r: r.start_date,
         "gold": lambda r: r.purchase_date,
         "cash": lambda r: r.balance_date,
         "pf": lambda r: r.balance_date,
@@ -148,7 +158,7 @@ def earliest_start(
 ) -> date | None:
     """Earliest start date over every holding (MF with matching txns: its first txn)."""
     starts = [
-        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "gold", "cash", "pf") for r in holdings.get(slug, ())
+        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "nps", "gold", "cash", "pf") for r in holdings.get(slug, ())
     ]
     starts += [m.start for m in _prepare_mfs(holdings.get("mf", ()), txns or {})]
     return min(starts) if starts else None
@@ -179,13 +189,16 @@ def build_history(
     txns: dict[int, Sequence[Any]],
     today_totals: tuple[Decimal, Decimal],
     gold_rates: dict[tuple[str, str], Series] | None = None,
+    nps_navs: dict[str, Series] | None = None,
 ) -> dict[str, Any]:
     """Net worth series for the range. `today_totals` = (invested, current) from the dashboard.
 
     `navs` {scheme_code: [(date, nav)]}, `closes` {master_id: [(date, close)]} and `gold_rates`
-    {(metal, purity): [(date, rate per gram)]} are sorted by date.
+    {(metal, purity): [(date, rate per gram)]} and `nps_navs` {scheme_id: [(date, nav)]} are
+    sorted by date. NPS units and contributions build up linearly from start_date to updated_at.
     """
     gold_rates = gold_rates or {}
+    nps_navs = nps_navs or {}
     start = earliest_start(holdings, txns)
     if start is None:
         return {"range": range_key, "points": [], "stocks_at_cost_before": None}
@@ -217,6 +230,14 @@ def build_history(
                 last_at_cost = len(points)
             invested += _q(cost)
             current += _q(cost) if close is None else _q(Decimal(r.quantity) * Decimal(close))
+        for r in holdings.get("nps", ()):
+            if r.start_date > d:
+                continue
+            f = _nps_fraction(r, d, today)
+            cost = _q(Decimal(r.contributed) * f)
+            nav = on_or_before(nps_navs.get(r.scheme_id, ()), d)
+            invested += cost
+            current += cost if nav is None else _q(Decimal(r.units) * f * Decimal(nav))
         for r in holdings.get("gold", ()):
             if r.purchase_date > d:
                 continue

@@ -13,9 +13,9 @@ from app.schemas.assets import (
     GoldPurity,
 )
 from app.schemas.gold import GoldRateOnDate
-from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
+from app.schemas.market_master import BondMasterRead, FdIssuerRead, NpsMasterRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.services import amfi, bond_master, fd_issuers, gold_rates, nav_history, stock_master
+from app.services import amfi, bond_master, fd_issuers, gold_rates, nav_history, nps, stock_master
 
 router = APIRouter(prefix="/master", tags=["master"], dependencies=[Depends(current_user)])
 
@@ -34,6 +34,29 @@ def get_mf(scheme_code: int, db: Session = Depends(get_db)):
     scheme = amfi.get_scheme_with_nav(db, scheme_code)
     if scheme is None:
         raise HTTPException(status_code=404, detail="Scheme not found")
+    return scheme
+
+
+@router.get("/nps", response_model=list[NpsMasterRead])
+def search_nps(
+    q: str = Query(default=""),
+    limit: int = Query(default=20, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    return nps.search_schemes(db, q, limit)
+
+
+@router.get("/nps/{scheme_id}", response_model=NpsMasterRead)
+def get_nps(scheme_id: str, db: Session = Depends(get_db)):
+    scheme = nps.get_scheme_with_nav(db, scheme_id)
+    if scheme is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Scheme not found",
+                "description": "The requested resource doesn't exist.",
+            },
+        )
     return scheme
 
 

@@ -12,9 +12,14 @@ from app.models.mf_transaction import MFTransaction
 from app.models.user import User
 from app.routers.portfolio import _q, load_group, load_holding
 from app.schemas.holdings import HoldingDetailResponse, HoldingsResponse
-from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
+from app.schemas.market_master import (
+    BondMasterRead,
+    FdIssuerRead,
+    NpsMasterRead,
+    StockMasterRead,
+)
 from app.schemas.mf_scheme import MFSchemeRead
-from app.services import amfi, bond_master, fd_issuers, stock_master, valuation
+from app.services import amfi, bond_master, fd_issuers, nps, stock_master, valuation
 
 router = APIRouter(tags=["holdings"])
 
@@ -29,6 +34,8 @@ GOLD_METALS = ["gold", "silver"]
 GOLD_PURITIES = ["999", "995", "916", "750", "585", "925"]
 CASH_KINDS = ["savings", "current", "cash", "other"]
 PF_KINDS = ["epf", "vpf", "ppf"]
+NPS_TIERS = ["I", "II"]
+NPS_ASSET_CLASSES = ["E", "C", "G", "A", "other"]
 MF_CATEGORIES = ["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
 
 Compounding = Literal["monthly", "quarterly", "half_yearly", "yearly", "simple"]
@@ -39,6 +46,8 @@ GoldMetal = Literal["gold", "silver"]
 GoldPurity = Literal["999", "995", "916", "750", "585", "925"]
 CashKind = Literal["savings", "current", "cash", "other"]
 PfKind = Literal["epf", "vpf", "ppf"]
+NpsTier = Literal["I", "II"]
+NpsAssetClass = Literal["E", "C", "G", "A", "other"]
 MfCategory = Literal["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
 
 # Per type: search fields, facets (key -> enum values, or None for free text),
@@ -79,6 +88,11 @@ CONFIG: dict[str, dict[str, Any]] = {
         "facets": {"category": MF_CATEGORIES, "platform": None},
         "text": {"scheme_name", "category", "platform"},
     },
+    "nps": {
+        "search": ("scheme_name", "notes"),
+        "facets": {"pfm_name": None, "tier": NPS_TIERS, "asset_class": NPS_ASSET_CLASSES},
+        "text": {"scheme_name", "pfm_name", "tier", "asset_class"},
+    },
     "gold": {
         "search": ("name", "notes"),
         "facets": {"form": GOLD_FORMS, "metal": GOLD_METALS, "purity": GOLD_PURITIES},
@@ -116,6 +130,11 @@ BondSort = Literal[
 MfSort = Literal[
     "scheme_name", "category", "platform", "units", "avg_nav", "invested",
     "current_value", "gain", "gain_pct", "xirr", "purchase_date",
+]  # fmt: skip
+
+NpsSort = Literal[
+    "scheme_name", "pfm_name", "tier", "asset_class", "units", "nav", "contributed",
+    "current_value", "gain", "gain_pct", "start_date",
 ]  # fmt: skip
 
 GoldSort = Literal[
@@ -389,6 +408,24 @@ def get_mf_holdings(
     )  # fmt: skip
 
 
+@router.get("/holdings/nps", response_model=HoldingsResponse)
+def get_nps_holdings(
+    q: Q = None,
+    pfm_name: Texts = None,
+    tier: Annotated[list[NpsTier] | None, Query()] = None,
+    asset_class: Annotated[list[NpsAssetClass] | None, Query()] = None,
+    sort: NpsSort = "current_value",
+    dir: Dir = "desc",
+    page: Page = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    return _run(
+        db, user.id, "nps", q=q, sort=sort, dir=dir, page=page,
+        multi={"pfm_name": pfm_name, "tier": tier, "asset_class": asset_class},
+    )  # fmt: skip
+
+
 @router.get("/holdings/gold", response_model=HoldingsResponse)
 def get_gold_holdings(
     q: Q = None,
@@ -462,6 +499,9 @@ def linked_master(db: Session, slug: str, record: Any) -> dict[str, Any] | None:
         schema = BondMasterRead
     elif slug in ("gold", "cash", "pf"):
         return None  # no master table
+    elif slug == "nps":
+        found = nps.get_scheme_with_nav(db, record.scheme_id)
+        schema = NpsMasterRead
     else:
         found = amfi.get_scheme_with_nav(db, record.scheme_code) if record.scheme_code else None
         schema = MFSchemeRead
