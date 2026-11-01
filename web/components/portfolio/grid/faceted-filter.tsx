@@ -19,6 +19,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
+/** Dropdown-menu item metrics; hides CommandItem's own check icon (the checkbox shows state). */
+const ITEM =
+  "w-full gap-1.5 rounded-md px-1.5 py-1 text-[13.5px] [&>svg]:hidden";
+
 export interface FacetOption<T extends string> {
   value: T;
   label: string;
@@ -61,7 +65,7 @@ export function FacetedFilter<T extends string>({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 border-dashed"
+            className="h-8 border-dashed text-[13.5px]"
           />
         }
       >
@@ -88,14 +92,17 @@ export function FacetedFilter<T extends string>({
           </>
         ) : null}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-52 p-0">
-        <Command>
+      <PopoverContent align="start" className="w-auto min-w-44 gap-0 p-0">
+        <Command className="size-auto rounded-lg! p-1">
           {searchable ? (
-            <CommandInput placeholder={`Search ${title.toLowerCase()}…`} />
+            <CommandInput
+              placeholder={`Search ${title.toLowerCase()}…`}
+              className="text-[13.5px]"
+            />
           ) : null}
           <CommandList>
             {searchable ? <CommandEmpty>No matches.</CommandEmpty> : null}
-            <CommandGroup>
+            <CommandGroup className="p-0">
               {options.map((o) => {
                 const on = selected.includes(o.value);
                 return (
@@ -104,17 +111,17 @@ export function FacetedFilter<T extends string>({
                     value={o.label}
                     aria-label={o.label}
                     onSelect={() => toggle(o.value)}
-                    className="w-full"
+                    className={ITEM}
                   >
                     <Checkbox
                       checked={on}
                       tabIndex={-1}
                       aria-hidden
-                      className="pointer-events-none"
+                      className="pointer-events-none size-3.5 rounded-[4px] [&_svg]:size-2.5"
                     />
                     <span className="truncate">{o.label}</span>
                     {o.count !== undefined ? (
-                      <span className="num ml-auto text-xs text-muted-foreground">
+                      <span className="num ml-auto pl-3 text-right text-xs text-muted-foreground">
                         {o.count}
                       </span>
                     ) : null}
@@ -124,13 +131,13 @@ export function FacetedFilter<T extends string>({
             </CommandGroup>
             {selected.length > 0 ? (
               <>
-                <CommandSeparator />
-                <CommandGroup>
+                <CommandSeparator className="my-1" />
+                <CommandGroup className="p-0">
                   <CommandItem
                     value="Clear filter"
                     aria-label="Clear filter"
                     onSelect={() => onChange([])}
-                    className="justify-center"
+                    className={`${ITEM} justify-center`}
                   >
                     Clear filter
                   </CommandItem>

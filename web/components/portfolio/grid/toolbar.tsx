@@ -168,7 +168,13 @@ export function Toolbar<TRow extends HoldingRow>({
       />
       {config.filters.map(renderFilter)}
       {hasFilters ? (
-        <Button type="button" variant="ghost" size="sm" onClick={onReset}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-8 text-[13.5px]"
+          onClick={onReset}
+        >
           <X aria-hidden />
           Reset
         </Button>
@@ -176,7 +182,14 @@ export function Toolbar<TRow extends HoldingRow>({
       <div className="ml-auto">
         <DropdownMenu>
           <DropdownMenuTrigger
-            render={<Button type="button" variant="outline" size="sm" />}
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-[13.5px]"
+              />
+            }
           >
             <Columns3 aria-hidden />
             Columns

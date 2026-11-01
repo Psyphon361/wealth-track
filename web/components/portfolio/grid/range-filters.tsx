@@ -29,7 +29,7 @@ function RangeTrigger({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 border-dashed"
+          className="h-8 border-dashed text-[13.5px]"
         />
       }
     >
@@ -57,7 +57,7 @@ function RangeActions({
   onClear: () => void;
 }) {
   return (
-    <div className="flex justify-between gap-2 pt-1">
+    <div className="flex justify-between gap-2">
       <Button
         type="button"
         variant="ghost"
@@ -94,7 +94,7 @@ function PercentInput({
           placeholder="Any"
           value={value}
           onChange={(e) => onChange(sanitizeNumber(e.target.value, 2))}
-          className="num pr-6 text-right"
+          className="num h-7 pr-6 text-right text-[13.5px] md:text-[13.5px]"
         />
         <span
           aria-hidden
@@ -162,7 +162,7 @@ export function PercentRangeFilter({
         title={title}
         summary={summary}
       />
-      <PopoverContent align="start" className="w-64">
+      <PopoverContent align="start" className="w-60 gap-2 p-2">
         <PercentForm
           min={min}
           max={max}
@@ -213,11 +213,11 @@ function DatePick({
             <Button
               type="button"
               variant="outline"
-              className="h-8 w-full justify-start rounded-lg px-2.5 font-normal"
+              className="h-7 w-full justify-start rounded-lg px-2 text-[13.5px] font-normal"
             />
           }
         >
-          <CalendarDays className="size-4 text-muted-foreground" />
+          <CalendarDays className="size-3.5 text-muted-foreground" />
           {selected ? (
             <span className="num text-foreground">{formatDate(value)}</span>
           ) : (
@@ -258,7 +258,7 @@ function DateRangeForm({
   const inverted = a !== "" && b !== "" && a > b;
   return (
     <>
-      <div className="flex flex-col gap-2 sm:flex-row">
+      <div className="flex gap-2">
         <DatePick label="From" value={a} onChange={setA} />
         <DatePick label="To" value={b} onChange={setB} />
       </div>
@@ -299,7 +299,7 @@ export function DateRangeFilter({
         title={title}
         summary={summary}
       />
-      <PopoverContent align="start" className="w-72 sm:w-80">
+      <PopoverContent align="start" className="w-72 gap-2 p-2">
         <DateRangeForm
           from={from}
           to={to}
