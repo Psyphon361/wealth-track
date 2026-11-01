@@ -11,7 +11,17 @@ from app.db import get_db
 from app.schemas.gold import GoldImportResult
 from app.schemas.mf_scheme import AmfiImportResult
 from app.schemas.market_master import FdIssuerImportResult, MarketImportResult
-from app.services import amfi, bond_master, fd_issuers, gold_rates, market_files, stock_history, stock_master
+from app.schemas.nps import NpsImportResult
+from app.services import (
+    amfi,
+    bond_master,
+    fd_issuers,
+    gold_rates,
+    market_files,
+    nps,
+    stock_history,
+    stock_master,
+)
 
 # Mounted outside the X-API-Key router: protected by CRON_SECRET (Vercel sends it as a Bearer token).
 router = APIRouter(prefix="/cron", tags=["cron"])
@@ -37,6 +47,15 @@ def refresh_amfi(db: Session = Depends(get_db)):
     except (urllib.error.URLError, TimeoutError, OSError):
         nav_names = None
     return amfi.import_navall(db, text, nav_names)
+
+
+@router.get("/nps", response_model=NpsImportResult, dependencies=[Depends(require_cron_secret)])
+def refresh_nps(db: Session = Depends(get_db)):
+    try:
+        text = nps.fetch_latest()
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise HTTPException(status_code=502, detail="Couldn't fetch the NPS file") from exc
+    return nps.import_latest(db, nps.parse_latest(text))
 
 
 @router.get(

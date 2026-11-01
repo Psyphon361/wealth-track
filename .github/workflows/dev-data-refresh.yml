@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: '0 14 * * *'
     - cron: '30 16 * * *'
+    - cron: '45 16 * * *'
     - cron: '0 3 * * 1'
     - cron: '0 13 * * *'
   workflow_dispatch:
@@ -11,7 +12,7 @@ on:
       job:
         description: Which import to run
         type: choice
-        options: [all, securities, amfi, issuers, gold]
+        options: [all, securities, amfi, nps, issuers, gold]
         default: all
 
 permissions:
@@ -57,6 +58,13 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
         run: ../.venv/bin/python -m app.jobs.amfi_import
+
+      - name: Import NPS (scheme master and NAVs)
+        if: github.event.schedule == '45 16 * * *' || inputs.job == 'nps' || inputs.job == 'all'
+        working-directory: api
+        env:
+          DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+        run: ../.venv/bin/python -m app.jobs.nps_import
 
       - name: Import FD/RD issuers
         if: github.event.schedule == '0 3 * * 1' || inputs.job == 'issuers' || inputs.job == 'all'
