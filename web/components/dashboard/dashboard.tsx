@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiGet, toApiMessage } from "@/lib/api";
+import { anyHoldingsVersion } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { DashboardResponse } from "@/lib/types";
 import { SummaryCards } from "./summary-cards";
@@ -21,8 +22,16 @@ export function Dashboard() {
   const [attempt, setAttempt] = useState(0);
   const hasData = useRef(false);
 
+  const seenVersion = useRef(anyHoldingsVersion());
+
   useEffect(() => {
     let cancelled = false;
+    // Holdings changed since the last load: show the skeleton, not stale data.
+    if (seenVersion.current !== anyHoldingsVersion()) {
+      seenVersion.current = anyHoldingsVersion();
+      hasData.current = false;
+      setState({ status: "loading" });
+    }
     apiGet<DashboardResponse>("/dashboard")
       .then((data) => {
         if (cancelled) return;

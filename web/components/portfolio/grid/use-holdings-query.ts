@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
+import { holdingsVersion } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { HoldingRow, HoldingsResponse, SortDir } from "@/lib/types";
 import { filterParamKeys, type FilterDef, type GridConfig } from "./types";
@@ -120,6 +121,7 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   const [refreshing, setRefreshing] = useState(false);
   const requestId = useRef(0);
   const hasData = useRef(false);
+  const seenVersion = useRef(holdingsVersion(config.type));
 
   const load = useCallback(
     (query: string) => {
@@ -148,11 +150,19 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
 
   useEffect(() => {
     const counter = requestId;
+    // A holding of this type changed outside the grid since we last loaded:
+    // drop the cached rows so the loading state shows until fresh data arrives.
+    if (seenVersion.current !== holdingsVersion(config.type)) {
+      seenVersion.current = holdingsVersion(config.type);
+      hasData.current = false;
+      setData(null);
+      setError(null);
+    }
     load(qs);
     return () => {
       counter.current++;
     };
-  }, [qs, load]);
+  }, [qs, load, config.type]);
 
   const navigate = useCallback(
     (next: HoldingsFilters) => {
@@ -199,9 +209,11 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   );
 
   const refetch = useCallback(() => {
+    // In-grid change: rows stay, and nothing is pending for this type.
+    seenVersion.current = holdingsVersion(config.type);
     setRefreshing(true);
     load(qs);
-  }, [load, qs]);
+  }, [load, qs, config.type]);
 
   const retry = useCallback(() => {
     setError(null);

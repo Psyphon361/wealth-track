@@ -13,6 +13,7 @@ import { cashConfig } from "@/components/portfolio/grid/configs/cash";
 import { fdConfig } from "@/components/portfolio/grid/configs/fd";
 import { goldConfig } from "@/components/portfolio/grid/configs/gold";
 import { mfConfig } from "@/components/portfolio/grid/configs/mf";
+import { npsConfig } from "@/components/portfolio/grid/configs/nps";
 import { pfConfig } from "@/components/portfolio/grid/configs/pf";
 import { rdConfig } from "@/components/portfolio/grid/configs/rd";
 import { StatusBadge } from "@/components/portfolio/grid/configs/shared";
@@ -21,6 +22,7 @@ import type { GridConfig } from "@/components/portfolio/grid/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiDelete } from "@/lib/api";
+import { markHoldingsStale } from "@/lib/holdings-cache";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
 import {
@@ -112,6 +114,7 @@ function TypedDetail<TRow extends HoldingRow>({
     setDeleting(null);
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
+        markHoldingsStale(target.type);
         notify.success(res);
         router.push(backHref);
       })
@@ -204,5 +207,7 @@ export function HoldingDetail({ type, id }: { type: AssetType; id: number }) {
       return <TypedDetail config={cashConfig} id={id} />;
     case "pf":
       return <TypedDetail config={pfConfig} id={id} />;
+    case "nps":
+      return <TypedDetail config={npsConfig} id={id} />;
   }
 }

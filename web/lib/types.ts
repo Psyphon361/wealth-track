@@ -1,4 +1,4 @@
-export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash" | "pf";
+export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash" | "pf" | "nps";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   fd: "Fixed Deposits",
@@ -9,6 +9,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   gold: "Gold & Silver",
   cash: "Cash & Savings",
   pf: "EPF & PPF",
+  nps: "NPS",
 };
 
 export type Compounding =
@@ -70,6 +71,22 @@ export const PF_KIND_LABELS: Record<PfKind, string> = {
   epf: "EPF",
   vpf: "VPF",
   ppf: "PPF",
+};
+
+export type NpsTier = "I" | "II";
+export type NpsAssetClass = "E" | "C" | "G" | "A" | "other";
+
+export const NPS_TIER_LABELS: Record<NpsTier, string> = {
+  I: "Tier I",
+  II: "Tier II",
+};
+
+export const NPS_ASSET_CLASS_LABELS: Record<NpsAssetClass, string> = {
+  E: "Equity",
+  C: "Corporate debt",
+  G: "Govt securities",
+  A: "Alternative",
+  other: "Other",
 };
 
 export type GoldForm = "jewellery" | "coin" | "bar" | "digital";
@@ -292,6 +309,16 @@ export interface MfNavResponse {
   source: "latest" | "history";
 }
 
+export interface NpsScheme {
+  scheme_id: string;
+  scheme_name: string;
+  pfm_name: string;
+  tier: NpsTier | null;
+  asset_class: NpsAssetClass;
+  nav: number | null;
+  nav_date: string | null;
+}
+
 export interface GoldRateResponse {
   metal?: GoldMetal;
   purity: string;
@@ -340,6 +367,14 @@ export interface PfInput {
   interest_rate: number;
   contributed: number | null;
   opened_on: string | null;
+  notes: string | null;
+}
+
+export interface NpsInput {
+  scheme_id: string;
+  units: number;
+  contributed: number;
+  start_date: string;
   notes: string | null;
 }
 
@@ -424,6 +459,13 @@ export type MutualFund = MutualFundInput & RecordFields;
 export type Gold = GoldInput & RecordFields;
 export type Cash = CashInput & RecordFields;
 export type Pf = PfInput & RecordFields;
+export type Nps = NpsInput &
+  RecordFields & {
+    scheme_name: string;
+    pfm_name: string;
+    tier: NpsTier | null;
+    asset_class: NpsAssetClass;
+  };
 
 export type AssetRecord =
   | FixedDeposit
@@ -433,7 +475,8 @@ export type AssetRecord =
   | MutualFund
   | Gold
   | Cash
-  | Pf;
+  | Pf
+  | Nps;
 
 // Portfolio
 
@@ -535,6 +578,16 @@ export type PfItem = Pf &
     xirr?: number | null;
   };
 
+export type NpsItem = Nps &
+  ComputedFields & {
+    nav: number | null;
+    nav_date: string | null;
+    prev_nav: number | null;
+    prev_nav_date: string | null;
+    day_change: number | null;
+    day_change_pct: number | null;
+  };
+
 export type HoldingRow =
   | FixedDepositItem
   | RecurringDepositItem
@@ -543,7 +596,8 @@ export type HoldingRow =
   | MutualFundItem
   | GoldItem
   | CashItem
-  | PfItem;
+  | PfItem
+  | NpsItem;
 
 export interface FacetValue {
   value: string;
@@ -572,7 +626,7 @@ export interface HoldingsResponse<TRow extends HoldingRow = HoldingRow> {
 
 // Holding details (GET /holdings/{type}/{id})
 
-export type HoldingMaster = FdIssuer | StockMaster | BondMaster | MfScheme;
+export type HoldingMaster = FdIssuer | StockMaster | BondMaster | MfScheme | NpsScheme;
 
 export interface HoldingDetailResponse<TItem extends HoldingRow = HoldingRow> {
   item: TItem;

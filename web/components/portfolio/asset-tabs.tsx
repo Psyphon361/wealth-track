@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type LucideIcon } from "lucide-react";
 import { apiGet } from "@/lib/api";
 import { ASSET_CATALOG, ASSET_GROUPS } from "@/lib/asset-catalog";
+import { anyHoldingsVersion } from "@/lib/holdings-cache";
 import { cn } from "@/lib/utils";
 import type { AssetType, DashboardResponse } from "@/lib/types";
 
@@ -25,6 +26,7 @@ export const TAB_LABELS: Record<AssetType, string> = {
   gold: "Gold & Silver",
   cash: "Cash",
   pf: "EPF & PPF",
+  nps: "NPS",
 };
 
 const TAB_ICONS = Object.fromEntries(
@@ -35,7 +37,12 @@ const TAB_ICONS = Object.fromEntries(
 export function addLabel(type: AssetType): string {
   const label = TAB_LABELS[type];
   if (type === "pf") return "Add EPF/PPF";
-  const keepCase = type === "fd" || type === "rd" || type === "gold" || type === "cash";
+  const keepCase =
+    type === "fd" ||
+    type === "rd" ||
+    type === "gold" ||
+    type === "cash" ||
+    type === "nps";
   return `Add ${keepCase ? label : label.toLowerCase()}`;
 }
 
@@ -65,8 +72,16 @@ export function AssetTabs() {
   const active = activeFromPath(pathname);
   const [counts, setCounts] = useState<Counts | null>(cachedCounts);
 
+  const seenVersion = useRef(anyHoldingsVersion());
+
   useEffect(() => {
     let cancelled = false;
+    // Holdings changed since the last load: show the placeholders, not old counts.
+    if (seenVersion.current !== anyHoldingsVersion()) {
+      seenVersion.current = anyHoldingsVersion();
+      cachedCounts = null;
+      setCounts(null);
+    }
     function load() {
       apiGet<DashboardResponse>("/dashboard")
         .then((res) => {

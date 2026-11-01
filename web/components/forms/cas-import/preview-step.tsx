@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { apiPost } from "@/lib/api";
 import { invalidateNetWorth } from "@/lib/networth-cache";
+import { markHoldingsStale } from "@/lib/holdings-cache";
 import { formatDate, formatINR } from "@/lib/format";
 import { notify } from "@/lib/notify";
 import type {
@@ -126,6 +127,7 @@ export function CasPreviewStep({
         rows: body,
       });
       invalidateNetWorth();
+      markHoldingsStale("mf");
       notify.success(result);
       onImported(result);
     } catch (err) {

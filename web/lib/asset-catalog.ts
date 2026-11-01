@@ -7,6 +7,7 @@ import {
   PieChart,
   Repeat,
   ScrollText,
+  Umbrella,
   type LucideIcon,
 } from "lucide-react";
 import type { AssetType } from "@/lib/types";
@@ -61,6 +62,13 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
     title: "Mutual funds",
     hint: "Units at average NAV",
     icon: PieChart,
+    group: "Market-linked",
+  },
+  {
+    type: "nps",
+    title: "NPS",
+    hint: "Tier I and II pension schemes",
+    icon: Umbrella,
     group: "Market-linked",
   },
   {

@@ -46,6 +46,7 @@ export const GOLD_WEIGHT_DECIMALS_ERROR =
 export const CASH_KIND_ERROR = "Choose an account type";
 export const PF_KIND_ERROR = CASH_KIND_ERROR;
 export const PF_OPENED_ON_ERROR = "Enter the opening date";
+export const NPS_SCHEME_ERROR = "Choose a scheme";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
@@ -284,6 +285,14 @@ export const positiveUnits = positiveNumber
   .refine(
     (n) => Math.abs(n * 1000 - Math.round(n * 1000)) < 1e-6,
     "Up to 3 decimal places allowed",
+  )
+  .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
+
+/** NPS units: > 0, at most 4 decimals, at most 1 crore. */
+export const npsUnits = positiveNumber
+  .refine(
+    (n) => Math.abs(n * 10000 - Math.round(n * 10000)) < 1e-6,
+    "Up to 4 decimal places allowed",
   )
   .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
 

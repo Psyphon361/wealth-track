@@ -7,6 +7,7 @@ import type {
   FixedDeposit,
   Gold,
   MutualFund,
+  Nps,
   Pf,
   RecurringDeposit,
   Stock,
@@ -16,6 +17,7 @@ import { CashForm } from "./cash-form";
 import { FdForm } from "./fd-form";
 import { GoldForm } from "./gold-form";
 import { MfForm } from "./mf-form";
+import { NpsForm } from "./nps-form";
 import { PfForm } from "./pf-form";
 import { RdForm } from "./rd-form";
 import { StockForm } from "./stock-form";
@@ -34,7 +36,8 @@ export type AssetFormProps =
   | ({ type: "mf" } & Common<MutualFund>)
   | ({ type: "gold" } & Common<Gold>)
   | ({ type: "cash" } & Common<Cash>)
-  | ({ type: "pf" } & Common<Pf>);
+  | ({ type: "pf" } & Common<Pf>)
+  | ({ type: "nps" } & Common<Nps>);
 
 export type { AssetType };
 
@@ -103,6 +106,14 @@ export function AssetForm(props: AssetFormProps) {
     case "pf":
       return (
         <PfForm
+          record={props.record}
+          onSaved={props.onSaved}
+          onCancel={props.onCancel}
+        />
+      );
+    case "nps":
+      return (
+        <NpsForm
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}

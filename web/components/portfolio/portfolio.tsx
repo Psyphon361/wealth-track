@@ -7,6 +7,7 @@ import { notify } from "@/lib/notify";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { apiDelete } from "@/lib/api";
 import { invalidateNetWorth } from "@/lib/networth-cache";
+import { markHoldingsStale } from "@/lib/holdings-cache";
 import { formatINR, formatIstDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
@@ -18,6 +19,7 @@ import { cashConfig } from "./grid/configs/cash";
 import { fdConfig } from "./grid/configs/fd";
 import { goldConfig } from "./grid/configs/gold";
 import { mfConfig } from "./grid/configs/mf";
+import { npsConfig } from "./grid/configs/nps";
 import { pfConfig } from "./grid/configs/pf";
 import { rdConfig } from "./grid/configs/rd";
 import { stockConfig } from "./grid/configs/stock";
@@ -152,6 +154,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
         invalidateNetWorth();
+        markHoldingsStale(target.type);
         notify.success(res);
       })
       .catch((err: unknown) => {
@@ -307,5 +310,7 @@ export function Portfolio({ type }: { type: AssetType }) {
       return <TypedPortfolio config={cashConfig} />;
     case "pf":
       return <TypedPortfolio config={pfConfig} />;
+    case "nps":
+      return <TypedPortfolio config={npsConfig} />;
   }
 }
