@@ -77,8 +77,8 @@ def _fetch_prev_navs(bind: Any, user_id: int) -> dict[int, tuple[date, Decimal]]
         return nav_history.previous_navs(session, codes)
 
 
-def _fetch_gold_rates(bind: Any) -> dict[str, tuple[Decimal, date]]:
-    """Latest IBJA rate per purity, on this part's own session."""
+def _fetch_gold_rates(bind: Any) -> dict[tuple[str, str], tuple[Decimal, date]]:
+    """Latest IBJA rate per (metal, purity), on this part's own session."""
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         return gold_rates.latest_rates(session)
 
@@ -90,10 +90,10 @@ def _value(
     navs: dict[int, tuple[Decimal, date]],
     prices: dict[int, StockPriceLatest],
     prev_navs: dict[int, tuple[date, Decimal]],
-    rates: dict[str, tuple[Decimal, date]],
+    rates: dict[tuple[str, str], tuple[Decimal, date]],
 ):
     if slug == "gold":
-        rate, rate_date = rates.get(record.purity, (None, None))
+        rate, rate_date = rates.get((record.metal, record.purity), (None, None))
         return valuation.value_gold(record, today, rate=rate, rate_date=rate_date)
     if slug == "mf":
         nav, nav_date = navs.get(record.scheme_code, (None, None))
@@ -140,7 +140,7 @@ def build_groups(
     navs: dict[int, tuple[Decimal, date]] | None = None,
     prices: dict[int, StockPriceLatest] | None = None,
     prev_navs: dict[int, tuple[date, Decimal]] | None = None,
-    rates: dict[str, tuple[Decimal, date]] | None = None,
+    rates: dict[tuple[str, str], tuple[Decimal, date]] | None = None,
 ) -> list[dict[str, Any]]:
     """Value every holding; returns the groups in REGISTRY order."""
     rates = rates or {}

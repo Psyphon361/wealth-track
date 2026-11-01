@@ -140,7 +140,7 @@ def get_gold_rate(
     db: Session = Depends(get_db),
 ):
     nav_history.validate_not_future(on_date)
-    found = gold_rates.rate_on_or_before(db, purity, on_date)
+    found = gold_rates.rate_on_or_before(db, "gold", purity, on_date)
     if found is None or (on_date - found[1]) > timedelta(days=GOLD_RATE_MAX_GAP_DAYS):
         raise HTTPException(
             status_code=404,

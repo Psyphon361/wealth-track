@@ -178,12 +178,12 @@ def build_history(
     closes: dict[int, Series],
     txns: dict[int, Sequence[Any]],
     today_totals: tuple[Decimal, Decimal],
-    gold_rates: dict[str, Series] | None = None,
+    gold_rates: dict[tuple[str, str], Series] | None = None,
 ) -> dict[str, Any]:
     """Net worth series for the range. `today_totals` = (invested, current) from the dashboard.
 
     `navs` {scheme_code: [(date, nav)]}, `closes` {master_id: [(date, close)]} and `gold_rates`
-    {purity: [(date, rate per gram)]} are sorted by date.
+    {(metal, purity): [(date, rate per gram)]} are sorted by date.
     """
     gold_rates = gold_rates or {}
     start = earliest_start(holdings, txns)
@@ -221,7 +221,7 @@ def build_history(
             if r.purchase_date > d:
                 continue
             cost = _q(Decimal(r.invested_amount))
-            rate = on_or_before(gold_rates.get(r.purity, ()), d)
+            rate = on_or_before(gold_rates.get((r.metal, r.purity), ()), d)
             invested += cost
             current += cost if rate is None else _q(Decimal(r.weight_grams) * Decimal(rate))
         for r in holdings.get("cash", ()):

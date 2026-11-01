@@ -134,7 +134,7 @@ def test_fixed_ranges_are_daily():
 def test_gold_rate_on_or_before_cost_before_first_rate_and_excluded_before_purchase():
     gold = make_gold(purchase_date=date(2026, 10, 1), weight_grams=Decimal("10"),
                      invested_amount=Decimal("50000"), purity="916")
-    rates = {"916": [(date(2026, 10, 10), Decimal("5100")), (date(2026, 10, 20), Decimal("5200"))]}
+    rates = {("gold", "916"): [(date(2026, 10, 10), Decimal("5100")), (date(2026, 10, 20), Decimal("5200"))]}
     result = networth.build_history(
         "1m", TODAY, {"gold": [gold]}, {}, {}, {}, (Decimal("0"), Decimal("0")), rates
     )

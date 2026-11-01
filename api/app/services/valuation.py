@@ -140,7 +140,7 @@ def value_gold(
     rate: Decimal | None = None,
     rate_date: date | None = None,
 ) -> dict[str, Any]:
-    """Current value is weight x IBJA rate per gram for its purity; no rate means invested."""
+    """Current value is weight x IBJA rate per gram for its metal and purity (gold or silver); no rate means invested."""
     today = today or date.today()
     invested = Decimal(gold.invested_amount)
     if rate is None:

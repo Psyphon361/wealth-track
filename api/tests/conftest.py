@@ -59,7 +59,7 @@ def make_gold(**kw):
     from datetime import date
 
     fields = dict(
-        name="Test Gold", form="jewellery", purity="916", weight_grams=Decimal("10"),
+        name="Test Gold", form="jewellery", metal="gold", purity="916", weight_grams=Decimal("10"),
         purchase_date=date(2025, 10, 24), invested_amount=Decimal("50000"),
     )  # fmt: skip
     fields.update(kw)

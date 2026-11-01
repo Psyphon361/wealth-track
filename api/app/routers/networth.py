@@ -58,10 +58,10 @@ def _fetch_closes(bind: Any, ids: set[int], end: date) -> dict[int, list[tuple[d
 
 
 def _fetch_gold_rates(
-    bind: Any, purities: set[str], start: date, end: date
-) -> dict[str, list[tuple[date, Any]]]:
+    bind: Any, keys: set[tuple[str, str]], start: date, end: date
+) -> dict[tuple[str, str], list[tuple[date, Any]]]:
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
-        return gold_rates.history_between(session, sorted(purities), start, end)
+        return gold_rates.history_between(session, sorted(keys), start, end)
 
 
 def _fetch_txns(bind: Any, mf_ids: list[int]) -> dict[int, list[MFTransaction]]:
@@ -102,7 +102,7 @@ def load_history(
         closes = closes_future.result()
         golds = records["gold"]
         rates = (
-            _fetch_gold_rates(bind, {g.purity for g in golds}, first - timedelta(days=14), today)
+            _fetch_gold_rates(bind, {(g.metal, g.purity) for g in golds}, first - timedelta(days=14), today)
             if golds
             else {}
         )

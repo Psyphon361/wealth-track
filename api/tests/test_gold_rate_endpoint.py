@@ -9,7 +9,7 @@ DESCRIPTION = "No IBJA rate on or just before this date. Enter the amount yourse
 
 
 def _rate_on(days_back):
-    def fake(session, purity, on):
+    def fake(session, metal, purity, on):
         return Decimal("7500.50"), on - timedelta(days=days_back)
 
     return fake
@@ -43,7 +43,7 @@ def test_rate_too_old_is_404(client, users, monkeypatch):  # noqa: F811
 
 
 def test_rate_missing_is_404(client, users, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(master.gold_rates, "rate_on_or_before", lambda s, p, o: None)
+    monkeypatch.setattr(master.gold_rates, "rate_on_or_before", lambda s, m, p, o: None)
     r = client.get("/api/master/gold/rate?purity=999&date=2026-10-09", headers=users[0])
     assert r.status_code == 404
     assert r.json()["message"] == MESSAGE
