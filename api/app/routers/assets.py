@@ -31,7 +31,7 @@ ASSET_LABELS = {
     "stock": "Stock",
     "bond": "Bond",
     "mf": "Mutual fund",
-    "gold": "Gold",
+    "gold": "Gold & Silver",
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
 }
@@ -56,6 +56,11 @@ def _holding_name(obj) -> str:
 def _build_router(slug: str, model, create, read) -> APIRouter:
     sub = APIRouter(prefix=f"/{slug}", tags=[slug])
     label = ASSET_LABELS[slug]
+
+    def _label(obj) -> str:
+        # Gold & Silver holdings are named by their metal in toasts.
+        return obj.metal.capitalize() if slug == "gold" else label
+
     result = create_model(f"{read.__name__}Result", __base__=(read, Outcome))
 
     def _with_message(obj, message: str):
@@ -97,7 +102,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         db.add(obj)
         db.commit()
         db.refresh(obj)
-        return _with_message(obj, f"{label} added")
+        return _with_message(obj, f"{_label(obj)} added")
 
     @sub.get("/{item_id}", response_model=read)
     def get_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -123,9 +128,10 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     ):
         obj = _get_or_404(db, model, item_id, user.id)
         name = _holding_name(obj)
+        deleted_label = _label(obj)
         db.delete(obj)
         db.commit()
-        return Outcome(message=f"{label} deleted", description=name)
+        return Outcome(message=f"{deleted_label} deleted", description=name)
 
     return sub
 

@@ -463,7 +463,11 @@ GOLD_FORM_ERROR = "Choose a form"
 GOLD_PURITY_ERROR = "Choose a purity"
 GOLD_WEIGHT_DECIMALS_ERROR = "Weight can have at most 3 decimal places"
 GOLD_FORMS = ("jewellery", "coin", "bar", "digital")
-GOLD_PURITIES = ("999", "995", "916", "750", "585")
+GOLD_METAL_ERROR = "Choose a metal"
+GOLD_METALS = ("gold", "silver")
+GOLD_METAL_PURITIES = ("999", "995", "916", "750", "585")
+SILVER_PURITIES = ("999", "925")
+GOLD_PURITIES = ("999", "995", "916", "750", "585", "925")  # every allowed purity, either metal
 
 
 def _one_of(allowed: tuple[str, ...], message: str) -> Callable[[object], object]:
@@ -485,8 +489,12 @@ GoldForm = Annotated[
     Literal["jewellery", "coin", "bar", "digital"],
     BeforeValidator(_one_of(GOLD_FORMS, GOLD_FORM_ERROR)),
 ]
+GoldMetal = Annotated[
+    Literal["gold", "silver"],
+    BeforeValidator(_one_of(GOLD_METALS, GOLD_METAL_ERROR)),
+]
 GoldPurity = Annotated[
-    Literal["999", "995", "916", "750", "585"],
+    Literal["999", "995", "916", "750", "585", "925"],
     BeforeValidator(_one_of(GOLD_PURITIES, GOLD_PURITY_ERROR)),
 ]
 GoldWeight = Annotated[
@@ -501,7 +509,8 @@ GoldWeight = Annotated[
 class GoldBase(BaseModel):
     name: Required
     form: Literal["jewellery", "coin", "bar", "digital"]
-    purity: Literal["999", "995", "916", "750", "585"]
+    metal: Literal["gold", "silver"]
+    purity: Literal["999", "995", "916", "750", "585", "925"]
     weight_grams: Dec
     purchase_date: date
     invested_amount: Dec
@@ -509,10 +518,18 @@ class GoldBase(BaseModel):
 
 class GoldCreate(_Create, GoldBase):
     form: GoldForm
+    metal: GoldMetal
     purity: GoldPurity
     weight_grams: GoldWeight
     purchase_date: TradeDate
     invested_amount: Money
+
+    @model_validator(mode="after")
+    def _purity_matches_metal(self):
+        allowed = SILVER_PURITIES if self.metal == "silver" else GOLD_METAL_PURITIES
+        if self.purity not in allowed:
+            _field_error(self, "purity", GOLD_PURITY_ERROR)
+        return self
 
 
 class GoldRead(GoldBase, _Read):

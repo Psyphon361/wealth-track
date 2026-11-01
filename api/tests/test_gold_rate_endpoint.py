@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
+
 from app.routers import master
 from tests.test_scoping import client, users  # noqa: F401
 
@@ -20,6 +22,7 @@ def test_rate_found_same_day(client, users, monkeypatch):  # noqa: F811
     r = client.get("/api/master/gold/rate?purity=999&date=2026-10-01", headers=users[0])
     assert r.status_code == 200
     assert r.json() == {
+        "metal": "gold",
         "purity": "999",
         "requested_date": "2026-10-01",
         "rate_date": "2026-10-01",
@@ -47,6 +50,37 @@ def test_rate_missing_is_404(client, users, monkeypatch):  # noqa: F811
     r = client.get("/api/master/gold/rate?purity=999&date=2026-10-09", headers=users[0])
     assert r.status_code == 404
     assert r.json()["message"] == MESSAGE
+
+
+@pytest.mark.parametrize("purity", ["999", "925"])
+def test_silver_rate_passes_metal(client, users, monkeypatch, purity):  # noqa: F811
+    seen = []
+
+    def fake(session, metal, p, on):
+        seen.append((metal, p))
+        return Decimal("95.25"), on
+
+    monkeypatch.setattr(master.gold_rates, "rate_on_or_before", fake)
+    r = client.get(f"/api/master/gold/rate?metal=silver&purity={purity}&date=2026-10-28", headers=users[0])
+    assert r.status_code == 200
+    assert r.json()["metal"] == "silver" and r.json()["purity"] == purity
+    assert r.json()["rate_per_gram"] == 95.25
+    assert seen == [("silver", purity)]
+
+
+def test_silver_missing_is_404(client, users, monkeypatch):  # noqa: F811
+    monkeypatch.setattr(master.gold_rates, "rate_on_or_before", lambda s, m, p, o: None)
+    r = client.get("/api/master/gold/rate?metal=silver&purity=999&date=2026-10-09", headers=users[0])
+    assert r.status_code == 404
+    assert r.json()["message"] == "Silver rate not available"
+    assert r.json()["description"] == DESCRIPTION
+
+
+def test_purity_must_match_metal(client, users):  # noqa: F811
+    r = client.get("/api/master/gold/rate?metal=silver&purity=916&date=2026-10-01", headers=users[0])
+    assert r.status_code == 422 and r.json()["message"] == "Choose a purity"
+    r = client.get("/api/master/gold/rate?metal=gold&purity=925&date=2026-10-01", headers=users[0])
+    assert r.status_code == 422 and r.json()["message"] == "Choose a purity"
 
 
 def test_future_date_rejected(client, users):  # noqa: F811

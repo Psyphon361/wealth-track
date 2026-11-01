@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.schemas.assets import GoldPurity
+from app.schemas.assets import (
+    GOLD_METAL_PURITIES,
+    GOLD_PURITY_ERROR,
+    SILVER_PURITIES,
+    GoldMetal,
+    GoldPurity,
+)
 from app.schemas.gold import GoldRateOnDate
 from app.schemas.market_master import BondMasterRead, FdIssuerRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
@@ -137,20 +143,31 @@ GOLD_RATE_MAX_GAP_DAYS = 7
 def get_gold_rate(
     purity: GoldPurity,
     on_date: date = Query(alias="date"),
+    metal: GoldMetal = "gold",
     db: Session = Depends(get_db),
 ):
     nav_history.validate_not_future(on_date)
-    found = gold_rates.rate_on_or_before(db, "gold", purity, on_date)
+    allowed = SILVER_PURITIES if metal == "silver" else GOLD_METAL_PURITIES
+    if purity not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": GOLD_PURITY_ERROR,
+                "description": f"That purity isn't available for {metal}.",
+            },
+        )
+    found = gold_rates.rate_on_or_before(db, metal, purity, on_date)
     if found is None or (on_date - found[1]) > timedelta(days=GOLD_RATE_MAX_GAP_DAYS):
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Gold rate not available",
+                "message": f"{metal.capitalize()} rate not available",
                 "description": "No IBJA rate on or just before this date. Enter the amount yourself.",
             },
         )
     rate, rate_date = found
     return {
+        "metal": metal,
         "purity": purity,
         "requested_date": on_date,
         "rate_date": rate_date,

@@ -25,7 +25,8 @@ COMPOUNDING = ["monthly", "quarterly", "half_yearly", "yearly", "simple"]
 STATUSES = ["active", "matured"]
 BOND_TYPES = ["government", "corporate", "tax_free", "sgb", "other"]
 GOLD_FORMS = ["jewellery", "coin", "bar", "digital"]
-GOLD_PURITIES = ["999", "995", "916", "750", "585"]
+GOLD_METALS = ["gold", "silver"]
+GOLD_PURITIES = ["999", "995", "916", "750", "585", "925"]
 CASH_KINDS = ["savings", "current", "cash", "other"]
 PF_KINDS = ["epf", "vpf", "ppf"]
 MF_CATEGORIES = ["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
@@ -34,7 +35,8 @@ Compounding = Literal["monthly", "quarterly", "half_yearly", "yearly", "simple"]
 Status = Literal["active", "matured"]
 BondType = Literal["government", "corporate", "tax_free", "sgb", "other"]
 GoldForm = Literal["jewellery", "coin", "bar", "digital"]
-GoldPurity = Literal["999", "995", "916", "750", "585"]
+GoldMetal = Literal["gold", "silver"]
+GoldPurity = Literal["999", "995", "916", "750", "585", "925"]
 CashKind = Literal["savings", "current", "cash", "other"]
 PfKind = Literal["epf", "vpf", "ppf"]
 MfCategory = Literal["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
@@ -79,8 +81,8 @@ CONFIG: dict[str, dict[str, Any]] = {
     },
     "gold": {
         "search": ("name", "notes"),
-        "facets": {"form": GOLD_FORMS, "purity": GOLD_PURITIES},
-        "text": {"name", "form", "purity"},
+        "facets": {"form": GOLD_FORMS, "metal": GOLD_METALS, "purity": GOLD_PURITIES},
+        "text": {"name", "form", "metal", "purity"},
     },
     "cash": {
         "search": ("name", "notes"),
@@ -117,7 +119,7 @@ MfSort = Literal[
 ]  # fmt: skip
 
 GoldSort = Literal[
-    "name", "form", "purity", "weight_grams", "purchase_date", "invested",
+    "name", "form", "metal", "purity", "weight_grams", "purchase_date", "invested",
     "current_value", "gain", "gain_pct", "xirr",
 ]  # fmt: skip
 
@@ -391,6 +393,7 @@ def get_mf_holdings(
 def get_gold_holdings(
     q: Q = None,
     form: Annotated[list[GoldForm] | None, Query()] = None,
+    metal: Annotated[list[GoldMetal] | None, Query()] = None,
     purity: Annotated[list[GoldPurity] | None, Query()] = None,
     sort: GoldSort = "current_value",
     dir: Dir = "desc",
@@ -400,7 +403,7 @@ def get_gold_holdings(
 ):
     return _run(
         db, user.id, "gold",q=q, sort=sort, dir=dir, page=page,
-        multi={"form": form, "purity": purity},
+        multi={"form": form, "metal": metal, "purity": purity},
     )  # fmt: skip
 
 

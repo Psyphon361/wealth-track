@@ -25,7 +25,7 @@ LABELS = {
     "stock": "Stocks",
     "bond": "Bonds",
     "mf": "Mutual Funds",
-    "gold": "Gold",
+    "gold": "Gold & Silver",
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
 }

@@ -13,6 +13,7 @@ class GoldImportResult(BaseModel):
 
 
 class GoldRateOnDate(BaseModel):
+    metal: str
     purity: str
     requested_date: date
     rate_date: date
