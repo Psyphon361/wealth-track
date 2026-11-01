@@ -18,6 +18,7 @@ import { cashConfig } from "./grid/configs/cash";
 import { fdConfig } from "./grid/configs/fd";
 import { goldConfig } from "./grid/configs/gold";
 import { mfConfig } from "./grid/configs/mf";
+import { pfConfig } from "./grid/configs/pf";
 import { rdConfig } from "./grid/configs/rd";
 import { stockConfig } from "./grid/configs/stock";
 import { HoldingsGrid, TableSkeleton } from "./grid/data-table";
@@ -77,7 +78,7 @@ function SummaryStrip({
   tabs?: ReactNode;
 }) {
   return (
-    <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-sm">
+    <dl className="flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[13.5px]">
       {tabs ?? (
         <div className="num font-medium">
           {summary.count} active
@@ -304,5 +305,7 @@ export function Portfolio({ type }: { type: AssetType }) {
       return <TypedPortfolio config={goldConfig} />;
     case "cash":
       return <TypedPortfolio config={cashConfig} />;
+    case "pf":
+      return <TypedPortfolio config={pfConfig} />;
   }
 }

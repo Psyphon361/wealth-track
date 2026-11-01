@@ -1,4 +1,4 @@
-export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash";
+export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash" | "pf";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   fd: "Fixed Deposits",
@@ -8,6 +8,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   mf: "Mutual Funds",
   gold: "Gold",
   cash: "Cash & Savings",
+  pf: "EPF & PPF",
 };
 
 export type Compounding =
@@ -61,6 +62,14 @@ export const CASH_KIND_LABELS: Record<CashKind, string> = {
   current: "Current account",
   cash: "Cash in hand",
   other: "Other",
+};
+
+export type PfKind = "epf" | "vpf" | "ppf";
+
+export const PF_KIND_LABELS: Record<PfKind, string> = {
+  epf: "EPF",
+  vpf: "VPF",
+  ppf: "PPF",
 };
 
 export type GoldForm = "jewellery" | "coin" | "bar" | "digital";
@@ -296,6 +305,17 @@ export interface CashInput {
   notes: string | null;
 }
 
+export interface PfInput {
+  name: string;
+  kind: PfKind;
+  balance: number;
+  balance_date: string;
+  interest_rate: number;
+  contributed: number | null;
+  opened_on: string | null;
+  notes: string | null;
+}
+
 // CAS import
 
 export interface CasExistingHolding {
@@ -376,6 +396,7 @@ export type Bond = BondInput & RecordFields;
 export type MutualFund = MutualFundInput & RecordFields;
 export type Gold = GoldInput & RecordFields;
 export type Cash = CashInput & RecordFields;
+export type Pf = PfInput & RecordFields;
 
 export type AssetRecord =
   | FixedDeposit
@@ -384,7 +405,8 @@ export type AssetRecord =
   | Bond
   | MutualFund
   | Gold
-  | Cash;
+  | Cash
+  | Pf;
 
 // Portfolio
 
@@ -478,6 +500,14 @@ export type CashItem = Cash &
     xirr?: number | null;
   };
 
+export type PfItem = Pf &
+  Omit<ComputedFields, "maturity_date"> & {
+    accrued_interest: number;
+    maturity_date: string | null;
+    extended_until: string | null;
+    xirr?: number | null;
+  };
+
 export type HoldingRow =
   | FixedDepositItem
   | RecurringDepositItem
@@ -485,7 +515,8 @@ export type HoldingRow =
   | BondItem
   | MutualFundItem
   | GoldItem
-  | CashItem;
+  | CashItem
+  | PfItem;
 
 export interface FacetValue {
   value: string;

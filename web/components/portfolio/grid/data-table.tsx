@@ -200,7 +200,7 @@ export function HoldingsGrid<TRow extends HoldingRow>({
             <div className="h-full w-full animate-pulse bg-primary" />
           </div>
         ) : null}
-        <Table>
+        <Table className="text-[13.5px]">
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id} className="hover:bg-transparent">

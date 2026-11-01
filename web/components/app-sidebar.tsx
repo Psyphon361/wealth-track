@@ -31,7 +31,7 @@ export function AppSidebar() {
               <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
                 <Wallet className="size-4" />
               </div>
-              <span className="truncate font-semibold">Wealth Tracker</span>
+              <span className="truncate text-[13.5px] font-semibold">Wealth Tracker</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -47,6 +47,7 @@ export function AppSidebar() {
                     <SidebarMenuButton
                       isActive={active}
                       tooltip={item.label}
+                      className="text-[13.5px]"
                       render={<Link href={item.href} />}
                     >
                       <item.icon />

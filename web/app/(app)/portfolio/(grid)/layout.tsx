@@ -5,8 +5,8 @@ export default function PortfolioLayout({
   children,
 }: LayoutProps<"/portfolio">) {
   return (
-    <div className="min-w-0 space-y-4">
-      <Suspense fallback={<div className="h-9 border-b" />}>
+    <div className="-mt-4 min-w-0 space-y-4">
+      <Suspense fallback={<div className="h-9" />}>
         <AssetTabs />
       </Suspense>
       {children}

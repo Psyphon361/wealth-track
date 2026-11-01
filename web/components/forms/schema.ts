@@ -38,6 +38,8 @@ export const GOLD_PURITY_ERROR = "Choose a purity";
 export const GOLD_WEIGHT_DECIMALS_ERROR =
   "Weight can have at most 3 decimal places";
 export const CASH_KIND_ERROR = "Choose an account type";
+export const PF_KIND_ERROR = CASH_KIND_ERROR;
+export const PF_OPENED_ON_ERROR = "Enter the opening date";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
@@ -254,6 +256,20 @@ export function optionalRate(max: number, message: string) {
     });
 }
 
+/** Optional rupee amount: blank becomes null, else same checks as moneyNumber. */
+export const optionalMoney = z
+  .string()
+  .trim()
+  .transform((v, ctx): number | null => {
+    if (v === "") return null;
+    const r = moneyNumber.safeParse(v);
+    if (!r.success) {
+      for (const i of r.error.issues) ctx.addIssue({ code: "custom", message: i.message });
+      return z.NEVER;
+    }
+    return r.data;
+  });
+
 export const positiveInteger = positiveNumber
   .refine(Number.isInteger, "Must be a whole number")
   .refine((n) => n <= MAX_QUANTITY, MAX_QUANTITY_ERROR);
@@ -326,6 +342,9 @@ export const goldPurityEnum = z.enum(["999", "995", "916", "750", "585"], {
 });
 export const cashKindEnum = z.enum(["savings", "current", "cash", "other"], {
   error: CASH_KIND_ERROR,
+});
+export const pfKindEnum = z.enum(["epf", "vpf", "ppf"], {
+  error: PF_KIND_ERROR,
 });
 export const mfCategoryEnum =z.enum([
   "equity",

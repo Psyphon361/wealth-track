@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
-import type { AssetType, DashboardResponse } from "@/lib/types";
+import type { DashboardResponse } from "@/lib/types";
+import { TAB_ORDER } from "./asset-tabs";
 import { TableSkeleton } from "./grid/data-table";
-
-const ORDER: AssetType[] = ["fd", "rd", "stock", "bond", "mf", "gold", "cash"];
 
 /** Sends /portfolio to the first asset type that has holdings. */
 export function PortfolioRedirect() {
@@ -20,7 +19,7 @@ export function PortfolioRedirect() {
     apiGet<DashboardResponse>("/dashboard")
       .then((res) => {
         if (cancelled) return;
-        const first = ORDER.find((t) =>
+        const first = TAB_ORDER.find((t) =>
           res.by_type.some((r) => r.type === t && r.count > 0),
         );
         router.replace(`/portfolio/${first ?? "fd"}`);

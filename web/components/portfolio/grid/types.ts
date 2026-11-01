@@ -60,7 +60,7 @@ export interface DetailConfig<TRow extends HoldingRow> {
   /** Fourth KPI card (Maturity / Price / NAV). */
   kpi: (item: TRow) => DetailKpi;
   /** Start and end dates for the tenure bar; omit for open-ended holdings. */
-  tenure?: (item: TRow) => { start: string; end: string } | null;
+  tenure?: (item: TRow) => { start: string; end: string; label?: string } | null;
   holding: (item: TRow) => DetailField[];
   instrument: (master: HoldingMaster, item: TRow) => DetailField[];
 }

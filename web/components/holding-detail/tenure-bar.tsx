@@ -3,12 +3,20 @@ import { formatDate } from "@/lib/format";
 import { elapsedPct } from "./utils";
 import { LABEL } from "./sections";
 
-export function TenureBar({ start, end }: { start: string; end: string }) {
+export function TenureBar({
+  start,
+  end,
+  label = "Tenure",
+}: {
+  start: string;
+  end: string;
+  label?: string;
+}) {
   const pct = elapsedPct(start, end);
   return (
     <Card size="sm" className="gap-2 px-4">
       <div className="flex items-baseline justify-between">
-        <p className={LABEL}>Tenure</p>
+        <p className={LABEL}>{label}</p>
         <p className="num text-xs text-muted-foreground">
           {pct.toFixed(0)}% elapsed
         </p>

@@ -13,6 +13,7 @@ import { cashConfig } from "@/components/portfolio/grid/configs/cash";
 import { fdConfig } from "@/components/portfolio/grid/configs/fd";
 import { goldConfig } from "@/components/portfolio/grid/configs/gold";
 import { mfConfig } from "@/components/portfolio/grid/configs/mf";
+import { pfConfig } from "@/components/portfolio/grid/configs/pf";
 import { rdConfig } from "@/components/portfolio/grid/configs/rd";
 import { StatusBadge } from "@/components/portfolio/grid/configs/shared";
 import { stockConfig } from "@/components/portfolio/grid/configs/stock";
@@ -22,7 +23,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiDelete } from "@/lib/api";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
-import { ASSET_TYPE_LABELS, type AssetType, type HoldingRow } from "@/lib/types";
+import {
+  ASSET_TYPE_LABELS,
+  type AssetType,
+  type HoldingRow,
+  type PfItem,
+} from "@/lib/types";
 import { KpiStrip } from "./kpi-strip";
 import { NotesSection, Section } from "./sections";
 import { TenureBar } from "./tenure-bar";
@@ -148,9 +154,13 @@ function TypedDetail<TRow extends HoldingRow>({
       <KpiStrip
         item={item}
         fourth={detail.kpi(item)}
-        showGain={config.type !== "cash"}
+        showGain={
+          config.type === "pf"
+            ? (item as PfItem).contributed != null
+            : config.type !== "cash"
+        }
       />
-      {tenure ? <TenureBar start={tenure.start} end={tenure.end} /> : null}
+      {tenure ? <TenureBar start={tenure.start} end={tenure.end} label={tenure.label} /> : null}
 
       <Section title="Holding" fields={detail.holding(item)} />
       {master ? (
@@ -192,5 +202,7 @@ export function HoldingDetail({ type, id }: { type: AssetType; id: number }) {
       return <TypedDetail config={goldConfig} id={id} />;
     case "cash":
       return <TypedDetail config={cashConfig} id={id} />;
+    case "pf":
+      return <TypedDetail config={pfConfig} id={id} />;
   }
 }
