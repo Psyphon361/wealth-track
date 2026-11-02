@@ -1,0 +1,68 @@
+name: Gold rate backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Database to backfill
+        type: choice
+        required: true
+        options: [dev, prod]
+        default: dev
+      source:
+        description: History source
+        type: choice
+        options: [all, pdf, wayback]
+        default: all
+      from:
+        description: Start date YYYY-MM-DD (optional)
+        type: string
+        required: false
+      to:
+        description: End date YYYY-MM-DD (optional)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gold-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check secrets
+        env:
+          DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PROD_DATABASE_URL || secrets.DEV_DATABASE_URL }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Database secret for target '$TARGET' is not set."
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@v10.3.2
+
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -r api/requirements.txt
+
+      - name: Backfill IBJA gold and silver rate history
+        working-directory: api
+        env:
+          DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PROD_DATABASE_URL || secrets.DEV_DATABASE_URL }}
+          SOURCE: ${{ inputs.source }}
+          FROM_DATE: ${{ inputs.from }}
+          TO_DATE: ${{ inputs.to }}
+        run: |
+          args=(--source "$SOURCE")
+          if [ -n "$FROM_DATE" ]; then args+=(--from "$FROM_DATE"); fi
+          if [ -n "$TO_DATE" ]; then args+=(--to "$TO_DATE"); fi
+          ../.venv/bin/python -m app.jobs.gold_backfill "${args[@]}"
