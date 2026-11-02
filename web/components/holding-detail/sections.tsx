@@ -19,7 +19,7 @@ export function Section({
         {fields.map((f) => (
           <div key={f.label} className="min-w-0">
             <dt className="text-xs text-muted-foreground">{f.label}</dt>
-            <dd className={cn("text-sm break-words", f.figure && "num")}>
+            <dd className={cn("text-[13.5px] break-words", f.figure && "num")}>
               {f.value ? f.value : <span className="text-muted-foreground">—</span>}
             </dd>
           </div>
@@ -33,7 +33,7 @@ export function NotesSection({ notes }: { notes: string }) {
   return (
     <Card size="sm" className="gap-3 px-4">
       <h3 className={LABEL}>Notes</h3>
-      <p className="text-sm break-words whitespace-pre-wrap">{notes}</p>
+      <p className="text-[13.5px] break-words whitespace-pre-wrap">{notes}</p>
     </Card>
   );
 }

@@ -29,7 +29,7 @@ function RangeTrigger({
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 border-dashed text-[13.5px]"
+          className="h-8 border-dashed text-[12.5px]"
         />
       }
     >
@@ -64,10 +64,17 @@ function RangeActions({
         size="sm"
         disabled={!hasValue}
         onClick={onClear}
+        className="text-[12.5px]"
       >
         Clear
       </Button>
-      <Button type="button" size="sm" disabled={!canApply} onClick={onApply}>
+      <Button
+        type="button"
+        size="sm"
+        disabled={!canApply}
+        onClick={onApply}
+        className="text-[12.5px]"
+      >
         Apply
       </Button>
     </div>
@@ -86,7 +93,7 @@ function PercentInput({
   onChange: (raw: string) => void;
 }) {
   return (
-    <label className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+    <label className="flex flex-1 flex-col gap-1 text-[12.5px] text-muted-foreground">
       {label}
       <div className="relative">
         <Input
@@ -98,7 +105,7 @@ function PercentInput({
         />
         <span
           aria-hidden
-          className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-xs text-muted-foreground"
+          className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-[12.5px] text-muted-foreground"
         >
           %
         </span>
@@ -205,7 +212,7 @@ function DatePick({
   const selected = parseISODate(value);
   const endYear = new Date().getFullYear() + 40;
   return (
-    <div className="flex flex-1 flex-col gap-1 text-xs text-muted-foreground">
+    <div className="flex flex-1 flex-col gap-1 text-[12.5px] text-muted-foreground">
       {label}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
@@ -213,7 +220,7 @@ function DatePick({
             <Button
               type="button"
               variant="outline"
-              className="h-7 w-full justify-start rounded-lg px-2 text-[13.5px] font-normal"
+              className="h-7 w-full justify-start rounded-lg px-2 text-[12.5px] font-normal"
             />
           }
         >

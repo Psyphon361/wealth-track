@@ -334,7 +334,7 @@ export function BondForm({
                   hasValue={field.value !== null}
                   summary={
                     <>
-                      <div className="truncate text-sm font-medium">
+                      <div className="truncate text-[13.5px] font-medium">
                         {meta?.name ?? bondName}
                       </div>
                       {meta ? (

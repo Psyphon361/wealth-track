@@ -49,7 +49,7 @@ export function UserMenu() {
           <Button
             aria-label="Account menu"
             variant="secondary"
-            className="size-8 shrink-0 rounded-lg border border-border p-0 text-sm font-semibold text-foreground hover:bg-accent"
+            className="size-8 shrink-0 rounded-lg border border-border p-0 font-semibold text-foreground hover:bg-accent"
           />
         }
       >

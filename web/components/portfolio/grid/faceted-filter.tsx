@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/popover";
 
 /** Full-width items; hides CommandItem's own check icon (the checkbox shows state). */
-const ITEM = "w-full [&>svg]:hidden";
+const ITEM = "w-full text-[12.5px] [&>svg]:hidden";
 
 export interface FacetOption<T extends string> {
   value: T;
@@ -64,7 +64,7 @@ export function FacetedFilter<T extends string>({
             type="button"
             variant="outline"
             size="sm"
-            className="h-8 border-dashed text-[13.5px]"
+            className="h-8 border-dashed text-[12.5px]"
           />
         }
       >
@@ -96,11 +96,11 @@ export function FacetedFilter<T extends string>({
           {searchable ? (
             <CommandInput
               placeholder={`Search ${title.toLowerCase()}…`}
-              className="text-[13.5px]"
+              className="text-[12.5px]"
             />
           ) : null}
           <CommandList>
-            {searchable ? <CommandEmpty>No matches.</CommandEmpty> : null}
+            {searchable ? <CommandEmpty className="text-[12.5px]">No matches.</CommandEmpty> : null}
             <CommandGroup className="p-0">
               {options.map((o) => {
                 const on = selected.includes(o.value);
@@ -120,7 +120,7 @@ export function FacetedFilter<T extends string>({
                     />
                     <span className="truncate">{o.label}</span>
                     {o.count !== undefined ? (
-                      <span className="num ml-auto pl-3 text-right text-xs text-muted-foreground">
+                      <span className="num ml-auto pl-3 text-right text-[12.5px] text-muted-foreground">
                         {o.count}
                       </span>
                     ) : null}

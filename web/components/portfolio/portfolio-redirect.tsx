@@ -41,11 +41,11 @@ export function PortfolioRedirect() {
     return (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
         <div>
-          <p className="text-sm font-medium text-destructive">
+          <p className="text-[13.5px] font-medium text-destructive">
             {error.message}
           </p>
           {error.description ? (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13.5px] text-muted-foreground">
               {error.description}
             </p>
           ) : null}

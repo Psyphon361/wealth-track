@@ -29,7 +29,7 @@ function DeletedRow({
     >
       <AssetTypeIcon icon={Icon} />
       <div className="min-w-0 flex-1 basis-40">
-        <p className="text-sm font-medium break-words">{item.name}</p>
+        <p className="text-[13.5px] font-medium break-words">{item.name}</p>
         <p className="text-xs text-muted-foreground">
           {item.type_label} · Deleted{" "}
           <span className="num">{formatDate(item.deleted_at)}</span>
@@ -114,11 +114,11 @@ export function RecentlyDeleted() {
     return (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
         <div>
-          <p className="text-sm font-medium text-destructive">
+          <p className="text-[13.5px] font-medium text-destructive">
             {error.message}
           </p>
           {error.description ? (
-            <p className="text-sm text-muted-foreground">{error.description}</p>
+            <p className="text-[13.5px] text-muted-foreground">{error.description}</p>
           ) : null}
         </div>
         <Button variant="outline" onClick={load}>
@@ -142,7 +142,7 @@ export function RecentlyDeleted() {
 
   if (items.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+      <div className="rounded-lg border border-dashed py-12 text-center text-[13.5px] text-muted-foreground">
         No recently deleted holdings
       </div>
     );

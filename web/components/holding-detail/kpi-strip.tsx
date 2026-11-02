@@ -39,12 +39,12 @@ export function KpiStrip({
       )}
     >
       <Kpi label="Invested">
-        <p className="num truncate text-lg font-semibold whitespace-nowrap lg:text-xl">
+        <p className="num truncate text-base font-semibold whitespace-nowrap lg:text-lg">
           {formatINR(item.invested)}
         </p>
       </Kpi>
       <Kpi label="Current value">
-        <p className="num truncate text-lg font-semibold whitespace-nowrap lg:text-xl">
+        <p className="num truncate text-base font-semibold whitespace-nowrap lg:text-lg">
           {formatINR(item.current_value)}
         </p>
       </Kpi>
@@ -53,7 +53,7 @@ export function KpiStrip({
         <div className="flex flex-wrap items-baseline gap-x-2">
           <p
             className={cn(
-              "num text-lg font-semibold whitespace-nowrap lg:text-xl",
+              "num text-base font-semibold whitespace-nowrap lg:text-lg",
               tone,
             )}
           >
@@ -69,7 +69,7 @@ export function KpiStrip({
       </Kpi>
       ) : null}
       <Kpi label={fourth.label}>
-        <p className="truncate text-lg font-semibold whitespace-nowrap lg:text-xl">
+        <p className="truncate text-base font-semibold whitespace-nowrap lg:text-lg">
           {fourth.value}
         </p>
         {fourth.sub ? (

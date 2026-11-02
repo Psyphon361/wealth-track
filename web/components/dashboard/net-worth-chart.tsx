@@ -116,13 +116,13 @@ export function NetWorthChart() {
         <Skeleton className="h-[220px] rounded-lg" />
       ) : error ? (
         <div>
-          <p className="text-sm font-medium text-destructive">{error.message}</p>
+          <p className="text-[13.5px] font-medium text-destructive">{error.message}</p>
           {error.description && (
             <p className="text-xs text-muted-foreground">{error.description}</p>
           )}
         </div>
       ) : shown && shown.points.length === 0 ? (
-        <p className="py-16 text-center text-sm text-muted-foreground">
+        <p className="py-16 text-center text-[13.5px] text-muted-foreground">
           No history yet
         </p>
       ) : shown ? (
@@ -197,11 +197,6 @@ export function NetWorthChart() {
               />
             </AreaChart>
           </ChartContainer>
-          {shown.stocks_at_cost_before && (
-            <p className="text-xs text-muted-foreground">
-              Stocks valued at cost before {formatDate(shown.stocks_at_cost_before)}
-            </p>
-          )}
         </div>
       ) : null}
     </Card>

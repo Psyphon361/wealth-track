@@ -175,11 +175,11 @@ function TypedPortfolio<TRow extends HoldingRow>({
       <>
         <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
           <div>
-            <p className="text-sm font-medium text-destructive">
+            <p className="text-[13.5px] font-medium text-destructive">
               {q.error?.message}
             </p>
             {q.error?.description ? (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-[13.5px] text-muted-foreground">
                 {q.error.description}
               </p>
             ) : null}
@@ -205,7 +205,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
     return (
       <>
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-          <p className="text-lg font-medium">No {config.noun} yet</p>
+          <p className="text-sm font-medium">No {config.noun} yet</p>
           <Link
             href={`/add/${config.type}`}
             className={buttonVariants({ size: "sm" })}
@@ -259,7 +259,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
         data.total === 0 &&
         !q.fetching &&
         !hasActiveFilters(filters) ? (
-          <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+          <div className="rounded-lg border border-dashed py-12 text-center text-[13.5px] text-muted-foreground">
             No matured {config.noun}
           </div>
         ) : (

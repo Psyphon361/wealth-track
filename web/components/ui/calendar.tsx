@@ -70,7 +70,7 @@ function Calendar({
           defaultClassNames.month_caption
         ),
         dropdowns: cn(
-          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-sm font-medium",
+          "flex h-(--cell-size) w-full items-center justify-center gap-1.5 text-[13.5px] font-medium",
           defaultClassNames.dropdowns
         ),
         dropdown_root: cn(
@@ -84,14 +84,14 @@ function Calendar({
         caption_label: cn(
           "font-medium select-none",
           captionLayout === "label"
-            ? "text-sm"
-            : "flex items-center gap-1 rounded-(--cell-radius) text-sm [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
+            ? "text-[13.5px]"
+            : "flex items-center gap-1 rounded-(--cell-radius) text-[13.5px] [&>svg]:size-3.5 [&>svg]:text-muted-foreground",
           defaultClassNames.caption_label
         ),
         month_grid: cn("w-full border-collapse", defaultClassNames.month_grid),
         weekdays: cn("flex", defaultClassNames.weekdays),
         weekday: cn(
-          "flex-1 rounded-(--cell-radius) text-[0.8rem] font-normal text-muted-foreground select-none",
+          "flex-1 rounded-(--cell-radius) text-[13.5px] font-normal text-muted-foreground select-none",
           defaultClassNames.weekday
         ),
         week: cn("mt-2 flex w-full", defaultClassNames.week),
@@ -100,7 +100,7 @@ function Calendar({
           defaultClassNames.week_number_header
         ),
         week_number: cn(
-          "text-[0.8rem] text-muted-foreground select-none",
+          "text-[13.5px] text-muted-foreground select-none",
           defaultClassNames.week_number
         ),
         day: cn(
@@ -248,7 +248,7 @@ function CalendarDropdown({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className="flex h-7 items-center gap-1 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent pr-1.5 pl-2 text-sm font-medium whitespace-nowrap transition-colors outline-none select-none hover:bg-input/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
+        className="flex h-7 items-center gap-1 rounded-[min(var(--radius-md),10px)] border border-input bg-transparent pr-1.5 pl-2 text-[13.5px] font-medium whitespace-nowrap transition-colors outline-none select-none hover:bg-input/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
       >
         {selected?.label}
         <ChevronDownIcon className="size-4 text-muted-foreground" />
@@ -274,7 +274,7 @@ function CalendarDropdown({
                     target: { value: String(option.value) },
                   } as unknown as React.ChangeEvent<HTMLSelectElement>)
                 }}
-                className="relative flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm whitespace-nowrap outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-selected:font-medium"
+                className="relative flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-[13.5px] whitespace-nowrap outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-selected:font-medium"
               >
                 {option.label}
                 {option.value === Number(value) && (

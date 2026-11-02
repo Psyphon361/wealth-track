@@ -74,7 +74,7 @@ export function IssuerPicker({
       hasValue={hasValue}
       summary={
         <>
-          <div className="truncate text-sm font-medium">
+          <div className="truncate text-[13.5px] font-medium">
             {meta ? issuerMain(meta) : bankText}
           </div>
           {meta ? (

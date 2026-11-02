@@ -172,7 +172,7 @@ export function Toolbar<TRow extends HoldingRow>({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-8 text-[13.5px]"
+          className="h-8 text-[12.5px]"
           onClick={onReset}
         >
           <X aria-hidden />
@@ -187,7 +187,7 @@ export function Toolbar<TRow extends HoldingRow>({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 text-[13.5px]"
+                className="h-8 text-[12.5px]"
               />
             }
           >

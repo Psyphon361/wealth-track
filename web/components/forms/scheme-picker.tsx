@@ -73,7 +73,7 @@ export function SchemePicker({
       summary={
         value ? (
           <>
-            <div className="truncate text-sm font-medium">{value.name}</div>
+            <div className="truncate text-[13.5px] font-medium">{value.name}</div>
             {scheme ? (
               <div className="truncate text-[11px] text-muted-foreground">
                 {metaLine(scheme)}

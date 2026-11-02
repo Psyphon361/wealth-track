@@ -77,7 +77,7 @@ function TypedDetail<TRow extends HoldingRow>({
   const back = (
     <Link
       href={backHref}
-      className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      className="inline-flex items-center gap-1 text-[13.5px] text-muted-foreground hover:text-foreground"
     >
       <ArrowLeft className="size-3.5" aria-hidden />
       {ASSET_TYPE_LABELS[config.type]}
@@ -90,9 +90,9 @@ function TypedDetail<TRow extends HoldingRow>({
         {back}
         <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
           <div>
-            <p className="text-sm font-medium text-destructive">{error.message}</p>
+            <p className="text-[13.5px] font-medium text-destructive">{error.message}</p>
             {error.description ? (
-              <p className="text-sm text-muted-foreground">{error.description}</p>
+              <p className="text-[13.5px] text-muted-foreground">{error.description}</p>
             ) : null}
           </div>
           <Button variant="outline" onClick={retry}>
@@ -131,7 +131,7 @@ function TypedDetail<TRow extends HoldingRow>({
           {entry ? <AssetTypeIcon icon={entry.icon} /> : null}
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-medium break-words">{name}</h2>
+              <h2 className="text-sm font-medium break-words">{name}</h2>
               {hasStatus ? <StatusBadge status={item.status} /> : null}
             </div>
             {subtitle ? (

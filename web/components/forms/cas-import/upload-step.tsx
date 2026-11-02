@@ -80,7 +80,7 @@ export function CasUploadStep({
           onClick={() => inputRef.current?.click()}
           disabled={loading}
           data-invalid={fileError ? "true" : undefined}
-          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-input px-4 py-8 text-sm text-muted-foreground transition-colors outline-none hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[invalid=true]:border-destructive"
+          className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-input px-4 py-8 text-[13.5px] text-muted-foreground transition-colors outline-none hover:bg-muted/40 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[invalid=true]:border-destructive"
         >
           <UploadIcon className="size-5" />
           {file ? (

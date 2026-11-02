@@ -40,7 +40,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-4">
         <div className="flex items-center gap-3">
           <AssetTypeIcon icon={entry.icon} />
-          <h2 className="text-base font-medium">{entry.title}</h2>
+          <h2 className="text-sm font-medium">{entry.title}</h2>
         </div>
         {type === "mf" && (
           <div className="flex flex-col gap-1.5">
