@@ -1,0 +1,51 @@
+name: Gold history copy (dev to prod)
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Write to prod (unchecked = dry run)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gold-history-copy
+  cancel-in-progress: false
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check secrets
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+          TARGET_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$SOURCE_DATABASE_URL" ] || [ -z "$TARGET_DATABASE_URL" ]; then
+            echo "::error::DEV_DATABASE_URL and PROD_DATABASE_URL secrets must both be set."
+            exit 1
+          fi
+
+      - uses: astral-sh/setup-uv@v10.3.2
+
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -r api/requirements.txt
+
+      - name: Copy missing gold_rate_history rows
+        working-directory: api
+        env:
+          SOURCE_DATABASE_URL: ${{ secrets.DEV_DATABASE_URL }}
+          TARGET_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          APPLY: ${{ inputs.apply }}
+        run: |
+          args=()
+          if [ "$APPLY" = "true" ]; then args+=(--apply); fi
+          ../.venv/bin/python -m app.jobs.copy_gold_history "${args[@]}"
