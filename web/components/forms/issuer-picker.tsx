@@ -91,15 +91,15 @@ export function IssuerPicker({
       itemLabel={(s) => s.name}
       renderItem={(s) => (
         <>
-          <span className="truncate text-sm">
+          <span className="truncate">
             {issuerMain(s)}
             {issuerFullName(s) ? (
-              <span className="ml-1.5 text-[11px] text-muted-foreground">
+              <span className="ml-1.5 text-xs text-muted-foreground">
                 {issuerFullName(s)}
               </span>
             ) : null}
           </span>
-          <span className="truncate text-[11px] text-muted-foreground">
+          <span className="truncate text-xs text-muted-foreground">
             {issuerMeta(s)}
           </span>
         </>

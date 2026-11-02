@@ -57,7 +57,7 @@ export function UserMenu() {
       <DropdownMenuContent align="end" className="w-auto min-w-0 max-w-64">
         <DropdownMenuGroup>
           <DropdownMenuLabel
-            className="truncate px-2 py-1 text-xs font-normal text-muted-foreground"
+            className="truncate font-normal"
             title={email}
           >
             {email}
@@ -65,13 +65,12 @@ export function UserMenu() {
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          className="gap-1.5 py-1 text-xs"
           onClick={() => {
             invalidateNetWorth();
             startTransition(() => logout());
           }}
         >
-          <LogOut className="size-3.5" />
+          <LogOut />
           Log out
         </DropdownMenuItem>
       </DropdownMenuContent>

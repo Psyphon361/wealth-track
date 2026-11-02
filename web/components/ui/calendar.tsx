@@ -274,7 +274,7 @@ function CalendarDropdown({
                     target: { value: String(option.value) },
                   } as unknown as React.ChangeEvent<HTMLSelectElement>)
                 }}
-                className="relative flex w-full cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm whitespace-nowrap outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-selected:font-medium"
+                className="relative flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-left text-sm whitespace-nowrap outline-hidden select-none hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-selected:font-medium"
               >
                 {option.label}
                 {option.value === Number(value) && (

@@ -163,7 +163,7 @@ export function MasterPicker<T>({
             placeholder={placeholder}
           />
           <CommandList>
-            <CommandEmpty className="py-4 text-xs text-muted-foreground">
+            <CommandEmpty className="py-4 text-muted-foreground">
               {emptyText}
             </CommandEmpty>
             {results.length > 0 ? (

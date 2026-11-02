@@ -351,8 +351,8 @@ export function BondForm({
                   itemLabel={(s) => s.name}
                   renderItem={(s) => (
                     <>
-                      <span className="truncate text-sm">{s.name}</span>
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <span className="truncate">{s.name}</span>
+                      <span className="truncate text-xs text-muted-foreground">
                         {metaLine(s)}
                       </span>
                     </>

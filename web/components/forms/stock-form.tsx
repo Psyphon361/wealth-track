@@ -233,7 +233,7 @@ export function StockForm({
                   renderItem={(s) => (
                     <>
                       <span className="flex items-center gap-2">
-                        <span className="min-w-0 truncate text-sm">
+                        <span className="min-w-0 truncate">
                           {s.name}
                         </span>
                         {s.kind === "etf" ? (
@@ -242,7 +242,7 @@ export function StockForm({
                           </Badge>
                         ) : null}
                       </span>
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <span className="truncate text-xs text-muted-foreground">
                         {codesLine(s)}
                       </span>
                     </>

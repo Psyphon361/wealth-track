@@ -87,8 +87,8 @@ export function SchemePicker({
       itemLabel={(s) => s.name}
       renderItem={(s) => (
         <>
-          <span className="truncate text-sm">{s.name}</span>
-          <span className="flex items-baseline gap-2 text-[11px] text-muted-foreground">
+          <span className="truncate">{s.name}</span>
+          <span className="flex items-baseline gap-2 text-xs text-muted-foreground">
             <span className="min-w-0 flex-1 truncate">{metaLine(s)}</span>
             {s.nav !== null && s.nav_date ? (
               <span className="num shrink-0">

@@ -107,7 +107,7 @@ export function RowActions({
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-36">
+        <DropdownMenuContent align="end" className="w-32">
           {entries.map((e) => (
             <div key={e.key} className="contents">
               {e.separatorBefore ? <DropdownMenuSeparator /> : null}

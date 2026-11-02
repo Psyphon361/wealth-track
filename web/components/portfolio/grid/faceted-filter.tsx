@@ -19,9 +19,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 
-/** Dropdown-menu item metrics; hides CommandItem's own check icon (the checkbox shows state). */
-const ITEM =
-  "w-full gap-1.5 rounded-md px-1.5 py-1 text-[13.5px] [&>svg]:hidden";
+/** Full-width items; hides CommandItem's own check icon (the checkbox shows state). */
+const ITEM = "w-full [&>svg]:hidden";
 
 export interface FacetOption<T extends string> {
   value: T;

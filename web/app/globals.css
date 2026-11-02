@@ -135,6 +135,28 @@
     @apply font-sans;
     font-size: 110%;
   }
+  button:not(:disabled):not([aria-disabled="true"]):not([data-disabled]),
+  [role="button"]:not([aria-disabled="true"]):not([data-disabled]),
+  a[href]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemcheckbox"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemradio"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="tab"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="checkbox"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="switch"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="radio"]:not([aria-disabled="true"]):not([data-disabled]),
+  label[for],
+  summary {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [role="button"][data-disabled],
+  [aria-disabled="true"]:not(.pointer-events-none),
+  [data-disabled]:not(.pointer-events-none) {
+    cursor: not-allowed;
+  }
 }
 
 @utility num {
