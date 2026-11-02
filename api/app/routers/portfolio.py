@@ -318,6 +318,8 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
     by_type = []
     for g in groups:
         current = g["totals"]["current_value"]
+        # Gain only when an active holding contributed one (Other without invested has none).
+        has_gain = any(i.get("status") == "active" and i.get("gain") is not None for i in g["items"])
         by_type.append(
             {
                 "type": g["type"],
@@ -326,6 +328,9 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
                 "matured_count": g["matured_count"],
                 "invested": g["totals"]["invested"],
                 "current": current,
+                "gain": g["totals"]["gain"] if has_gain else None,
+                "gain_pct": g["totals"]["gain_pct"] if has_gain else None,
+                "day_change": None,
                 "allocation_pct": _q(current / total_current * 100)
                 if total_current
                 else Decimal("0.00"),
@@ -362,8 +367,10 @@ def add_day_change(
     change, pct, as_of = valuation.portfolio_day_change(
         groups, prev_rates, dashboard["total_current"]
     )
+    per_type = valuation.day_change_by_type(groups, prev_rates)
     return {
         **dashboard,
+        "by_type": [{**row, "day_change": per_type.get(row["type"])} for row in dashboard["by_type"]],
         "day_change": change,
         "day_change_pct": pct,
         "day_change_as_of": as_of,

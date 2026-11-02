@@ -40,6 +40,9 @@ class DashboardByType(BaseModel):
     matured_count: int
     invested: Amount
     current: Amount
+    gain: Amount | None = None
+    gain_pct: Amount | None = None
+    day_change: Amount | None = None
     allocation_pct: Amount
 
 

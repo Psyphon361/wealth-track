@@ -374,6 +374,23 @@ def portfolio_day_change(
     return change, pct, as_of
 
 
+def day_change_by_type(
+    groups: Iterable[Mapping[str, Any]],
+    prev_rates: Mapping[tuple[str, str], tuple[date, Decimal]],
+) -> dict[str, Decimal]:
+    """Per-type 1-day change (rounded to 2 dp) over active holdings, same per-item rule as
+    `portfolio_day_change`. A type with no real figure is absent from the result (never 0)."""
+    sums: dict[str, Decimal] = {}
+    for group in groups:
+        for item in group["items"]:
+            if item.get("status") != "active":
+                continue
+            change, _ = _item_day_change(group["type"], item, prev_rates)
+            if change is not None:
+                sums[group["type"]] = sums.get(group["type"], Decimal("0")) + change
+    return {slug: _q(total) for slug, total in sums.items()}
+
+
 _XIRR_LOW = -0.9999
 _XIRR_HIGH = 100.0  # +10000 %
 

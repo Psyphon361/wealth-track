@@ -9,7 +9,9 @@ from app.db import Base
 from app.models import Gold, GoldRateHistory, GoldRateLatest, Stock, StockPriceLatest
 from app.routers.portfolio import build_dashboard, build_groups
 from app.services import gold_rates, valuation
-from tests.conftest import make_bond, make_cash, make_fd, make_gold, make_nps, make_stock
+from tests.conftest import (
+    make_bond, make_cash, make_fd, make_gold, make_nps, make_other, make_stock,
+)
 from tests.test_scoping import client, users  # noqa: F401  (fixtures)
 
 TODAY = date(2026, 11, 2)
@@ -211,3 +213,53 @@ def test_dashboard_day_change_excludes_soft_deleted_and_derives_silver_925(clien
     assert body["day_change_pct"] == pytest.approx(
         285 / (body["total_current"] - 285) * 100, abs=0.01
     )
+
+
+# --- per-type rows on the dashboard ------------------------------------------------------
+
+
+def _rows(groups, prev=PREV):
+    from app.routers.portfolio import add_day_change
+
+    out = add_day_change(build_dashboard(groups), groups, prev)
+    return out, {r["type"]: r for r in out["by_type"]}
+
+
+def test_per_type_day_changes_add_up_to_total():
+    out, rows = _rows(_groups())
+    assert rows["stock"]["day_change"] == D("100.00")
+    assert rows["gold"]["day_change"] == D("1000.00")
+    assert rows["nps"]["day_change"] == D("500.00")
+    parts = [r["day_change"] for r in rows.values() if r["day_change"] is not None]
+    assert abs(sum(parts) - out["day_change"]) <= D("0.01") * len(parts)
+
+
+def test_type_without_market_data_has_null_day_change():
+    _, rows = _rows(build_groups({"stock": [make_stock()], "cash": [make_cash()]}, TODAY), prev={})
+    assert rows["stock"]["day_change"] is None
+    assert rows["cash"]["day_change"] is None
+
+
+def test_fd_has_gain_but_no_day_change():
+    _, rows = _rows(_groups())
+    assert rows["fd"]["day_change"] is None
+    assert rows["fd"]["gain"] is not None
+    assert rows["fd"]["gain_pct"] is not None
+
+
+def test_empty_type_has_null_gain():
+    _, rows = _rows(_groups())
+    assert rows["rd"]["count"] == 0
+    assert rows["rd"]["gain"] is None
+    assert rows["rd"]["gain_pct"] is None
+
+
+def test_other_without_invested_has_no_gain_but_with_invested_has():
+    _, rows = _rows(build_groups({"other": [make_other()]}, TODAY), prev={})
+    assert rows["other"]["current"] == D("80000.00")
+    assert rows["other"]["gain"] is None
+    assert rows["other"]["gain_pct"] is None
+    _, rows = _rows(
+        build_groups({"other": [make_other(invested_amount=D("50000"))]}, TODAY), prev={}
+    )
+    assert rows["other"]["gain"] == D("30000.00")
