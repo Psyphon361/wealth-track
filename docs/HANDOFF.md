@@ -1,5 +1,27 @@
 # HANDOFF — session resume notes (2026-11-02)
 
+## Resume here — 2026-11-02 evening (uncommitted work + next steps)
+
+**Uncommitted in the working tree (lint, tsc and npm test all pass; not browser-checked):**
+- Web for the "Other" asset (API already pushed as 7c63cfb, migration 0026 live on prod): `other-form.tsx`, `category-field.tsx`, `grid/configs/other.tsx`, catalog group "Other" (Shapes icon), types, and wiring in asset-form, add-form-page, asset-tabs, portfolio, holding-detail, kpi-strip, shared.tsx. The user is to click-test it first.
+- Form lock while saving: `components/forms/form-disabled.tsx` (FormDisabledContext / FormBusyContext); FormShell wraps the body in a disabled fieldset and provides the context; explicit `disabled` on base-ui Select, DateField, pickers, category field and the toggles; autofill paused while saving; the Edit dialog can't be dismissed mid-save; "Saving…" with a spinner; CAS buttons get spinners.
+- Next: once the user OKs, commit as two commits ("Web: Other asset" and "Web: lock form fields while saving"), then docs for Other (SPEC, STATUS, AGENTS head 0026, HANDOFF), then push on the user's OK.
+
+**Workflow bug to fix next (small):**
+- `PROD_DATABASE_URL` is an **environment** secret (environment `production`), not a repo secret. Only `api-deploy.yml` declares `environment: production`.
+- `gold-history-copy.yml` needs `environment: production` on its job; its dry run failed with an empty target.
+- `gold-backfill.yml` with target prod silently fell back to `DEV_DATABASE_URL` (the `a && b || c` expression), so the 2026-11-02 "prod" backfill actually ran on dev. Fix: use the production environment for prod, and fail when the secret is empty; never fall back to dev.
+- Then the user runs "Gold history copy (dev to prod)": a dry run first, then with apply ticked. Prod gold history is still empty until then.
+
+**Queue after that (memory feature-queue-2026-11-02):** global search in the top bar (plan it carefully first; the user wants it exceptional) → mobile and PWA → analytics (`docs/ANALYTICS.md`).
+
+**Standing rules learned today:**
+- Every async UI action shows a pending state (spinner plus an "…ing" label, disabled, dimmed row).
+- Popup menus use the compact metric (13.5px, size-3.5 icons).
+- The pointer cursor is global.
+- There is no Undo toast: the delete dialog explains Recently deleted and its 30 days.
+- The probe account is `probe-ui3@example.test`, with credentials in `~/.config/wealth-track/probe.env` (never print them). The orchestrator can't log the browser pane in; the user tests the UI.
+
 ## Resume here — 2026-11-02 (gold history and soft delete)
 
 ### 1. Shipped
