@@ -13,12 +13,14 @@ Latest rates go to `gold_rate_latest` (only if not older than the stored date), 
 to `gold_rate_history`.
 """
 
+import json
 import re
 import ssl
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from html import unescape
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -61,6 +63,8 @@ class ParsedRates:
     session: str
     rates: dict[Key, Decimal]  # per gram, for rate_date / session
     history: dict[date, dict[Key, Decimal]] = field(default_factory=dict)  # every date, PM over AM
+    # hidden-field PM rates (gold 999/916, silver 999); insert-if-missing only, never "latest"
+    backfill: dict[date, dict[Key, Decimal]] = field(default_factory=dict)
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -115,11 +119,54 @@ def parse_rates(html: str) -> ParsedRates:
         row = found.get((latest, "PM"), found.get((latest, "AM"), {}))
         missing = [p for p in PURITIES if ("gold", p) not in row]
         raise GoldRatesError(f"IBJA page is missing gold purities: {', '.join(missing)}")
-    return ParsedRates(latest, sessions[latest], history[latest], history)
+    return ParsedRates(latest, sessions[latest], history[latest], history, _parse_backfill(html))
+
+
+# Hidden page fields: JSON with "labels" (dd/mm/yyyy) and one rate array per series, PM rates.
+# Gold is per 10 g, silver per kg (same units as the tables).
+_HIDDEN_SERIES = {
+    "HdnGold": {"purity999": ("gold", "999"), "purity916": ("gold", "916")},
+    "HdnSilver": {"silverRate": ("silver", "999")},
+}
+_HIDDEN_FIELD = r'<input[^>]*\bname="%s"[^>]*\bvalue="([^"]*)"'
+
+
+def _parse_backfill(html: str) -> dict[date, dict[Key, Decimal]]:
+    """Per-gram rates from the hidden HdnGold / HdnSilver fields. Best effort: never raises."""
+    out: dict[date, dict[Key, Decimal]] = {}
+    for field_name, series in _HIDDEN_SERIES.items():
+        try:
+            match = re.search(_HIDDEN_FIELD % field_name, html)
+            if not match:
+                continue
+            data = json.loads(unescape(match.group(1)))
+            labels = data["labels"]
+            field_rates: dict[date, dict[Key, Decimal]] = {}
+            for name, key in series.items():
+                values = data[name]
+                if len(values) != len(labels):
+                    raise ValueError("labels and values differ in length")
+                for label, value in zip(labels, values):
+                    if value is None:
+                        continue
+                    day = datetime.strptime(label, "%d/%m/%Y").date()
+                    rate = (Decimal(str(value)) / _GRAMS_PER_RATE[key[0]]).quantize(_CENT)
+                    if rate <= 0:
+                        raise ValueError("non-positive rate")
+                    field_rates.setdefault(day, {})[key] = rate
+        except (ValueError, KeyError, TypeError, ArithmeticError, AttributeError):
+            continue  # a malformed field is skipped whole
+        for day, rates in field_rates.items():
+            out.setdefault(day, {}).update(rates)
+    return out
 
 
 def import_rates(session: Session, parsed: ParsedRates) -> GoldImportResult:
-    """Upsert history for every parsed date and latest for the newest one. Commits."""
+    """Upsert history for every parsed date and latest for the newest one. Commits.
+
+    Backfill rows (hidden page fields) only fill missing history rows; they never overwrite a
+    stored rate and never touch `gold_rate_latest`.
+    """
     history = parsed.history or {parsed.rate_date: parsed.rates}
     history_values = [
         {"metal": m, "purity": p, "rate_date": d, "rate_per_gram": rate}
@@ -133,6 +180,17 @@ def import_rates(session: Session, parsed: ParsedRates) -> GoldImportResult:
             set_={"rate_per_gram": statement.excluded.rate_per_gram},
         )
     )
+    backfill_values = [
+        {"metal": m, "purity": p, "rate_date": d, "rate_per_gram": rate}
+        for d, rates in parsed.backfill.items()
+        for (m, p), rate in rates.items()
+    ]
+    if backfill_values:
+        session.execute(
+            pg_insert(GoldRateHistory)
+            .values(backfill_values)
+            .on_conflict_do_nothing(index_elements=["metal", "purity", "rate_date"])
+        )
     latest_values = [
         {
             "metal": m,
@@ -157,7 +215,10 @@ def import_rates(session: Session, parsed: ParsedRates) -> GoldImportResult:
     )
     session.commit()
     return GoldImportResult(
-        rate_date=parsed.rate_date, session=parsed.session, rows_upserted=len(history_values)
+        rate_date=parsed.rate_date,
+        session=parsed.session,
+        rows_upserted=len(history_values),
+        backfill_rows=len(backfill_values),
     )
 
 

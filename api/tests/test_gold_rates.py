@@ -1,3 +1,4 @@
+import re
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -101,6 +102,103 @@ def test_import_latest_only_replaced_when_date_not_older():
     assert session.committed
     assert result.rows_upserted == 6
     assert result.rate_date == date(2026, 10, 1)
+
+
+def _hidden(name: str, payload: str) -> str:
+    escaped = payload.replace('"', "&quot;")
+    return f'<input type="hidden" name="{name}" id="{name}" value="{escaped}" />'
+
+
+def _without_hidden() -> str:
+    """The fixture page with its own HdnGold / HdnSilver fields removed."""
+    return re.sub(r'<input[^>]*name="Hdn(?:Gold|Silver)"[^>]*/>', "", FIXTURE.read_text())
+
+
+_GOLD_FIELD = _hidden(
+    "HdnGold",
+    '{"labels":["01/07/2026","02/07/2026","30/10/2026"],'
+    '"purity999":[143003,146344,140054],"purity916":[130990,134051,128289]}',
+)
+_SILVER_FIELD = _hidden(
+    "HdnSilver", '{"labels":["01/07/2026","02/07/2026"],"silverRate":[228850,233858]}'
+)
+
+
+def test_backfill_parsed_and_scaled_per_gram():
+    parsed = parse_rates(_without_hidden() + _GOLD_FIELD + _SILVER_FIELD)
+    assert parsed.backfill[date(2026, 7, 1)] == {
+        ("gold", "999"): Decimal("14300.30"),
+        ("gold", "916"): Decimal("13099.00"),
+        ("silver", "999"): Decimal("228.85"),
+    }
+    assert parsed.backfill[date(2026, 10, 30)] == {
+        ("gold", "999"): Decimal("14005.40"),
+        ("gold", "916"): Decimal("12828.90"),
+    }
+
+
+def test_backfill_missing_fields_is_empty():
+    assert parse_rates(_without_hidden()).backfill == {}
+
+
+def test_backfill_from_fixture_page_covers_months_of_dates():
+    parsed = parse_rates(FIXTURE.read_text())
+    assert min(parsed.backfill) == date(2026, 6, 30)
+    assert max(parsed.backfill) == date(2026, 10, 30)
+    assert parsed.backfill[date(2026, 10, 30)][("silver", "999")] == Decimal("181.34")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not json",
+        '{"labels":["01/07/2026"]}',
+        '{"labels":["bad-date"],"purity999":[1],"purity916":[1]}',
+        '{"labels":["01/07/2026","02/07/2026"],"purity999":[1],"purity916":[1]}',
+        '{"labels":["01/07/2026"],"purity999":["x"],"purity916":[1]}',
+    ],
+)
+def test_backfill_malformed_field_is_skipped_and_main_parse_works(payload):
+    parsed = parse_rates(_without_hidden() + _hidden("HdnGold", payload))
+    assert parsed.backfill == {}
+    assert parsed.rate_date == date(2026, 10, 30)
+    assert parsed.rates[("gold", "999")] == Decimal("14005.40")
+
+
+def test_backfill_does_not_change_latest():
+    base = parse_rates(FIXTURE.read_text())
+    html = _without_hidden() + _hidden(
+        "HdnGold",
+        '{"labels":["31/12/2026"],"purity999":[999999],"purity916":[999999]}',
+    )
+    parsed = parse_rates(html)
+    assert parsed.rate_date == base.rate_date
+    assert parsed.rates == base.rates
+    assert parsed.history == base.history
+    assert date(2026, 12, 31) in parsed.backfill
+
+
+def test_import_backfill_is_insert_if_missing_and_leaves_latest_alone():
+    parsed = _parsed(date(2026, 10, 1), "100")
+    parsed.backfill = {
+        date(2026, 7, 1): {("gold", "999"): Decimal("14300.30"), ("silver", "999"): Decimal("228.85")}
+    }
+    session = _RecordingSession()
+    result = import_rates(session, parsed)
+    history_sql, backfill_sql, latest_sql = (_sql(s) for s in session.statements)
+    assert "DO UPDATE" in history_sql
+    assert "ON CONFLICT (metal, purity, rate_date) DO NOTHING" in backfill_sql
+    assert "gold_rate_history" in backfill_sql
+    assert "gold_rate_latest" in latest_sql
+    assert result.backfill_rows == 2
+    assert result.rows_upserted == 6
+
+
+def test_import_without_backfill_runs_no_extra_statement():
+    session = _RecordingSession()
+    result = import_rates(session, _parsed(date(2026, 10, 1), "100"))
+    assert len(session.statements) == 2
+    assert result.backfill_rows == 0
 
 
 def test_import_history_upserts_per_purity_and_date():

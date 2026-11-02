@@ -10,6 +10,7 @@ class GoldImportResult(BaseModel):
     rate_date: date
     session: str
     rows_upserted: int
+    backfill_rows: int = 0
 
 
 class GoldRateOnDate(BaseModel):
