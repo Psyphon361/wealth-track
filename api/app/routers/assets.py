@@ -1,6 +1,6 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import create_model
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import schemas
@@ -139,9 +139,29 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         obj = _get_or_404(db, model, item_id, user.id)
         name = _holding_name(obj)
         deleted_label = _label(obj)
-        db.delete(obj)
+        obj.deleted_at = func.now()
         db.commit()
         return Outcome(message=f"{deleted_label} deleted", description=name)
+
+    @sub.post("/{item_id}/restore", response_model=Outcome)
+    def restore_item(
+        item_id: int,
+        background: BackgroundTasks,
+        db: Session = Depends(get_db),
+        user: User = Depends(current_user),
+    ):
+        obj = db.scalars(
+            select(model)
+            .where(model.id == item_id, model.user_id == user.id, model.deleted_at.is_not(None))
+            .execution_options(include_deleted=True)
+        ).first()
+        if obj is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        obj.deleted_at = None
+        db.commit()
+        if slug == "nps":
+            background.add_task(nps.sync_scheme_safely, obj.scheme_id)
+        return Outcome(message=f"{_label(obj)} restored", description=_holding_name(obj))
 
     return sub
 

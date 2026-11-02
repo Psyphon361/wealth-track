@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, Enum, Text, event, func
+from sqlalchemy.orm import Mapped, ORMExecuteState, Session, mapped_column, with_loader_criteria
 
 COMPOUNDING_VALUES = ("monthly", "quarterly", "half_yearly", "yearly", "simple")
 
@@ -20,3 +20,22 @@ class TimestampedMixin:
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Soft delete: set when the holding is deleted; rows are purged after 30 days.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _exclude_soft_deleted(state: ORMExecuteState) -> None:
+    """Hide soft-deleted holdings from every ORM query (entity, column and subquery uses).
+
+    Opt out with `.execution_options(include_deleted=True)`. Statements that bypass the ORM
+    (Core `insert(Model.__table__)`, raw SQL) are not covered and must filter explicitly.
+    """
+    if state.is_select and not state.execution_options.get("include_deleted", False):
+        state.statement = state.statement.options(
+            with_loader_criteria(
+                TimestampedMixin,
+                lambda cls: cls.deleted_at.is_(None),
+                include_aliases=True,
+            )
+        )

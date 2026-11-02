@@ -213,7 +213,10 @@ def sync_missing_history(session: Session) -> int:
     fetch records a sync row, so the 24 h refetch limit applies afterwards. Returns the count synced.
     """
     held = session.scalars(
-        sa.text("SELECT DISTINCT scheme_code FROM mutual_funds WHERE scheme_code IS NOT NULL")
+        sa.text(
+            "SELECT DISTINCT scheme_code FROM mutual_funds "
+            "WHERE scheme_code IS NOT NULL AND deleted_at IS NULL"
+        )
     ).all()
     synced = session.scalars(sa.select(MFNavHistorySync.scheme_code)).all()
     count = 0
@@ -268,7 +271,10 @@ def append_today_for_holdings(session: Session, navs: list[tuple[int, date, Deci
     """
     held = set(
         session.scalars(
-            sa.text("SELECT DISTINCT scheme_code FROM mutual_funds WHERE scheme_code IS NOT NULL")
+            sa.text(
+                "SELECT DISTINCT scheme_code FROM mutual_funds "
+                "WHERE scheme_code IS NOT NULL AND deleted_at IS NULL"
+            )
         )
     )
     values = [

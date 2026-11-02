@@ -19,6 +19,7 @@ from app.services import (
     gold_rates,
     market_files,
     nps,
+    purge,
     stock_history,
     stock_master,
 )
@@ -92,3 +93,8 @@ def refresh_gold(db: Session = Depends(get_db)):
     except (urllib.error.URLError, TimeoutError, OSError, gold_rates.GoldRatesError) as exc:
         raise HTTPException(status_code=502, detail="Couldn't fetch the gold rates") from exc
     return gold_rates.import_rates(db, parsed)
+
+
+@router.get("/purge", dependencies=[Depends(require_cron_secret)])
+def purge_deleted_holdings(db: Session = Depends(get_db)) -> dict[str, int]:
+    return purge.purge_deleted(db)

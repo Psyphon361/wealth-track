@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, auth, cas_import, cron, holdings, master, networth, portfolio
+from app.routers import assets, auth, cas_import, cron, deleted, holdings, master, networth, portfolio
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -88,7 +88,8 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException):
         description = "Your session may have expired. Log in again."
     elif exc.status_code == 404:
         parts = request.url.path.strip("/").split("/")
-        slug = parts[2] if len(parts) == 4 and parts[:2] == ["api", "assets"] else None
+        is_item = len(parts) == 4 or (len(parts) == 5 and parts[4] == "restore")
+        slug = parts[2] if is_item and parts[:2] == ["api", "assets"] else None
         if slug in ASSET_LABELS:
             message = f"{ASSET_LABELS[slug]} not found"
             description = "It may have been deleted already."
@@ -150,6 +151,7 @@ def health() -> dict[str, str]:
 api_router.include_router(auth.router)
 api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
+api_router.include_router(deleted.router)
 api_router.include_router(networth.router)
 api_router.include_router(holdings.router)
 api_router.include_router(master.router)
