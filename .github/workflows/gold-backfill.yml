@@ -33,19 +33,36 @@ concurrency:
 jobs:
   backfill:
     runs-on: ubuntu-latest
+    environment: ${{ inputs.target == 'prod' && 'production' || 'development' }}
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
 
       - name: Check secrets
         env:
-          DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PROD_DATABASE_URL || secrets.DEV_DATABASE_URL }}
+          PROD_URL: ${{ secrets.PROD_DATABASE_URL }}
+          DEV_URL: ${{ secrets.DEV_DATABASE_URL }}
           TARGET: ${{ inputs.target }}
         run: |
-          if [ -z "$DATABASE_URL" ]; then
-            echo "::error::Database secret for target '$TARGET' is not set."
+          case "$TARGET" in
+            prod)
+              url="$PROD_URL"
+              missing="PROD_DATABASE_URL in environment production"
+              ;;
+            dev)
+              url="$DEV_URL"
+              missing="DEV_DATABASE_URL"
+              ;;
+            *)
+              echo "::error::Unknown target '$TARGET'."
+              exit 1
+              ;;
+          esac
+          if [ -z "$url" ]; then
+            echo "::error::Secret $missing is not set."
             exit 1
           fi
+          echo "DATABASE_URL=$url" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v10.3.2
 
@@ -57,7 +74,6 @@ jobs:
       - name: Backfill IBJA gold and silver rate history
         working-directory: api
         env:
-          DATABASE_URL: ${{ inputs.target == 'prod' && secrets.PROD_DATABASE_URL || secrets.DEV_DATABASE_URL }}
           SOURCE: ${{ inputs.source }}
           FROM_DATE: ${{ inputs.from }}
           TO_DATE: ${{ inputs.to }}
