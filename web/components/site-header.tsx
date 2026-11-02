@@ -12,6 +12,7 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { useBreadcrumbLabelValue } from "@/components/breadcrumb-label";
+import { GlobalSearch } from "@/components/search/global-search";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserMenu } from "@/components/user-menu";
 import { Separator } from "@/components/ui/separator";
@@ -61,19 +62,19 @@ export function SiteHeader() {
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
       <Breadcrumb className="min-w-0">
-        <BreadcrumbList className="flex-nowrap">
+        <BreadcrumbList className="flex-nowrap text-[13.5px]">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             return (
               <Fragment key={crumb.label}>
-                {i > 0 ? <BreadcrumbSeparator /> : null}
+                {i > 0 ? <BreadcrumbSeparator className="[&>svg]:size-3" /> : null}
                 <BreadcrumbItem className={last ? "min-w-0" : "shrink-0 whitespace-nowrap"}>
                   {last || !crumb.href ? (
                     crumb.pending ? (
                       <Skeleton className="h-4 w-24" />
                     ) : (
                       <BreadcrumbPage
-                        className="block min-w-0 max-w-[40vw] truncate"
+                        className="block min-w-0 max-w-[40vw] truncate text-[13.5px]"
                         title={crumb.label}
                       >
                         {crumb.label}
@@ -91,6 +92,7 @@ export function SiteHeader() {
         </BreadcrumbList>
       </Breadcrumb>
       <div className="ml-auto flex shrink-0 items-center gap-2">
+        <GlobalSearch />
         <AddMenu />
         <UserMenu />
       </div>

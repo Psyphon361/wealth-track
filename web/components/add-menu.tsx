@@ -17,7 +17,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ASSET_CATALOG, ASSET_GROUPS } from "@/lib/asset-catalog";
 
-function shouldIgnoreKey(e: KeyboardEvent): boolean {
+export function shouldIgnoreKey(e: KeyboardEvent): boolean {
   if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.repeat) return true;
   const el = e.target as HTMLElement | null;
   if (el) {

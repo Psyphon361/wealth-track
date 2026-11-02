@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { LogOut } from "lucide-react";
 import { logout } from "@/app/actions/auth";
+import { clearSearchData } from "@/components/search/search-store";
 import { Button } from "@/components/ui/button";
 import { invalidateNetWorth } from "@/lib/networth-cache";
 import {
@@ -66,6 +67,7 @@ export function UserMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => {
+            clearSearchData();
             invalidateNetWorth();
             startTransition(() => logout());
           }}
