@@ -12,6 +12,7 @@ from app.models import (
     Gold,
     MutualFund,
     Nps,
+    Other,
     Pf,
     RecurringDeposit,
     Stock,
@@ -30,6 +31,7 @@ HOLDING_MODELS = {
     "gold": Gold,
     "cash": Cash,
     "pf": Pf,
+    "other": Other,
 }
 
 

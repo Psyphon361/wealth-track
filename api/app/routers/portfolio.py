@@ -31,6 +31,7 @@ LABELS = {
     "gold": "Gold & Silver",
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
+    "other": "Other",
 }
 _VALUERS = {
     "fd": valuation.value_fd,
@@ -42,6 +43,7 @@ _VALUERS = {
     "gold": valuation.value_gold,
     "cash": valuation.value_cash,
     "pf": valuation.value_pf,
+    "other": valuation.value_other,
 }
 _CENT = Decimal("0.01")
 

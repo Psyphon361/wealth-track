@@ -148,6 +148,11 @@ def _holding_start(slug: str, record: Any) -> date:
         "gold": lambda r: r.purchase_date,
         "cash": lambda r: r.balance_date,
         "pf": lambda r: r.balance_date,
+        "other": lambda r: (
+            r.acquired_on
+            if r.acquired_on is not None and r.invested_amount is not None
+            else r.value_date
+        ),
     }[slug](record)
 
 
@@ -168,7 +173,7 @@ def earliest_start(
 ) -> date | None:
     """Earliest start date over every holding (MF with matching txns: its first txn)."""
     starts = [
-        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "nps", "gold", "cash", "pf") for r in holdings.get(slug, ())
+        _holding_start(slug, r) for slug in ("fd", "rd", "stock", "bond", "nps", "gold", "cash", "pf", "other") for r in holdings.get(slug, ())
     ]
     starts += [m.start for m in _prepare_mfs(holdings.get("mf", ()), txns or {})]
     return min(starts) if starts else None
@@ -267,6 +272,17 @@ def build_history(
             v = valuation.value_pf(r, d)
             invested += v["invested"]
             current += v["current_value"]
+        for r in holdings.get("other", ()):
+            if _holding_start("other", r) > d:
+                continue
+            value = _q(Decimal(r.current_value))
+            if r.invested_amount is None:
+                cost = value
+            else:
+                cost = _q(Decimal(r.invested_amount))
+            invested += cost
+            # Before value_date (only reachable with acquired_on and invested set) it counts at cost.
+            current += cost if d < r.value_date else value
         for m in mfs:
             pair = _mf_at(m, d, navs)
             if pair is not None:

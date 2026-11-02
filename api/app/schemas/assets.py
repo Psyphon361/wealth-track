@@ -611,6 +611,46 @@ class PfRead(PfBase, _Read):
     pass
 
 
+# --- Other (manually valued) -------------------------------------------------
+
+
+OTHER_ACQUIRED_AFTER_VALUE_ERROR = "Purchase date can't be after the value date"
+
+Category = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True),
+    AfterValidator(_required),
+    AfterValidator(_max_length(40)),
+]
+
+
+class OtherBase(BaseModel):
+    name: Required
+    category: str
+    current_value: Dec
+    value_date: date
+    invested_amount: Dec | None = None
+    acquired_on: date | None = None
+
+
+class OtherCreate(_Create, OtherBase):
+    category: Category
+    current_value: Money
+    value_date: TradeDate
+    invested_amount: Money | None = None
+    acquired_on: TradeDate | None = None
+
+    @model_validator(mode="after")
+    def _acquired_before_value(self):
+        if self.acquired_on is not None and self.acquired_on > self.value_date:
+            _field_error(self, "acquired_on", OTHER_ACQUIRED_AFTER_VALUE_ERROR)
+        return self
+
+
+class OtherRead(OtherBase, _Read):
+    pass
+
+
 # --- NPS --------------------------------------------------------------------
 
 

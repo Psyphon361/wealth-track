@@ -31,6 +31,7 @@ _MESSAGES = {
 _FIELD_LABELS = {
     "avg_nav": "Average NAV",
     "ytm": "YTM",
+    "acquired_on": "Purchase date",
     "tenure_years": "Tenure",
     "tenure_months": "Tenure",
     "tenure_days": "Tenure",

@@ -11,6 +11,7 @@ from app.models.mf_transaction import MFTransaction
 from app.models.mutual_fund import MutualFund
 from app.models.nps import Nps
 from app.models.nps_master import NpsMaster, NpsNavHistory, NpsNavHistorySync, NpsNavLatest
+from app.models.other import Other
 from app.models.pf import Pf
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.refresh_token import RefreshToken
@@ -41,6 +42,7 @@ __all__ = [
     "NpsNavHistory",
     "NpsNavHistorySync",
     "NpsNavLatest",
+    "Other",
     "Pf",
     "RecurringDeposit",
     "RefreshToken",

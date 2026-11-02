@@ -87,6 +87,17 @@ def make_pf(**kw):
     return _base(**fields)
 
 
+def make_other(**kw):
+    from datetime import date
+
+    fields = dict(
+        name="Test Crypto", category="Crypto", current_value=Decimal("80000"),
+        value_date=date(2025, 10, 24), invested_amount=None, acquired_on=None,
+    )  # fmt: skip
+    fields.update(kw)
+    return _base(**fields)
+
+
 def make_nps(**kw):
     from datetime import date
 

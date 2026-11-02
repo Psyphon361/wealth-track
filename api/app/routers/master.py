@@ -1,10 +1,12 @@
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.models import Other, User
 from app.schemas.assets import (
     GOLD_METAL_PURITIES,
     GOLD_PURITY_ERROR,
@@ -160,6 +162,27 @@ def get_mf_nav(
 
 
 GOLD_RATE_MAX_GAP_DAYS = 7
+MAX_OTHER_CATEGORIES = 20
+
+
+def distinct_categories(rows: list[tuple[str, int]], limit: int = MAX_OTHER_CATEGORIES) -> list[str]:
+    """Categories from (category, id) rows: case-insensitive distinct, newest spelling, most used first."""
+    counts: dict[str, int] = {}
+    newest: dict[str, tuple[int, str]] = {}
+    for category, row_id in rows:
+        key = category.strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+        if key not in newest or row_id > newest[key][0]:
+            newest[key] = (row_id, category)
+    # Most used first; ties go to the more recently used category.
+    ordered = sorted(counts, key=lambda k: (-counts[k], -newest[k][0]))
+    return [newest[k][1] for k in ordered[:limit]]
+
+
+@router.get("/other/categories", response_model=list[str])
+def other_categories(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    rows = db.execute(select(Other.category, Other.id).where(Other.user_id == user.id)).all()
+    return distinct_categories([(c, i) for c, i in rows])
 
 
 @router.get("/gold/rate", response_model=GoldRateOnDate)

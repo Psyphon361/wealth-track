@@ -163,6 +163,19 @@ def value_cash(cash: Any, today: date | None = None) -> dict[str, Any]:
     return out
 
 
+def value_other(other: Any, today: date | None = None) -> dict[str, Any]:
+    """A hand-entered value: current = current_value; gain only when invested_amount is set."""
+    current = Decimal(other.current_value)
+    if other.invested_amount is None:
+        out = _result(current, current)
+        out["gain"] = None
+        out["gain_pct"] = None
+    else:
+        out = _result(Decimal(other.invested_amount), current)
+    out["xirr"] = None
+    return out
+
+
 def _ppf_maturity(opened_on: date) -> date:
     """A PPF matures 15 financial years after the one it was opened in (FY ends 31 Mar)."""
     fy_end_year = opened_on.year + 1 if opened_on.month >= 4 else opened_on.year
@@ -281,7 +294,8 @@ def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
     for r in results:
         invested += r["invested"]
         current += r["current_value"]
-        gain += r["gain"]
+        if r["gain"] is not None:  # "Other" holdings without an invested amount have no gain
+            gain += r["gain"]
     gain_pct = _q(gain / invested * 100) if invested else Decimal("0.00")
     return {
         "invested": _q(invested),

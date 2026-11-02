@@ -18,6 +18,7 @@ from app.models import (
     NpsNavHistorySync,
     NpsNavLatest,
     Nps,
+    Other,
     Pf,
     RecurringDeposit,
     Stock,
@@ -42,7 +43,7 @@ def client(auth_engine, auth_settings):
         tables=[
             m.__table__
             for m in (
-                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, Pf, GoldRateLatest, MFNavLatest,
+                FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, Pf, Other, GoldRateLatest, MFNavLatest,
                 MFTransaction, NpsMaster, NpsNavLatest, NpsNavHistory, NpsNavHistorySync, Nps
             )
         ],

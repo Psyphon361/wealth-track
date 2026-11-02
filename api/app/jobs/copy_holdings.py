@@ -30,6 +30,7 @@ from app.models.mf_master import MFMaster
 from app.models.mutual_fund import MutualFund
 from app.models.nps import Nps
 from app.models.nps_master import NpsMaster
+from app.models.other import Other
 from app.models.pf import Pf
 from app.models.recurring_deposit import RecurringDeposit
 from app.models.stock import Stock
@@ -58,6 +59,7 @@ TABLES = (
     TableSpec(Gold, "name", None, None, None),
     TableSpec(Cash, "name", None, None, None),
     TableSpec(Pf, "name", None, None, None),
+    TableSpec(Other, "name", None, None, None),
 )
 
 

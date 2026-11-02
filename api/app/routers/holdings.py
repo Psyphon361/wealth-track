@@ -108,6 +108,11 @@ CONFIG: dict[str, dict[str, Any]] = {
         "facets": {"kind": PF_KINDS},
         "text": {"name", "kind"},
     },
+    "other": {
+        "search": ("name", "category"),
+        "facets": {"category": None},
+        "text": {"name", "category"},
+    },
 }
 
 FdSort = Literal[
@@ -146,6 +151,10 @@ CashSort = Literal["name", "kind", "balance_date", "current_value", "interest_ra
 
 PfSort = Literal[
     "name", "kind", "balance_date", "current_value", "interest_rate", "maturity_date"
+]
+
+OtherSort = Literal[
+    "name", "category", "current_value", "invested", "gain", "value_date"
 ]
 
 Q =Annotated[str | None, Query(max_length=100)]
@@ -192,6 +201,14 @@ def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]
     return enriched
 
 
+def _canonical_categories(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Group categories case-insensitively: each shows the spelling of its newest holding."""
+    newest: dict[str, str] = {}
+    for item in sorted(items, key=lambda i: i["id"]):
+        newest[item["category"].strip().lower()] = item["category"]
+    return [{**i, "category": newest[i["category"].strip().lower()]} for i in items]
+
+
 def _run(
     db: Session,
     user_id: int,
@@ -213,6 +230,8 @@ def _run(
     rows: list[dict[str, Any]] = group["items"]
     if slug == "mf":
         rows = add_mf_xirr(db, rows)
+    if slug == "other":
+        rows = _canonical_categories(rows)
     needle = (q or "").strip().lower()
     selected = {k: set(v) for k, v in multi.items() if v}
     m_from = maturity_from.isoformat() if maturity_from else None
@@ -476,6 +495,22 @@ def get_pf_holdings(
     )  # fmt: skip
 
 
+@router.get("/holdings/other", response_model=HoldingsResponse)
+def get_other_holdings(
+    q: Q = None,
+    category: Texts = None,
+    sort: OtherSort = "current_value",
+    dir: Dir = "desc",
+    page: Page = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    return _run(
+        db, user.id, "other", q=q, sort=sort, dir=dir, page=page,
+        multi={"category": category},
+    )  # fmt: skip
+
+
 def _not_found() -> HTTPException:
     return HTTPException(
         status_code=404,
@@ -497,7 +532,7 @@ def linked_master(db: Session, slug: str, record: Any) -> dict[str, Any] | None:
     elif slug == "bond":
         found = bond_master.get_bond_master(db, record.master_id) if record.master_id else None
         schema = BondMasterRead
-    elif slug in ("gold", "cash", "pf"):
+    elif slug in ("gold", "cash", "pf", "other"):
         return None  # no master table
     elif slug == "nps":
         found = nps.get_scheme_with_nav(db, record.scheme_id)
