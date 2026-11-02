@@ -5,7 +5,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
 from app.models import Cash, FixedDeposit
-from app.routers.deleted import deleted_item
+from app.routers.assets import REGISTRY, _holding_name
+from app.routers.deleted import deleted_item, deleted_union, name_expr
 from app.services import purge
 from tests.conftest import make_cash
 from tests.test_scoping import FD, client, users  # noqa: F401  (fixtures)
@@ -174,3 +175,21 @@ def test_purge_removes_only_rows_deleted_over_30_days_ago(session):
     assert sum(n for slug, n in counts.items() if slug != "cash") == 0
     left = select(Cash.name).order_by(Cash.id).execution_options(include_deleted=True)
     assert list(session.scalars(left)) == ["live", "recent"]
+
+
+def test_deleted_union_covers_every_slug():
+    sql = str(deleted_union(1, datetime.now(timezone.utc)).compile())
+    assert sql.count("UNION ALL") == len(REGISTRY) - 1
+    for model, _c, _r in REGISTRY.values():
+        assert model.__tablename__ in sql
+
+
+@pytest.mark.parametrize("label", [None, "", "Tax saver"])
+def test_name_expr_matches_holding_name_for_bank_models(client, users, session, label):  # noqa: F811
+    a = users[0]
+    body = FD if label is None else {**FD, "label": label}
+    fd_id = client.post("/api/assets/fd", json=body, headers=a).json()["id"]
+    fd = session.get(FixedDeposit, fd_id)
+    name = session.scalar(select(name_expr(FixedDeposit)).where(FixedDeposit.id == fd_id))
+    assert name == _holding_name(fd)
+    assert (" · " in name) == bool(fd.label)
