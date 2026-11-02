@@ -16,6 +16,8 @@ RANGES = ("1m", "6m", "1y", "all")
 MAX_YEARS = 10
 UNITS_TOLERANCE = Decimal("0.001")
 _CENT = Decimal("0.01")
+# Same limit as the gold form (routers/master.py): older IBJA rates are ignored, value at cost.
+GOLD_RATE_MAX_GAP_DAYS = 7
 
 Series = Sequence[tuple[date, Decimal]]
 
@@ -33,10 +35,18 @@ def _nps_fraction(r: Any, d: date, today: date) -> Decimal:
     return Decimal((d - r.start_date).days) / Decimal((anchor - r.start_date).days)
 
 
-def on_or_before(series: Series, on_date: date) -> Decimal | None:
-    """Value of the last (date, value) entry with date <= on_date; series sorted by date."""
+def on_or_before(series: Series, on_date: date, max_age_days: int | None = None) -> Decimal | None:
+    """Value of the last (date, value) entry with date <= on_date; series sorted by date.
+
+    With max_age_days, an entry older than that many days before on_date counts as missing.
+    """
     index = bisect_right([d for d, _ in series], on_date)
-    return series[index - 1][1] if index else None
+    if not index:
+        return None
+    found_on, value = series[index - 1]
+    if max_age_days is not None and (on_date - found_on).days > max_age_days:
+        return None
+    return value
 
 
 # --- Dates ---------------------------------------------------------------------
@@ -242,7 +252,7 @@ def build_history(
             if r.purchase_date > d:
                 continue
             cost = _q(Decimal(r.invested_amount))
-            rate = on_or_before(gold_rates.get((r.metal, r.purity), ()), d)
+            rate = on_or_before(gold_rates.get((r.metal, r.purity), ()), d, GOLD_RATE_MAX_GAP_DAYS)
             invested += cost
             current += cost if rate is None else _q(Decimal(r.weight_grams) * Decimal(rate))
         for r in holdings.get("cash", ()):
