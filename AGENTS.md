@@ -33,7 +33,8 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/schemas/assets.py Pydantic Create/Read/Result models + ALL validation rules (NPS: N1–N4 in SPEC §2)
   app/schemas/cas_import.py  CAS import preview and commit models (SPEC §8)
   app/schemas/gold.py  gold import result and rate-on-date read models
-  app/schemas/messages.py, summary.py   outcome + portfolio/dashboard response models
+  app/schemas/messages.py, summary.py   outcome + portfolio/dashboard response models (the dashboard also returns the 1-day change: day_change, day_change_pct, day_change_as_of, from valuation.portfolio_day_change)
+  app/routers/search.py + app/services/search_index.py + app/schemas/search.py  GET /api/search/index: one flat item per holding with search terms from the linked masters; ranking happens in the browser (SPEC §4)
   app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|nps|gold|cash|pf|other}
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
@@ -88,6 +89,8 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   components/forms/cas-import/  MF "Import CAS" tab on /add/mf: cas-import.tsx (container), upload-step.tsx (file + password), preview-step.tsx (row checkboxes, New / In portfolio badges, Update existing / Add as new choice, Import N funds)
   app/(app)/deleted/    "Recently deleted" page (/deleted, linked at the bottom of the sidebar); components/deleted/recently-deleted.tsx is the list with per-row Restore
   lib/restore-holding.ts  restoreHolding (used by the Recently deleted page)
+  lib/search/  global search logic: normalize, rank (tiers and tie-breaks), static-entries (pages and actions), recents (localStorage wt.search.recent), types
+  components/search/  global search UI in the top bar: global-search (trigger, shortcuts, dialog / mobile sheet), search-panel, search-rows, search-model, search-store (in-memory index, preload and refresh), use-browser
   components/user-menu.tsx  top-bar account menu right of "Add asset": email-initial avatar, "Signed in as <email>", Log out (fetches GET /api/me)
   components/portfolio/ asset tabs (pills; order and groups from lib/asset-catalog.ts); per-type grid configs (grid/configs/{fd,rd,stock,bond,mf,nps,gold,cash,pf,other}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
   components/holding-detail/ holding details page: shared layout for all ten types (header, KPI strip, tenure bar, sections)
@@ -143,7 +146,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 5. **The Neon `dev` branch may contain the user's real holdings** (it was emptied on 2026-10-25, but the user enters real data there). When testing: create probe rows with unique names, and modify/delete ONLY rows you created, by exact id or by matching your probe name. Never bulk-delete, never "clean up" rows you didn't create.
 6. **Never touch the user's running dev servers** (ports 3000/8000). Use spare ports (8010+, 3010+) for your own test servers and stop them when done.
 7. **Secrets**: never print or commit `api/.env`, connection strings, API keys, passwords. Production credentials are handled by the user only.
-8. Dark theme only; compact, minimal style; Geist fonts; `num` utility (Geist sans + tabular-nums) for figures; gain/loss colours via `text-gain` / `text-loss`.
+8. Dark theme only; compact, minimal style; Geist fonts; `num` utility (Geist sans + tabular-nums) for figures; gain/loss colours via `text-gain` / `text-loss`. Type scale: 13.5px body, 15.4px titles, 11px uppercase labels, 13.2px helper text, inputs `text-base` on phones (SPEC §5).
 
 ## Gotchas
 

@@ -2,10 +2,10 @@ import { Calculator, FileUp, IndianRupee, Layers, LineChart, RefreshCw, ShieldCh
 import { Reveal } from "./reveal";
 
 const features = [
-  { icon: Layers, title: "Five asset classes, one view", text: "Fixed deposits, recurring deposits, stocks, bonds and mutual funds on a single dashboard." },
+  { icon: Layers, title: "Ten asset types, one view", text: "FDs, RDs, cash, EPF & PPF, stocks, mutual funds, NPS, bonds, gold & silver and more on a single dashboard." },
   { icon: RefreshCw, title: "Prices updated nightly", text: "NSE/BSE closing prices and AMFI NAVs keep every holding valued without any effort." },
   { icon: FileUp, title: "Import your CAS", text: "Upload your MF Central or CAMS statement — every fund, folio and SIP in one go." },
-  { icon: LineChart, title: "True XIRR", text: "Calculated from your actual SIP history, not a guess." },
+  { icon: LineChart, title: "True XIRR", text: "Shown for each mutual fund from your CAS-imported transactions, not a guess." },
   { icon: Calculator, title: "FD & RD maths done right", text: "Maturity value, interest received and compounding handled for you." },
   { icon: IndianRupee, title: "Indian formatting everywhere", text: "₹1,00,000, not 100,000. Lakhs and crores the way you read them." },
 ];
