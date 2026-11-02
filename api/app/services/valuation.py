@@ -305,6 +305,75 @@ def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
     }
 
 
+def _dec(value: Any) -> Decimal:
+    return Decimal(str(value))
+
+
+def _iso_date(value: Any) -> date | None:
+    """A date, or the date part of an ISO date / timestamp string; None when empty."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return date.fromisoformat(value[:10])
+    return _as_date(value)
+
+
+def _item_day_change(
+    slug: str, item: Mapping[str, Any], prev_rates: Mapping[tuple[str, str], tuple[date, Decimal]]
+) -> tuple[Decimal | None, date | None]:
+    """(1-day change in INR, date of the price/NAV/rate) for one valued item; None if unknown."""
+    if slug in ("mf", "nps"):
+        change = item.get("day_change")
+        return (None, None) if change is None else (_dec(change), _iso_date(item.get("nav_date")))
+    if slug == "stock":
+        price, prev_close = item.get("price"), item.get("prev_close")
+        if price is None or prev_close is None:
+            return None, None
+        change = _dec(item["quantity"]) * (_dec(price) - _dec(prev_close))
+        return change, _iso_date(item.get("price_time"))
+    if slug == "gold":
+        rate, rate_date = item.get("rate_per_gram"), _iso_date(item.get("rate_date"))
+        prev = prev_rates.get((item["metal"], item["purity"]))
+        if rate is None or rate_date is None or prev is None or prev[0] >= rate_date:
+            return None, None
+        return _dec(item["weight_grams"]) * (_dec(rate) - prev[1]), rate_date
+    return None, None  # FD, RD, bond, cash, EPF/PPF and Other have no daily market price
+
+
+def portfolio_day_change(
+    groups: Iterable[Mapping[str, Any]],
+    prev_rates: Mapping[tuple[str, str], tuple[date, Decimal]],
+    total_current: Decimal,
+) -> tuple[Decimal | None, Decimal | None, date | None]:
+    """(day_change, day_change_pct, as_of) over the active holdings of the given groups.
+
+    Groups are the portfolio groups (`type` + valued `items`). MF and NPS use the item's own
+    `day_change`; stocks use quantity x (price - prev_close); gold and silver use weight x
+    (latest rate - previous rate from `prev_rates`, keyed by (metal, purity)). Everything else
+    contributes nothing. The change is None, never 0, when no holding had a real figure.
+    The % is against the whole portfolio: change / (total_current - change); None when that
+    denominator is not positive.
+    """
+    total: Decimal | None = None
+    as_of: date | None = None
+    for group in groups:
+        for item in group["items"]:
+            if item.get("status") != "active":
+                continue
+            change, when = _item_day_change(group["type"], item, prev_rates)
+            if change is None:
+                continue
+            total = change if total is None else total + change
+            if when is not None and (as_of is None or when > as_of):
+                as_of = when
+    if total is None:
+        return None, None, None
+    change = _q(total)
+    base = Decimal(total_current) - change
+    pct = _q(change / base * 100) if base > 0 else None
+    return change, pct, as_of
+
+
 _XIRR_LOW = -0.9999
 _XIRR_HIGH = 100.0  # +10000 %
 

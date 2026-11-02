@@ -4,10 +4,10 @@ const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const rupee = (n: number) => `₹${inr.format(n)}`;
 
 const kpis = [
-  { label: "Net worth", value: rupee(2486310), sub: "Across 5 asset types" },
+  { label: "Net worth", value: rupee(2486310), sub: "Across 10 asset types" },
   { label: "Invested", value: rupee(2012500), sub: "Total cost" },
   { label: "Gain", value: `+${rupee(473810)}`, sub: "+23.54%", gain: true },
-  { label: "XIRR", value: "14.2%", sub: "From your SIP history", gain: true },
+  { label: "1-day change", value: `+${rupee(8420)}`, sub: "+0.34%", gain: true },
 ];
 
 const rows = [

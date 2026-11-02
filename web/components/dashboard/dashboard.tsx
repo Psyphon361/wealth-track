@@ -56,12 +56,13 @@ export function Dashboard() {
   if (state.status === "loading") {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading…">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Skeleton className="h-[74px] rounded-xl" />
-          <Skeleton className="h-[74px] rounded-xl" />
-          <Skeleton className="h-[74px] rounded-xl" />
-        </div>
         <Skeleton className="h-64 rounded-xl" />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Skeleton className="h-[100px] rounded-xl" />
+          <Skeleton className="h-[100px] rounded-xl" />
+          <Skeleton className="h-[100px] rounded-xl" />
+          <Skeleton className="h-[100px] rounded-xl" />
+        </div>
       </div>
     );
   }
@@ -70,9 +71,9 @@ export function Dashboard() {
     return (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
         <div>
-          <p className="text-sm font-medium text-destructive">{state.message}</p>
+          <p className="text-[13.5px] font-medium text-destructive">{state.message}</p>
           {state.description && (
-            <p className="text-sm text-muted-foreground">{state.description}</p>
+            <p className="text-[13.5px] text-muted-foreground">{state.description}</p>
           )}
         </div>
         <Button variant="outline" onClick={retry}>
@@ -86,8 +87,8 @@ export function Dashboard() {
   if (data.by_type.every((r) => r.count + r.matured_count === 0)) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-        <p className="text-lg font-medium">No holdings yet</p>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm font-medium">No holdings yet</p>
+        <p className="text-[13.5px] text-muted-foreground">
           Add your first holding to see your portfolio summary.
         </p>
         <Link href="/add" className={buttonVariants()}>
@@ -99,8 +100,8 @@ export function Dashboard() {
 
   return (
     <div className="space-y-3">
-      <SummaryCards data={data} />
       <NetWorthChart />
+      <SummaryCards data={data} />
       <HoldingsByType data={data} />
     </div>
   );

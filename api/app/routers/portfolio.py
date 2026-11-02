@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.models.user import User
+from app.models.gold import Gold
 from app.models.mf_master import MFNavLatest
 from app.models.mutual_fund import MutualFund
 from app.models.nps import Nps
@@ -344,6 +345,36 @@ def get_portfolio(db: Session = Depends(get_db), user: User = Depends(current_us
     return {"groups": load_groups(db, user.id)}
 
 
+def _fetch_gold_prev_rates(bind: Any, user_id: int) -> dict[tuple[str, str], tuple[date, Decimal]]:
+    """Previous IBJA rate for the (metal, purity) pairs this user holds: two queries, own session."""
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        pairs = session.execute(
+            select(Gold.metal, Gold.purity).where(Gold.user_id == user_id).distinct()
+        ).all()
+        return gold_rates.previous_rates(session, [(m, p) for m, p in pairs])
+
+
+def add_day_change(
+    dashboard: dict[str, Any],
+    groups: list[dict[str, Any]],
+    prev_rates: dict[tuple[str, str], tuple[date, Decimal]],
+) -> dict[str, Any]:
+    change, pct, as_of = valuation.portfolio_day_change(
+        groups, prev_rates, dashboard["total_current"]
+    )
+    return {
+        **dashboard,
+        "day_change": change,
+        "day_change_pct": pct,
+        "day_change_as_of": as_of,
+    }
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    return build_dashboard(load_groups(db, user.id))
+    # The previous gold rates run alongside load_groups' own concurrent queries.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        prev_future = pool.submit(_fetch_gold_prev_rates, db.get_bind(), user.id)
+        groups = load_groups(db, user.id)
+        prev_rates = prev_future.result()
+    return add_day_change(build_dashboard(groups), groups, prev_rates)

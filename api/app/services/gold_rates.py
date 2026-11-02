@@ -17,6 +17,7 @@ import json
 import re
 import ssl
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -240,6 +241,56 @@ def latest_rates(session: Session) -> dict[Key, tuple[Decimal, date]]:
     base = out.get(("silver", SILVER_STORED))
     if base is not None:
         out[("silver", "925")] = (_scaled("silver", "925", base[0]), base[1])
+    return out
+
+
+def previous_rates(session: Session, keys: Iterable[Key]) -> dict[Key, tuple[date, Decimal]]:
+    """Per (metal, purity), the stored rate on the latest date strictly before its latest rate date.
+
+    One query over `gold_rate_history` joined to `gold_rate_latest`, DB only. Silver 925 is
+    derived from silver 999 like every other read. Keys without such a row are omitted.
+    """
+    wanted = list(dict.fromkeys(keys))
+    if not wanted:
+        return {}
+    stored = sorted({_stored_key(m, p) for m, p in wanted})
+    ranked = (
+        sa.select(
+            GoldRateHistory.metal.label("metal"),
+            GoldRateHistory.purity.label("purity"),
+            GoldRateHistory.rate_date.label("rate_date"),
+            GoldRateHistory.rate_per_gram.label("rate"),
+            sa.func.row_number()
+            .over(
+                partition_by=(GoldRateHistory.metal, GoldRateHistory.purity),
+                order_by=GoldRateHistory.rate_date.desc(),
+            )
+            .label("rn"),
+        )
+        .join(
+            GoldRateLatest,
+            sa.and_(
+                GoldRateLatest.metal == GoldRateHistory.metal,
+                GoldRateLatest.purity == GoldRateHistory.purity,
+            ),
+        )
+        .where(
+            sa.tuple_(GoldRateHistory.metal, GoldRateHistory.purity).in_(stored),
+            GoldRateHistory.rate_date < GoldRateLatest.rate_date,
+        )
+        .subquery()
+    )
+    rows = session.execute(
+        sa.select(ranked.c.metal, ranked.c.purity, ranked.c.rate_date, ranked.c.rate).where(
+            ranked.c.rn == 1
+        )
+    ).all()
+    by_stored = {(m, p): (d, r) for m, p, d, r in rows}
+    out: dict[Key, tuple[date, Decimal]] = {}
+    for metal, purity in wanted:
+        hit = by_stored.get(_stored_key(metal, purity))
+        if hit is not None:
+            out[(metal, purity)] = (hit[0], _scaled(metal, purity, hit[1]))
     return out
 
 

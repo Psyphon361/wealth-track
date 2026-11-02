@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Annotated, Any, Literal
 
@@ -47,4 +48,8 @@ class DashboardResponse(BaseModel):
     total_current: Amount
     total_gain: Amount
     gain_pct: Amount
+    # 1-day change over active market-linked holdings; null when no holding has a figure.
+    day_change: Amount | None = None
+    day_change_pct: Amount | None = None
+    day_change_as_of: date | None = None
     by_type: list[DashboardByType]

@@ -538,6 +538,10 @@ export interface DashboardResponse {
   total_current: number;
   total_gain: number;
   gain_pct: number;
+  /** 1-day change over market-linked holdings; null when no holding has a figure. */
+  day_change: number | null;
+  day_change_pct: number | null;
+  day_change_as_of: string | null;
   by_type: DashboardByType[];
 }
 
