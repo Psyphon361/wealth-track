@@ -1,4 +1,22 @@
-# HANDOFF — session resume notes (2026-10-29)
+# HANDOFF — session resume notes (2026-11-02)
+
+## Resume here — 2026-11-02 (gold history and soft delete)
+
+### 1. Shipped
+- Gold and silver rate history, all committed: `418ecae` (net worth values gold and silver at cost when no IBJA rate exists on the date or in the 7 days before), `24e4de7` (nightly gold cron fills missed dates from the homepage's HdnGold/HdnSilver fields), `3f57f1d` and `77ed1ee` (`app.jobs.gold_backfill`: ibja.co PDFs from 10 May 2022, Wayback ibjarates.com 2014-01-01 to 2018-02-14; Mar 2018 to Apr 2022 deliberately empty), `75a1ae6` (manual `gold-backfill.yml`, target dev|prod).
+- Soft delete API, committed as `db6674d` (migration 0025): delete sets `deleted_at`, restore route, `GET /api/deleted`, 30-day purge (`/api/cron/purge`, `app.jobs.purge_deleted`, dev data refresh).
+- Docs (SPEC, STATUS, AGENTS, this file) are uncommitted until the orchestrator commits them.
+
+### 2. Pending
+- Web soft delete is uncommitted, awaiting a browser check: delete confirm dialog explains Recently deleted and the 30-day purge (no Undo button), `/deleted` page ("Recently deleted", sidebar link), `holdings-cache` refetch of visible grids. Files: `web/lib/restore-holding.ts`, `web/components/deleted/`, `web/app/(app)/deleted/`, plus edits to the sidebar, site header, holding detail, portfolio, `use-holdings-query.ts`, `holdings-cache.ts`, `notify.ts` and `types.ts`.
+- Prod: after the push (migration 0025 runs via the deploy workflow), run the Gold rate backfill workflow with target `prod`.
+- Unpushed commits on `main` (8 ahead of origin at the time of writing): `418ecae`, `24e4de7`, `72fe840`, `db6674d`, `3f57f1d`, `75a1ae6`, `77ed1ee` and the NPS docs commit `9daad53`. Push only with the user's OK.
+
+### 3. Feature queue (in order)
+1. "Other" asset
+2. Global search
+3. Mobile / PWA
+4. Analytics (`docs/ANALYTICS.md`)
 
 ## Resume here — 2026-11-01 (NPS shipped)
 
