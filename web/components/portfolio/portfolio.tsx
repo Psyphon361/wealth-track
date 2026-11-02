@@ -154,14 +154,15 @@ function TypedPortfolio<TRow extends HoldingRow>({
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
         invalidateNetWorth();
+        // Marking stale makes the grid's subscriber refetch (once).
         markHoldingsStale(target.type);
         notify.success(res);
       })
       .catch((err: unknown) => {
         restore();
         notify.error(err);
-      })
-      .finally(refetch);
+        refetch();
+      });
   }
 
   if (q.status === "loading") {

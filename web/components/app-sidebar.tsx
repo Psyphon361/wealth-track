@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, LayoutDashboard, Wallet } from "lucide-react";
+import { Briefcase, LayoutDashboard, Trash2, Wallet } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -56,6 +56,23 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={pathname.startsWith("/deleted")}
+                  tooltip="Recently deleted"
+                  className="text-[13.5px] text-destructive/80 hover:bg-destructive/10 hover:text-destructive data-active:bg-destructive/10 data-active:text-destructive"
+                  render={<Link href="/deleted" />}
+                >
+                  <Trash2 />
+                  <span>Recently deleted</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

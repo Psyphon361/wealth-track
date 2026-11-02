@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
-import { holdingsVersion } from "@/lib/holdings-cache";
+import { holdingsVersion, subscribeHoldings } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { HoldingRow, HoldingsResponse, SortDir } from "@/lib/types";
 import { filterParamKeys, type FilterDef, type GridConfig } from "./types";
@@ -214,6 +214,19 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     setRefreshing(true);
     load(qs);
   }, [load, qs, config.type]);
+
+  // A change to this type made elsewhere while the grid is visible (e.g. a restore
+  // from the Recently deleted page): reload in place. Hidden grids
+  // (Activity) have their effects torn down, so they catch up on reveal above.
+  useEffect(
+    () =>
+      subscribeHoldings((type) => {
+        if (type === config.type && seenVersion.current !== holdingsVersion(type)) {
+          refetch();
+        }
+      }),
+    [config.type, refetch],
+  );
 
   const retry = useCallback(() => {
     setError(null);

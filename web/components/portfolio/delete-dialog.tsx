@@ -44,7 +44,7 @@ export function DeleteDialog({
             Delete {target ? target.name : ""}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            This can&apos;t be undone.
+            It moves to Recently deleted and is permanently deleted after 30 days. Restore it from there if you need it.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>

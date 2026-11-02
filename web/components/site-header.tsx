@@ -40,6 +40,7 @@ function getCrumbs(pathname: string, detailLabel: string | null): Crumb[] {
         ]
       : [{ label: "Portfolio", href: "/portfolio" }];
   }
+  if (pathname === "/deleted") return [{ label: "Recently deleted" }];
   if (pathname === "/add") return [{ label: "Add asset" }];
   if (pathname.startsWith("/add/")) {
     const slug = pathname.slice("/add/".length).split("/")[0];

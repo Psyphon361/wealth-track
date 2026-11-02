@@ -11,6 +11,17 @@ let anyVersion = 0;
 export function markHoldingsStale(type: AssetType): void {
   versions.set(type, (versions.get(type) ?? 0) + 1);
   anyVersion += 1;
+  listeners.forEach((l) => l(type));
+}
+
+const listeners = new Set<(type: AssetType) => void>();
+
+/** Call back when holdings of a type change while the subscriber is mounted and visible. */
+export function subscribeHoldings(listener: (type: AssetType) => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 /** Version for one asset type (grid, details page). */

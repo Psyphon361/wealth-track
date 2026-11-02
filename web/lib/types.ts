@@ -643,6 +643,16 @@ export interface NetWorthPoint {
   current: number;
 }
 
+export interface DeletedHolding {
+  type: AssetType;
+  type_label: string;
+  id: number;
+  name: string;
+  deleted_at: string;
+  purge_on: string;
+  days_left: number;
+}
+
 export interface NetWorthHistory {
   range: NetWorthRange;
   points: NetWorthPoint[];
