@@ -116,6 +116,8 @@ def test_matured_holdings_count_nowhere():
         ("BHARATBOND", "debt"),
         ("ICICI Prudential Gilt ETF", "debt"),
         ("Nippon India Nifty SDL Apr 2026 ETF", "debt"),  # SDL is checked before NIFTY
+        ("ABC Debt ETF", "debt"),
+        ("ABC Income ETF", "debt"),
         ("Nippon India ETF Nifty 50 BeES", "equity"),
         ("HDFC BSE Sensex ETF", "equity"),
         ("Mirae Asset NYSE FANG+ ETF", "equity"),  # other ETFs are equity
@@ -204,7 +206,16 @@ def test_mf_amfi_category_rules(category, expected):
         ("Other Scheme - FoF Domestic", "Axis Silver ETF Fund of Fund", "gold"),
         ("Other Scheme - FoF Domestic", "Bharat Bond FoF - April 2025", "debt"),
         ("Other Scheme - FoF Domestic", "Some Liquid ETF FoF", "debt"),
-        ("Other Scheme - FoF Domestic", "Some Fund of Funds", "equity"),
+        ("Other Scheme - FoF Domestic", "Some Fund of Funds", "hybrid"),  # no rule: hybrid, not equity
+        ("Other Scheme - FoF Domestic", "ABC Debt Allocation FoF", "debt"),
+        ("Other Scheme - FoF Domestic", "ABC Income Plus FoF", "debt"),
+        ("Other Scheme - FoF Overseas", "ABC Global Fund of Funds", "equity"),  # overseas stays equity
+        ("Other Scheme - Index Funds", "Some Index Fund", "equity"),
+        ("Other Scheme - Other ETFs", "Some Thematic ETF", "equity"),
+        ("Solution Oriented Scheme - Retirement Fund", "ABC Retirement Fund", "hybrid"),
+        ("Solution Oriented Scheme - Children's Fund", "ABC Children's Fund", "hybrid"),
+        ("Solution Oriented Scheme - Retirement Fund", "ABC Retirement Income Fund", "debt"),
+        ("Solution Oriented Scheme - Children's Fund", "ABC Gold Children's Fund", "gold"),
     ],
 )
 def test_mf_index_etf_and_fof_follow_name_rules(category, name, expected):
@@ -228,9 +239,14 @@ def test_mf_without_scheme_or_category_uses_name_rules_then_own_category_then_ot
     assert classify("Mystery Fund", "hybrid") == "hybrid"
     # A linked scheme with no category, or one with no rule, behaves the same way.
     assert classify("Mystery Fund", fund_row=fund(None, "Mystery Fund")) == "other"
+    # Solution oriented schemes default to hybrid whatever the holding's own category says.
     retirement = fund("Solution Oriented Scheme - Retirement Fund", "Mystery Fund")
-    assert classify("Mystery Fund", fund_row=retirement) == "other"
-    assert classify("Mystery Fund", "hybrid", fund_row=retirement) == "hybrid"
+    assert classify("Mystery Fund", fund_row=retirement) == "hybrid"
+    assert classify("Mystery Fund", "equity", fund_row=retirement) == "hybrid"
+    # DEBT and INCOME are debt name tokens.
+    assert classify("Quant Debt Fund") == "debt"
+    assert classify("ABC Income Fund") == "debt"
+    assert classify("ABC Indebted Fund") == "other"  # whole tokens only
 
 
 def test_mf_missing_everything_does_not_crash():
@@ -855,3 +871,513 @@ def test_liquidity_reconciles_with_active_total_after_elss_split():
     assert [b["percent"] for b in result["buckets"]] == [
         D("0.03"), D("41.46"), D("3.22"), D("0.00"), D("55.28"), D("0.00")
     ]  # fmt: skip
+
+
+# --- Manual bank name matching -------------------------------------------------------------------
+
+_BANKS = {
+    1: {"name": "State Bank of India", "short_name": "SBI", "category": "public_sector",
+        "dicgc_insured": True, "merged_into_id": None},
+    2: {"name": "State Bank of Bikaner", "short_name": None, "category": "public_sector",
+        "dicgc_insured": True, "merged_into_id": 1},
+    3: {"name": "Bajaj Finance Limited", "short_name": "Bajaj Finance", "category": "nbfc",
+        "dicgc_insured": None, "merged_into_id": None},
+    4: {"name": "India Post (Department of Posts)", "short_name": "India Post",
+        "category": "post_office", "dicgc_insured": None, "merged_into_id": None},
+    5: {"name": "Unmatched Co-op Bank", "short_name": None, "category": "urban_coop",
+        "dicgc_insured": None, "merged_into_id": None},
+    8: {"name": "Insured Co-op Bank", "short_name": None, "category": "urban_coop",
+        "dicgc_insured": True, "merged_into_id": None},
+}  # fmt: skip
+
+
+def test_resolve_bank_matches_manual_name_to_issuer_name_or_short_name():
+    sbi = analytics.Bank("issuer:1", "SBI", 1)
+    for typed in ("State Bank of India", "  state   BANK of india ", "sbi", " Sbi"):
+        assert analytics.resolve_bank({"issuer_id": None, "bank": typed}, _BANKS) == sbi
+    # A merged issuer's own name resolves to its survivor.
+    assert analytics.resolve_bank({"bank": "state bank of bikaner"}, _BANKS) == sbi
+
+
+def test_resolve_bank_unmatched_manual_name_stays_unlinked():
+    bank = analytics.resolve_bank({"bank": " Nowhere  Bank "}, _BANKS)
+    assert bank == analytics.Bank("name:nowhere bank", "Nowhere Bank", None)
+    assert analytics.resolve_bank({"bank": "State Bank"}, _BANKS).issuer_id is None  # no partial match
+    assert analytics.resolve_bank({"bank": ""}, _BANKS).issuer_id is None
+
+
+def test_resolve_bank_name_match_prefers_full_name_and_skips_ambiguous_names():
+    issuers = {
+        1: {"name": "Alpha", "short_name": None, "merged_into_id": None},
+        2: {"name": "Beta Bank", "short_name": "Alpha", "merged_into_id": None},
+        3: {"name": "Dup One", "short_name": "Dup", "merged_into_id": None},
+        4: {"name": "Dup Two", "short_name": "dup", "merged_into_id": None},
+    }
+    assert analytics.resolve_bank({"bank": "alpha"}, issuers).issuer_id == 1  # full name before short
+    assert analytics.resolve_bank({"bank": "Dup"}, issuers).issuer_id is None  # two survivors
+
+
+def test_concentration_groups_manual_name_with_linked_issuer():
+    groups = groups_of(
+        h("fd", 1, 300000.0, issuer_id=1),
+        h("fd", 2, 100000.0, bank=" state BANK of india "),
+        h("rd", 3, 50000.0, bank="SBI"),
+        h("fd", 4, 70000.0, issuer_id=2),  # merged into 1
+        h("fd", 5, 30000.0, bank="Nowhere Bank"),
+    )
+    bank_rollup = analytics.concentration(groups, issuer_masters=_BANKS)["rollups"][2]
+    assert [(b["key"], b["label"], b["value"], b["percent"]) for b in bank_rollup["bars"]] == [
+        ("issuer:1", "SBI", D("520000.00"), D("94.55")),
+        ("name:nowhere bank", "Nowhere Bank", D("30000.00"), D("5.45")),
+    ]
+
+
+# --- Coming up -----------------------------------------------------------------------------------
+
+
+def fd_item(id_, maturity, *, principal=1000.0, payout="payout", status="active", **extra):
+    item = {
+        "id": id_, "bank": f"Bank {id_}", "label": None, "principal": principal, "rate": 7.0,
+        "start_date": "2026-01-01", "compounding": "yearly", "payout_type": payout,
+        "tenure_years": 1, "tenure_months": 0, "tenure_days": 0, "maturity_date": maturity,
+        "status": status, "current_value": principal,
+    }  # fmt: skip
+    item.update(extra)
+    return "fd", item
+
+
+def bond_item(id_, maturity, *, status="active", **extra):
+    item = {
+        "id": id_, "name": f"Bond {id_}", "bond_type": "corporate", "master_id": None,
+        "quantity": 10, "face_value": 1000.0, "invested_amount": 9000.0,
+        "purchase_date": "2026-07-01", "ytm": 8.0, "maturity_date": maturity, "status": status,
+        "current_value": 9500.0,
+    }  # fmt: skip
+    item.update(extra)
+    return "bond", item
+
+
+def _row_summary(rows):
+    return [(r["type"], r["id"], r["maturity_date"], r["amount"], r["days_left"]) for r in rows]
+
+
+def test_coming_up_empty_portfolio():
+    for groups in ([], [{"type": "fd", "label": "Fixed Deposits", "items": []}]):
+        result = analytics.coming_up(groups, TODAY)
+        assert result["next_90_days"] == {"until": date(2027, 1, 31), "total": D("0.00"), "rows": []}
+        assert result["next_12_months"] == {"until": date(2027, 11, 2), "total": D("0.00"), "rows": []}
+        assert result["already_matured"] == {"count": 0, "rows": []}
+
+
+def _coming_up_portfolio():
+    rd = {
+        "id": 3, "bank": "Bank 3", "label": None, "monthly_instalment": 10000.0, "rate": 12.0,
+        "start_date": "2026-06-01", "compounding": "simple", "tenure_years": 0,
+        "tenure_months": 6, "tenure_days": 0, "maturity_date": "2026-12-01", "status": "active",
+        "current_value": 40000.0,
+    }  # fmt: skip
+    ppf = {
+        "id": 8, "name": "My PPF", "kind": "ppf", "balance": 100000.0,
+        "balance_date": "2026-04-01", "interest_rate": 7.1, "contributed": None,
+        "opened_on": "2011-06-01", "maturity_date": "2027-04-01", "status": "active",
+        "current_value": 104000.0,
+    }  # fmt: skip
+    epf = {
+        "id": 9, "name": "My EPF", "kind": "epf", "balance": 50000.0,
+        "balance_date": "2026-04-01", "interest_rate": 8.25, "contributed": None,
+        "opened_on": None, "maturity_date": None, "status": "active", "current_value": 52000.0,
+    }  # fmt: skip
+    return groups_of(
+        fd_item(
+            1, "2027-01-15", principal=100000.0, payout="cumulative", rate=10.0,
+            start_date="2026-01-15", current_value=108000.0,
+        ),
+        fd_item(2, "2027-02-01", principal=200000.0, rate=8.0, start_date="2026-02-01"),
+        ("rd", rd),
+        bond_item(4, "2027-06-30"),
+        bond_item(5, "2027-03-15", bond_type="sgb", face_value=5000.0, quantity=1, current_value=6500.5),
+        bond_item(7, None, bond_type="other"),  # perpetual: no maturity date
+        ("pf", ppf),
+        ("pf", epf),
+        fd_item(10, "2026-10-01", status="matured"),
+        ("rd", {**rd, "id": 11, "bank": "Bank 11", "status": "matured", "maturity_date": "2026-09-15"}),
+        bond_item(12, "2026-10-20", status="matured"),
+        fd_item(13, "2026-11-02"),  # matures today: not "after today"
+        h("stock", 14, 5000.0),
+    )
+
+
+def test_coming_up_windows_rows_and_amount_rules():
+    result = analytics.coming_up(_coming_up_portfolio(), TODAY)
+
+    # RD: 10,000 a month from 1 Jun, simple 12%, paid out 1 Dec. Interest days left per instalment:
+    # 183 + 153 + 122 + 91 + 61 + 30 = 640, so 60,000 + 10,000 x 0.12 x 640 / 365 = 62,104.11.
+    # Cumulative FD: 1,00,000 at 10% for exactly one year (365 days) = 1,10,000.
+    # Payout FD: principal. SGB: current value. Bond: 1,000 x 10. PPF: 1,00,000 + 7.1% x 365/365.
+    in_90 = result["next_90_days"]
+    assert in_90["until"] == date(2027, 1, 31)
+    assert _row_summary(in_90["rows"]) == [
+        ("rd", 3, date(2026, 12, 1), D("62104.11"), 29),
+        ("fd", 1, date(2027, 1, 15), D("110000.00"), 74),
+    ]
+    assert in_90["total"] == D("172104.11")
+
+    in_12 = result["next_12_months"]
+    assert in_12["until"] == date(2027, 11, 2)
+    assert _row_summary(in_12["rows"]) == [
+        ("rd", 3, date(2026, 12, 1), D("62104.11"), 29),
+        ("fd", 1, date(2027, 1, 15), D("110000.00"), 74),
+        ("fd", 2, date(2027, 2, 1), D("200000.00"), 91),
+        ("bond", 5, date(2027, 3, 15), D("6500.50"), 133),
+        ("pf", 8, date(2027, 4, 1), D("107100.00"), 150),
+        ("bond", 4, date(2027, 6, 30), D("10000.00"), 240),
+    ]
+    assert in_12["total"] == D("495704.61")  # 172,104.11 + 200,000 + 6,500.50 + 1,07,100 + 10,000
+
+    by_id = {(r["type"], r["id"]): r for r in in_12["rows"]}
+    assert {k: r["approximate"] for k, r in by_id.items()} == {
+        ("rd", 3): True, ("fd", 1): False, ("fd", 2): False,
+        ("bond", 5): True, ("pf", 8): True, ("bond", 4): False,
+    }  # fmt: skip
+    assert by_id[("rd", 3)]["rate"] == D("12.00")
+    assert by_id[("fd", 2)]["rate"] == D("8.00")
+    assert by_id[("pf", 8)]["rate"] == D("7.10")
+    assert by_id[("bond", 4)]["rate"] == D("8.00")
+    assert by_id[("pf", 8)]["name"] == "My PPF"
+    assert by_id[("fd", 1)]["name"] == "Bank 1"
+
+
+def test_coming_up_already_matured_listed_but_never_totalled():
+    result = analytics.coming_up(_coming_up_portfolio(), TODAY)
+    matured = result["already_matured"]
+    assert matured["count"] == 3
+    assert matured["rows"] == [
+        {"type": "rd", "id": 11, "name": "Bank 11", "maturity_date": date(2026, 9, 15)},
+        {"type": "fd", "id": 10, "name": "Bank 10", "maturity_date": date(2026, 10, 1)},
+        {"type": "bond", "id": 12, "name": "Bond 12", "maturity_date": date(2026, 10, 20)},
+    ]
+    listed = {(r["type"], r["id"]) for r in result["next_12_months"]["rows"]}
+    assert not listed & {("rd", 11), ("fd", 10), ("bond", 12)}
+    assert ("fd", 13) not in listed  # maturing today is neither coming up nor matured
+
+
+def test_coming_up_window_boundaries():
+    groups = groups_of(
+        fd_item(1, "2026-11-02", principal=1000.0),  # today: excluded
+        fd_item(2, "2026-11-03", principal=2000.0),  # tomorrow
+        fd_item(3, "2027-01-31", principal=3000.0),  # exactly 90 days
+        fd_item(4, "2027-02-01", principal=4000.0),  # 91 days
+        fd_item(5, "2027-11-02", principal=5000.0),  # exactly 1 year
+        fd_item(6, "2027-11-03", principal=6000.0),  # one day past the year
+    )
+    result = analytics.coming_up(groups, TODAY)
+    assert [(r["id"], r["days_left"]) for r in result["next_90_days"]["rows"]] == [(2, 1), (3, 90)]
+    assert result["next_90_days"]["total"] == D("5000.00")
+    assert [(r["id"], r["days_left"]) for r in result["next_12_months"]["rows"]] == [
+        (2, 1), (3, 90), (4, 91), (5, 365)
+    ]
+    assert result["next_12_months"]["total"] == D("14000.00")
+    assert result["already_matured"]["count"] == 0
+
+
+def test_coming_up_sorts_by_date_then_type_then_id():
+    groups = groups_of(
+        fd_item(5, "2027-01-10", principal=500.0),
+        bond_item(9, "2027-01-10", face_value=100.0, quantity=1),
+        fd_item(3, "2027-01-10", principal=300.0),
+        fd_item(8, "2027-01-09", principal=800.0),
+    )
+    rows = analytics.coming_up(groups, TODAY)["next_90_days"]["rows"]
+    assert [(r["type"], r["id"]) for r in rows] == [("fd", 8), ("bond", 9), ("fd", 3), ("fd", 5)]
+
+
+def test_coming_up_sgb_found_through_bond_master_uses_current_value():
+    groups = groups_of(
+        bond_item(1, "2027-03-15", bond_type="other", master_id=9, face_value=5000.0,
+                  quantity=1, current_value=7000.0)
+    )  # fmt: skip
+    plain = analytics.coming_up(groups, TODAY)["next_12_months"]["rows"][0]
+    assert (plain["amount"], plain["approximate"]) == (D("5000.00"), False)
+    sgb = analytics.coming_up(groups, TODAY, bond_masters={9: {"bond_type": "sgb"}})["next_12_months"]["rows"][0]
+    assert (sgb["amount"], sgb["approximate"]) == (D("7000.00"), True)
+
+
+def test_coming_up_bond_without_face_value_grows_invested_at_ytm():
+    # 9,000 bought 1 Jul 2026 at 8%, redeemed exactly one year (365 days) later: 9,720.
+    groups = groups_of(bond_item(1, "2027-07-01", face_value=None))
+    row = analytics.coming_up(groups, TODAY)["next_12_months"]["rows"][0]
+    assert (row["amount"], row["approximate"]) == (D("9720.00"), True)
+
+
+def test_coming_up_ppf_already_past_maturity_is_not_listed():
+    ppf = {
+        "id": 1, "name": "Old PPF", "kind": "ppf", "balance": 1000.0, "balance_date": "2026-04-01",
+        "interest_rate": 7.1, "contributed": None, "opened_on": "2010-06-01",
+        "maturity_date": "2026-04-01", "status": "active", "current_value": 1030.0,
+    }  # fmt: skip
+    result = analytics.coming_up(groups_of(("pf", ppf)), TODAY)
+    assert result["next_12_months"]["rows"] == []
+    assert result["already_matured"]["count"] == 0
+
+
+# --- Bank safety ---------------------------------------------------------------------------------
+
+
+def dep(asset_type, id_, value, *, issuer_id=None, bank=None, status="active", **extra):
+    item = {
+        "id": id_, "bank": bank or f"Bank {id_}", "label": None, "issuer_id": issuer_id,
+        "current_value": value, "status": status,
+    }  # fmt: skip
+    if asset_type == "fd":
+        item.update(payout_type="cumulative", principal=value)
+    item.update(extra)
+    return asset_type, item
+
+
+def test_bank_safety_empty_portfolio():
+    for groups in ([], [{"type": "fd", "label": "Fixed Deposits", "items": []}], groups_of(h("cash", 1, 5.0))):
+        assert analytics.bank_safety(groups, _BANKS) == {
+            "limit": D("500000"), "total_deposits": D("0.00"), "insured": D("0.00"),
+            "uninsured_excess": D("0.00"), "unknown_amount": D("0.00"),
+            "sovereign_amount": D("0.00"), "banks": [],
+        }  # fmt: skip
+
+
+def _bank_safety_portfolio():
+    return groups_of(
+        dep("fd", 1, 300000.0, issuer_id=1),
+        dep("rd", 2, 250000.5, issuer_id=2),  # merged into 1
+        dep("fd", 3, 400000.0, issuer_id=3),
+        dep("fd", 4, 700000.0, issuer_id=4),
+        dep("fd", 5, 150000.0, issuer_id=5),
+        dep("fd", 6, 80000.0, bank="Mystery Bank"),
+        dep("fd", 7, 120000.0, issuer_id=8),
+        dep("fd", 8, 999999.0, issuer_id=1, status="matured"),
+        h("stock", 9, 123456.0),
+    )
+
+
+def test_bank_safety_rollup_totals_and_sort_order():
+    result = analytics.bank_safety(_bank_safety_portfolio(), _BANKS)
+    rows = result["banks"]
+    assert [(r["name"], r["status"], r["total"], r["insured"], r["excess"]) for r in rows] == [
+        ("Bajaj Finance", "not_insured", D("400000.00"), D("0.00"), D("400000.00")),
+        ("SBI", "insured", D("550000.50"), D("500000.00"), D("50000.50")),  # FD + merged RD
+        ("India Post", "sovereign", D("700000.00"), None, D("0.00")),
+        ("Unmatched Co-op Bank", "unknown", D("150000.00"), None, None),
+        ("Insured Co-op Bank", "insured", D("120000.00"), D("120000.00"), D("0.00")),
+        ("Mystery Bank", "unknown", D("80000.00"), None, None),
+    ]
+    assert result["limit"] == D("500000")
+    assert result["total_deposits"] == D("2000000.50")
+    assert result["insured"] == D("620000.00")  # 5,00,000 + 1,20,000
+    assert result["uninsured_excess"] == D("450000.50")  # 50,000.50 + 4,00,000
+    assert result["unknown_amount"] == D("230000.00")  # 1,50,000 + 80,000
+    assert result["sovereign_amount"] == D("700000.00")
+    assert (
+        result["insured"] + result["uninsured_excess"] + result["unknown_amount"] + result["sovereign_amount"]
+        == result["total_deposits"]
+    )
+    sbi = rows[1]
+    assert sbi["key"] == "issuer:1"
+    assert sbi["holdings"] == [
+        {"type": "fd", "id": 1, "name": "Bank 1", "amount": D("300000.00")},
+        {"type": "rd", "id": 2, "name": "Bank 2", "amount": D("250000.50")},
+    ]
+
+
+@pytest.mark.parametrize(
+    ("master", "value", "status", "insured", "excess", "badges"),
+    [
+        ({"category": "public_sector", "dicgc_insured": True}, 120000.0, "insured", "120000.00", "0.00", []),
+        ({"category": "public_sector", "dicgc_insured": True}, 500000.0, "insured", "500000.00", "0.00", []),
+        ({"category": "private_sector", "dicgc_insured": True}, 500000.01, "insured", "500000.00", "0.01", []),
+        ({"category": "public_sector", "dicgc_insured": False}, 250000.0, "not_insured", "0.00", "250000.00", ["not_dicgc"]),
+        ({"category": "nbfc", "dicgc_insured": None}, 400000.0, "not_insured", "0.00", "400000.00", ["not_dicgc"]),
+        ({"category": "hfc", "dicgc_insured": None}, 100000.0, "not_insured", "0.00", "100000.00", ["not_dicgc"]),
+        ({"category": "post_office", "dicgc_insured": None}, 700000.0, "sovereign", None, "0.00", ["post_office"]),
+        ({"category": "private_sector", "dicgc_insured": None}, 900000.0, "unknown", None, None, []),
+        ({"category": "urban_coop", "dicgc_insured": True}, 600000.0, "insured", "500000.00", "100000.00", ["cooperative"]),
+        ({"category": "district_coop", "dicgc_insured": None}, 50000.0, "unknown", None, None, ["cooperative"]),
+        ({"category": "small_finance", "dicgc_insured": True}, 100000.0, "insured", "100000.00", "0.00", ["small_finance"]),
+        ({"category": "state_coop", "dicgc_insured": False}, 10000.0, "not_insured", "0.00", "10000.00", ["not_dicgc", "cooperative"]),
+    ],
+)  # fmt: skip
+def test_bank_safety_status_per_issuer(master, value, status, insured, excess, badges):
+    issuers = {1: {"name": "Some Bank", "merged_into_id": None, **master}}
+    row = analytics.bank_safety(groups_of(dep("fd", 1, value, issuer_id=1)), issuers)["banks"][0]
+    assert row["status"] == status
+    assert row["insured"] == (D(insured) if insured is not None else None)
+    assert row["excess"] == (D(excess) if excess is not None else None)
+    assert row["badges"] == badges
+    assert row["category"] == master["category"]
+
+
+def test_bank_safety_null_flag_and_unlinked_are_never_counted_as_uninsured():
+    groups = groups_of(
+        dep("fd", 1, 900000.0, issuer_id=5),  # co-op bank, flag NULL
+        dep("fd", 2, 700000.0, bank="Mystery Bank"),  # no issuer
+    )
+    result = analytics.bank_safety(groups, _BANKS)
+    assert result["uninsured_excess"] == D("0.00")
+    assert result["insured"] == D("0.00")
+    assert result["unknown_amount"] == D("1600000.00")
+    assert result["total_deposits"] == D("1600000.00")
+
+
+def test_bank_safety_manual_fd_with_matching_name_joins_the_issuer_and_gets_its_status():
+    groups = groups_of(
+        dep("fd", 1, 300000.0, issuer_id=1),
+        dep("fd", 2, 250000.0, bank="  sbi "),
+        dep("fd", 3, 100000.0, bank="State Bank of Bikaner"),
+    )
+    result = analytics.bank_safety(groups, _BANKS)
+    assert len(result["banks"]) == 1
+    row = result["banks"][0]
+    assert (row["key"], row["issuer_id"], row["status"]) == ("issuer:1", 1, "insured")
+    assert (row["total"], row["insured"], row["excess"]) == (D("650000.00"), D("500000.00"), D("150000.00"))
+    assert [x["id"] for x in row["holdings"]] == [1, 2, 3]
+
+
+def test_bank_safety_payout_fd_counts_principal_only():
+    # The payout FD's item value (2,60,000) must be ignored: only its 2,50,000 principal counts.
+    groups = groups_of(
+        dep("fd", 1, 100000.0, issuer_id=1),
+        dep("fd", 2, 260000.0, issuer_id=1, payout_type="payout", principal=250000.0),
+        dep("rd", 3, 50000.55, issuer_id=1),
+    )
+    row = analytics.bank_safety(groups, _BANKS)["banks"][0]
+    assert row["total"] == D("400000.55")
+    assert row["excess"] == D("0.00")
+    assert [x["amount"] for x in row["holdings"]] == [D("100000.00"), D("250000.00"), D("50000.55")]
+
+
+def test_bank_safety_matured_deposits_are_excluded():
+    groups = groups_of(dep("fd", 1, 300000.0, issuer_id=1), dep("fd", 2, 400000.0, issuer_id=1, status="matured"))
+    row = analytics.bank_safety(groups, _BANKS)["banks"][0]
+    assert row["total"] == D("300000.00")
+
+
+def test_bank_safety_without_issuer_masters_everything_is_unknown():
+    groups = groups_of(dep("fd", 1, 900000.0, issuer_id=1), dep("rd", 2, 100000.0, bank="Mystery Bank"))
+    result = analytics.bank_safety(groups)
+    assert [(r["status"], r["total"]) for r in result["banks"]] == [
+        ("unknown", D("900000.00")), ("unknown", D("100000.00"))
+    ]
+    assert result["unknown_amount"] == result["total_deposits"] == D("1000000.00")
+
+
+# --- Data health ---------------------------------------------------------------------------------
+
+
+def test_data_health_empty_portfolio():
+    for groups in ([], [{"type": "stock", "label": "Stocks", "items": []}]):
+        assert analytics.data_health(groups, TODAY) == {
+            "at_cost": {"count": 0, "items": []},
+            "stale_balances": {"count": 0, "items": []},
+            "matured_open": {"count": 0, "items": []},
+            "latest": {"stock_price": None, "mf_nav": None, "nps_nav": None, "gold_rate": None},
+        }
+
+
+def test_data_health_at_cost_detected_per_type():
+    groups = groups_of(
+        h("stock", 1, 100.0, price=None, price_time=None),
+        h("stock", 2, 150.0, price=150.0, price_time="2026-10-30T10:00:00+00:00"),
+        h("mf", 3, 100.0, nav=None, nav_date=None),  # manual fund or no NAV yet
+        h("mf", 4, 125.0, nav=12.5, nav_date="2026-10-29"),
+        h("nps", 5, 100.0, nav=None, nav_date=None),
+        h("nps", 6, 301.0, nav=30.1, nav_date="2026-10-28"),
+        h("gold", 7, 100.0, rate_per_gram=None, rate_date=None),
+        h("gold", 8, 7000.0, rate_per_gram=7000.0, rate_date="2026-11-01"),
+        h("fd", 9, 100.0),  # types with no market price are never "at cost"
+        h("cash", 10, 100.0, balance_date="2026-10-30"),
+    )
+    at_cost = analytics.data_health(groups, TODAY)["at_cost"]
+    assert at_cost["count"] == 4
+    assert at_cost["items"] == [
+        {"type": "stock", "id": 1, "name": "stock 1"},
+        {"type": "mf", "id": 3, "name": "Scheme 3"},
+        {"type": "nps", "id": 5, "name": "Scheme 5"},
+        {"type": "gold", "id": 7, "name": "gold 7"},
+    ]
+
+
+def test_data_health_at_cost_counts_a_missing_field_and_skips_matured():
+    groups = groups_of(h("stock", 1, 100.0), h("mf", 2, 100.0, nav=None, status="matured"))
+    health = analytics.data_health(groups, TODAY)
+    assert [i["id"] for i in health["at_cost"]["items"]] == [1]  # key absent counts as no price
+    assert [i["id"] for i in health["matured_open"]["items"]] == [2]
+
+
+def test_data_health_stale_boundary_is_strictly_more_than_six_months():
+    # Today is 2 Nov 2026, so six months back is 2 May 2026: that day is fine, the day before is stale.
+    groups = groups_of(
+        h("cash", 1, 10.0, balance_date="2026-05-02"),
+        h("cash", 2, 10.0, balance_date="2026-05-01"),
+        h("pf", 3, 10.0, kind="epf", balance_date="2026-05-02"),
+        h("pf", 4, 10.0, kind="ppf", balance_date="2026-04-30"),
+        h("other", 5, 10.0, value_date="2026-05-02"),
+        h("other", 6, 10.0, value_date="2026-05-01"),
+        h("other", 7, 10.0, value_date="2026-11-01"),
+        h("fd", 8, 10.0, start_date="2020-01-01"),  # only cash, PF and Other balances can go stale
+    )
+    stale = analytics.data_health(groups, TODAY)["stale_balances"]
+    assert stale["count"] == 3
+    assert stale["items"] == [
+        {"type": "cash", "id": 2, "name": "cash 2", "as_of": date(2026, 5, 1)},
+        {"type": "pf", "id": 4, "name": "pf 4", "as_of": date(2026, 4, 30)},
+        {"type": "other", "id": 6, "name": "other 6", "as_of": date(2026, 5, 1)},
+    ]
+
+
+def test_data_health_stale_uses_the_calendar_month_end_correctly():
+    # 31 Aug 2026 minus six months lands on 28 Feb 2026 (no 29 or 30 Feb): that day is not stale.
+    groups = groups_of(
+        h("cash", 1, 10.0, balance_date="2026-02-28"),
+        h("cash", 2, 10.0, balance_date="2026-02-27"),
+    )
+    stale = analytics.data_health(groups, date(2026, 8, 31))["stale_balances"]
+    assert [i["id"] for i in stale["items"]] == [2]
+
+
+def test_data_health_matured_open_lists_matured_holdings_only():
+    groups = groups_of(
+        h("fd", 1, 100.0, status="matured", maturity_date="2026-10-01"),
+        h("fd", 2, 100.0, maturity_date="2027-01-01"),
+        h("rd", 3, 100.0, status="matured", maturity_date="2026-09-15"),
+        h("bond", 4, 100.0, status="matured", maturity_date="2026-10-20"),
+    )
+    matured = analytics.data_health(groups, TODAY)["matured_open"]
+    assert matured["count"] == 3
+    assert matured["items"] == [
+        {"type": "fd", "id": 1, "name": "Bank 1", "maturity_date": date(2026, 10, 1)},
+        {"type": "rd", "id": 3, "name": "Bank 3", "maturity_date": date(2026, 9, 15)},
+        {"type": "bond", "id": 4, "name": "bond 4", "maturity_date": date(2026, 10, 20)},
+    ]
+
+
+def test_data_health_latest_dates_are_the_newest_among_held_items():
+    groups = groups_of(
+        h("stock", 1, 1.0, price_time="2026-10-30T10:00:00+00:00"),
+        h("stock", 2, 1.0, price_time="2026-10-31T09:30:00+00:00"),
+        h("stock", 3, 1.0, price_time=None),
+        h("mf", 4, 1.0, nav_date="2026-10-29"),
+        h("mf", 5, 1.0, nav_date="2026-10-30"),
+        h("nps", 6, 1.0, nav_date="2026-10-28"),
+        h("gold", 7, 1.0, rate_date="2026-10-31"),
+        h("gold", 8, 1.0, rate_date="2026-11-01"),
+    )
+    assert analytics.data_health(groups, TODAY)["latest"] == {
+        "stock_price": date(2026, 10, 31),
+        "mf_nav": date(2026, 10, 30),
+        "nps_nav": date(2026, 10, 28),
+        "gold_rate": date(2026, 11, 1),
+    }
+
+
+def test_data_health_latest_is_none_for_types_with_no_dates():
+    groups = groups_of(h("stock", 1, 1.0, price_time=None), h("mf", 2, 1.0, nav_date="2026-10-30"))
+    assert analytics.data_health(groups, TODAY)["latest"] == {
+        "stock_price": None, "mf_nav": date(2026, 10, 30), "nps_nav": None, "gold_rate": None,
+    }  # fmt: skip
