@@ -17,6 +17,26 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ASSET_CATALOG, ASSET_GROUPS } from "@/lib/asset-catalog";
 
+/**
+ * Modal overlays: dialogs, alert dialogs and sheets (all base-ui dialog popups, told apart from
+ * non-modal popovers, which also have role="dialog", by their data-slot) and open menus.
+ */
+const MODAL_SELECTOR =
+  '[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"], [role="menu"]';
+
+/**
+ * A modal overlay is on screen. Elements that are not displayed (a hidden Activity route, a
+ * kept-mounted popup) and popups mid-close never count. `except` skips matching elements.
+ */
+export function modalOverlayVisible(except?: string): boolean {
+  for (const el of document.querySelectorAll(MODAL_SELECTOR)) {
+    if (except && el.matches(except)) continue;
+    if (el.matches("[data-closed], [data-ending-style]")) continue;
+    if (el.getClientRects().length > 0) return true;
+  }
+  return false;
+}
+
 export function shouldIgnoreKey(e: KeyboardEvent): boolean {
   if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.repeat) return true;
   const el = e.target as HTMLElement | null;
@@ -24,11 +44,14 @@ export function shouldIgnoreKey(e: KeyboardEvent): boolean {
     const tag = el.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
     if (el.isContentEditable) return true;
-    if (el.closest('[role="dialog"], [role="alertdialog"], [role="menu"]')) return true;
+    if (
+      el.closest(
+        '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]',
+      )
+    )
+      return true;
   }
-  return !!document.querySelector(
-    '[role="dialog"], [role="alertdialog"], [role="menu"]',
-  );
+  return modalOverlayVisible();
 }
 
 export function AddMenu() {

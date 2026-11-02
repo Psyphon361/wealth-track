@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
-import { shouldIgnoreKey } from "@/components/add-menu";
+import { modalOverlayVisible, shouldIgnoreKey } from "@/components/add-menu";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -12,13 +12,9 @@ import { SearchPanel } from "./search-panel";
 import { preloadSearchIndex } from "./search-store";
 import { useIsMac, useVisualViewport } from "./use-browser";
 
-/** Another dialog, alert dialog, menu or select popup is open (not this palette). */
+/** Another visible modal (dialog, alert dialog, sheet or menu) is open, not this palette. */
 function otherOverlayOpen(): boolean {
-  return (
-    document.querySelector(
-      '[role="dialog"]:not([data-search-palette]), [role="alertdialog"], [role="menu"], [role="listbox"]:not([cmdk-list])',
-    ) !== null
-  );
+  return modalOverlayVisible("[data-search-palette]");
 }
 
 /**
@@ -173,7 +169,7 @@ export function GlobalSearch() {
         aria-label="Search"
         aria-haspopup="dialog"
         aria-keyshortcuts="Meta+K Control+K"
-        className="hidden h-9 items-center gap-2 rounded-lg border border-input bg-input/30 px-3 text-left text-[14px] text-muted-foreground transition-colors outline-none select-none hover:bg-input/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:flex w-[clamp(10rem,24vw,22rem)]"
+        className="hidden h-9 items-center gap-2 rounded-lg border border-input bg-input/30 px-3 text-left text-[14px] text-muted-foreground transition-colors outline-none select-none hover:bg-input/50 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:flex w-[clamp(10rem,30cqw,24rem)]"
       >
         <Search className="size-4 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">Search…</span>

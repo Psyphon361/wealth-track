@@ -58,11 +58,11 @@ export function SiteHeader() {
   const detailLabel = useBreadcrumbLabelValue();
   const crumbs = getCrumbs(pathname, detailLabel);
   return (
-    <header className="sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur md:rounded-t-xl">
+    <header className="@container sticky top-0 z-10 flex h-12 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur md:rounded-t-xl">
       <SidebarTrigger className="-ml-1" />
       <Separator orientation="vertical" className="data-vertical:h-4 data-vertical:self-center" />
       <Breadcrumb className="min-w-0">
-        <BreadcrumbList className="flex-nowrap text-[13.5px]">
+        <BreadcrumbList className="flex-nowrap">
           {crumbs.map((crumb, i) => {
             const last = i === crumbs.length - 1;
             return (
@@ -74,7 +74,7 @@ export function SiteHeader() {
                       <Skeleton className="h-4 w-24" />
                     ) : (
                       <BreadcrumbPage
-                        className="block min-w-0 max-w-[40vw] truncate text-[13.5px]"
+                        className="block min-w-0 max-w-[40vw] truncate"
                         title={crumb.label}
                       >
                         {crumb.label}
