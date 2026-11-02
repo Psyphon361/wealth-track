@@ -50,6 +50,7 @@ WAYBACK_FIRST_DATE = date(2014, 1, 1)
 WAYBACK_LAST_DATE = date(2018, 2, 14)
 REQUEST_PAUSE = 1.0  # seconds between requests
 RETRIES = 4  # attempts per URL on 429 / 5xx / network errors
+MAX_RETRY_AFTER = 300.0  # longest Retry-After we will honour, seconds
 MAX_RATE_AGE = 5  # a report's rate date is at most this many days before the report date
 MAX_SPOT_AGE = 10  # so is every row of its 5-day table
 PURITY_TOLERANCE = Decimal("0.01")  # a purity further than 1% from 999 x ratio is a typo
@@ -228,10 +229,32 @@ def derive_gold_purities(
     return out
 
 
-def _fetch(url: str) -> bytes | None:
-    """Body of the URL, or None on 404. Other failures raise."""
+def _retry_after(exc: urllib.error.HTTPError) -> float | None:
+    """Seconds from a numeric Retry-After header on a 429, capped at MAX_RETRY_AFTER."""
+    if exc.code != 429 or exc.headers is None:
+        return None
+    value = exc.headers.get("Retry-After")
+    try:
+        seconds = float(value) if value is not None else None
+    except ValueError:
+        return None  # an HTTP-date form: fall back to the normal backoff
+    if seconds is None or seconds < 0:
+        return None
+    return min(seconds, MAX_RETRY_AFTER)
+
+
+def _fetch(
+    url: str,
+    *,
+    backoff: Callable[[int], float] = lambda attempt: 15.0 * attempt,
+    sleep: Callable[[float], None] = time.sleep,
+) -> bytes | None:
+    """Body of the URL, or None on 404. Other failures raise.
+
+    `backoff(attempt)` is the wait after a failed attempt; a 429 with Retry-After uses that instead."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     for attempt in range(1, RETRIES + 1):
+        wait = backoff(attempt)
         try:
             with urllib.request.urlopen(request, timeout=FETCH_TIMEOUT, context=_ssl_context()) as response:  # noqa: S310
                 return response.read()
@@ -240,11 +263,19 @@ def _fetch(url: str) -> bytes | None:
                 return None
             if exc.code not in (429, 500, 502, 503, 504) or attempt == RETRIES:
                 raise
+            asked = _retry_after(exc)
+            if asked is not None:
+                wait = asked
         except (urllib.error.URLError, TimeoutError):
             if attempt == RETRIES:
                 raise
-        time.sleep(15 * attempt)  # rate limited or flaky: back off, then retry
+        sleep(wait)  # rate limited or flaky: back off, then retry
     return None
+
+
+def _fetch_wayback(url: str) -> bytes | None:
+    """`_fetch` with the gentler Wayback backoff: 30, 60, 120 s between the 4 attempts."""
+    return _fetch(url, backoff=lambda attempt: 30.0 * 2 ** (attempt - 1))
 
 
 Fetcher = Callable[[str], bytes | None]
@@ -394,7 +425,7 @@ def backfill_wayback(
     end: date,
     *,
     dry_run: bool = False,
-    fetch: Fetcher = _fetch,
+    fetch: Fetcher = _fetch_wayback,
     ratios: dict[str, Decimal] | None = None,
 ) -> Stats:
     """Backfill [start, end] from the Wayback snapshot. Gold 999 and silver 999; other gold

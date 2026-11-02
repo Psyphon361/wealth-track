@@ -1,9 +1,13 @@
+import sys
+import urllib.error
 from datetime import date
 from decimal import Decimal
+from email.message import Message
 from pathlib import Path
 
 import pytest
 
+from app.jobs import gold_backfill
 from app.services import gold_history
 from app.services.gold_history import (
     GoldHistoryError,
@@ -183,3 +187,91 @@ def test_backfill_wayback_999_only_without_ratios(capsys):
     backfill_wayback(None, date(2014, 1, 1), date(2014, 1, 1), dry_run=True, fetch=lambda url: WAYBACK.encode(), ratios={})
     out = capsys.readouterr().out
     assert "gold 999" in out and "gold 585" not in out
+
+
+def _http_error(code: int, retry_after: str | None = None) -> urllib.error.HTTPError:
+    headers = Message()
+    if retry_after is not None:
+        headers["Retry-After"] = retry_after
+    return urllib.error.HTTPError("https://example.test/", code, "Too Many Requests", headers, None)
+
+
+class _Body:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return b"ok"
+
+
+def _urlopen_script(monkeypatch, outcomes):
+    calls: list[int] = []
+    items = iter(outcomes)
+
+    def fake(request, timeout=None, context=None):
+        calls.append(1)
+        outcome = next(items)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(gold_history.urllib.request, "urlopen", fake)
+    return calls
+
+
+def test_fetch_honours_retry_after_on_429(monkeypatch):
+    calls = _urlopen_script(monkeypatch, [_http_error(429, "7"), _http_error(429, "9"), _Body()])
+    sleeps: list[float] = []
+    assert gold_history._fetch("https://example.test/", sleep=sleeps.append) == b"ok"
+    assert sleeps == [7.0, 9.0]
+    assert len(calls) == 3
+
+
+def test_fetch_uses_backoff_without_retry_after_and_wayback_schedule(monkeypatch):
+    _urlopen_script(monkeypatch, [_http_error(429)] * 4)
+    sleeps: list[float] = []
+    with pytest.raises(urllib.error.HTTPError):
+        gold_history._fetch(
+            "https://example.test/", backoff=lambda a: 30.0 * 2 ** (a - 1), sleep=sleeps.append
+        )
+    assert sleeps == [30.0, 60.0, 120.0]
+
+
+def _run_job(monkeypatch, pdf, wayback, source="all"):
+    order: list[str] = []
+
+    def make(name, outcome):
+        def run(session, start, end, *, dry_run=False):
+            order.append(name)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+
+        return run
+
+    monkeypatch.setattr(gold_history, "backfill_pdf", make("pdf", pdf))
+    monkeypatch.setattr(gold_history, "backfill_wayback", make("wayback", wayback))
+    monkeypatch.setattr(sys, "argv", ["gold_backfill", "--dry-run", "--source", source])
+    return gold_backfill.main(), order
+
+
+def test_job_runs_pdf_first_and_a_failing_source_does_not_stop_the_other(monkeypatch, capsys):
+    code, order = _run_job(monkeypatch, gold_history.Stats(), _http_error(429))
+    assert order == ["pdf", "wayback"]
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "wayback: failed after retries: HTTP 429" in out
+    assert "  pdf:" in out  # the PDF source's summary is still printed
+
+    code, order = _run_job(monkeypatch, urllib.error.URLError("down"), gold_history.Stats())
+    assert order == ["pdf", "wayback"]
+    assert code == 1
+    assert "pdf: failed after retries" in capsys.readouterr().out
+
+
+def test_job_exit_code_is_zero_when_both_sources_succeed(monkeypatch):
+    code, order = _run_job(monkeypatch, gold_history.Stats(), gold_history.Stats())
+    assert (code, order) == (0, ["pdf", "wayback"])
