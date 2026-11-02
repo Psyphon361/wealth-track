@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import settings
-from app.routers import assets, auth, cas_import, cron, deleted, holdings, master, networth, portfolio
+from app.routers import assets, auth, cas_import, cron, deleted, holdings, master, networth, portfolio, search
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -153,6 +153,7 @@ api_router.include_router(auth.router)
 api_router.include_router(assets.router)
 api_router.include_router(portfolio.router)
 api_router.include_router(deleted.router)
+api_router.include_router(search.router)
 api_router.include_router(networth.router)
 api_router.include_router(holdings.router)
 api_router.include_router(master.router)
