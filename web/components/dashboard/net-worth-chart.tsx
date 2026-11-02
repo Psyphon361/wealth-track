@@ -21,7 +21,15 @@ import {
   prefetchNetWorth,
   subscribeNetWorth,
 } from "@/lib/networth-cache";
-import type { NetWorthHistory, NetWorthRange } from "@/lib/types";
+import { chartDomain, rangeGrowth } from "@/lib/networth-range";
+import { cn } from "@/lib/utils";
+import { gainTone } from "@/components/portfolio/grid/gain-cell";
+import type {
+  DashboardResponse,
+  NetWorthHistory,
+  NetWorthRange,
+} from "@/lib/types";
+import { SummaryStats } from "./summary-cards";
 
 const RANGES: { value: NetWorthRange; label: string }[] = [
   { value: "1m", label: "1M" },
@@ -41,7 +49,7 @@ type ErrorState = {
   description: string;
 } | null;
 
-export function NetWorthChart() {
+export function NetWorthChart({ data }: { data: DashboardResponse }) {
   const [range, setRange] = useState<NetWorthRange>("1y");
   const [last, setLast] = useState<NetWorthHistory | null>(null);
   const [errorState, setErrorState] = useState<ErrorState>(null);
@@ -84,6 +92,12 @@ export function NetWorthChart() {
   const error = !cached && errorState?.range === range ? errorState : null;
   const loading = !cached && !error;
 
+  const lastPoint = shown?.points[shown.points.length - 1];
+  const up = !lastPoint || lastPoint.current >= lastPoint.invested;
+  const growth = cached ? rangeGrowth(cached.points) : null;
+  const growthTone = growth === null ? "" : gainTone(growth);
+  const rangeLabel = RANGES.find((r) => r.value === range)?.label ?? "";
+
   return (
     <Card size="sm" className="px-4" aria-busy={loading}>
       <div className="flex items-center justify-between gap-2">
@@ -111,6 +125,24 @@ export function NetWorthChart() {
           ))}
         </ToggleGroup>
       </div>
+
+      <p className="num text-2xl font-semibold whitespace-nowrap">
+        {formatINR(data.total_current)}
+      </p>
+
+      <SummaryStats data={data} />
+
+      {loading ? (
+        <Skeleton className="h-4 w-32" />
+      ) : growth !== null ? (
+        <p className="text-xs whitespace-nowrap text-muted-foreground">
+          Growth ({rangeLabel}){" "}
+          <span className={cn("num font-medium", growthTone)}>
+            {growth > 0 ? "+" : ""}
+            {formatINR(growth)}
+          </span>
+        </p>
+      ) : null}
 
       {!shown && loading ? (
         <Skeleton className="h-[220px] rounded-lg" />
@@ -151,6 +183,7 @@ export function NetWorthChart() {
                 tickLine={false}
                 axisLine={false}
                 tickCount={4}
+                domain={chartDomain(shown.points)}
                 tickFormatter={(v: number) => formatINRCompact(v)}
               />
               <ChartTooltip
@@ -178,12 +211,23 @@ export function NetWorthChart() {
                 }}
               />
               <Area
+                dataKey={(p: { invested: number; current: number }) => [
+                  p.invested,
+                  p.current,
+                ]}
+                type="monotone"
+                stroke="none"
+                fill={up ? "var(--gain)" : "var(--loss)"}
+                fillOpacity={0.15}
+                activeDot={false}
+                isAnimationActive={false}
+              />
+              <Line
                 dataKey="current"
                 type="monotone"
                 stroke="var(--color-current)"
                 strokeWidth={1.5}
-                fill="var(--color-current)"
-                fillOpacity={0.12}
+                dot={false}
                 isAnimationActive={false}
               />
               <Line

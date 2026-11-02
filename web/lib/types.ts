@@ -531,6 +531,9 @@ export interface DashboardByType {
   invested: number;
   current: number;
   allocation_pct: number;
+  gain: number | null;
+  gain_pct: number | null;
+  day_change: number | null;
 }
 
 export interface DashboardResponse {

@@ -8,7 +8,7 @@ import { apiGet, toApiMessage } from "@/lib/api";
 import { anyHoldingsVersion } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { DashboardResponse } from "@/lib/types";
-import { SummaryCards } from "./summary-cards";
+import { AllocationCard } from "./allocation-card";
 import { HoldingsByType } from "./holdings-by-type";
 import { NetWorthChart } from "./net-worth-chart";
 
@@ -56,13 +56,11 @@ export function Dashboard() {
   if (state.status === "loading") {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading…">
-        <Skeleton className="h-64 rounded-xl" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <Skeleton className="h-[100px] rounded-xl" />
-          <Skeleton className="h-[100px] rounded-xl" />
-          <Skeleton className="h-[100px] rounded-xl" />
-          <Skeleton className="h-[100px] rounded-xl" />
+        <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+          <Skeleton className="h-[420px] min-w-0 rounded-xl" />
+          <Skeleton className="h-[420px] min-w-0 rounded-xl" />
         </div>
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -100,8 +98,14 @@ export function Dashboard() {
 
   return (
     <div className="space-y-3">
-      <NetWorthChart />
-      <SummaryCards data={data} />
+      <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+        <div className="min-w-0 [&>*]:h-full">
+          <NetWorthChart data={data} />
+        </div>
+        <div className="min-w-0 [&>*]:h-full">
+          <AllocationCard data={data} />
+        </div>
+      </div>
       <HoldingsByType data={data} />
     </div>
   );
