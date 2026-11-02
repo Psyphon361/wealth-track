@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { FormBusyContext } from "@/components/forms/form-disabled";
 import {
   Dialog,
   DialogContent,
@@ -24,11 +26,13 @@ export function EditDialog<TRow extends HoldingRow>({
   onSaved: () => void;
 }) {
   const title = getAssetEntry(config.type)?.title ?? config.noun;
+  // True while the form inside is saving: the dialog can't be dismissed then.
+  const [busy, setBusy] = useState(false);
   return (
     <Dialog
       open={row !== null}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open && !busy) onClose();
       }}
     >
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -38,7 +42,9 @@ export function EditDialog<TRow extends HoldingRow>({
           </DialogTitle>
           <DialogDescription>{row ? config.rowName(row) : ""}</DialogDescription>
         </DialogHeader>
-        {row ? config.renderEditForm(row, onSaved) : null}
+        <FormBusyContext.Provider value={setBusy}>
+          {row ? config.renderEditForm(row, onSaved) : null}
+        </FormBusyContext.Provider>
       </DialogContent>
     </Dialog>
   );

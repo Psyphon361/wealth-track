@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
+import { useReportBusy } from "../form-disabled";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -79,6 +81,7 @@ export function CasPreviewStep({
   );
   const [actions, setActions] = useState<Record<string, RowAction>>({});
   const [importing, setImporting] = useState(false);
+  useReportBusy(importing);
 
   const importable = rows.filter((r) => r.importable);
   const checkedCount = importable.filter((r) => selected.has(r.key)).length;
@@ -276,6 +279,7 @@ export function CasPreviewStep({
           onClick={submit}
           disabled={checkedCount === 0 || importing}
         >
+          {importing ? <Loader2 className="size-3.5 animate-spin" /> : null}
           {importing
             ? "Importing…"
             : `Import ${checkedCount} fund${checkedCount === 1 ? "" : "s"}`}

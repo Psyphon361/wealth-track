@@ -15,6 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useFormDisabled } from "./form-disabled";
 
 type TenureNames<TIn extends FieldValues> = {
   years: Path<TIn>;
@@ -46,6 +47,7 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
   hideLabel?: boolean;
 }) {
   const { errors } = useFormState({ control });
+  const locked = useFormDisabled();
   const messages = [names.years, names.months, names.days].map((n) => {
     const e = (errors as Record<string, { message?: unknown } | undefined>)[n];
     return typeof e?.message === "string" ? { message: e.message } : undefined;
@@ -72,6 +74,7 @@ export function TenurePicker<TIn extends FieldValues, TOut>({
                   <Select
                     items={options}
                     value={String(field.value ?? "0")}
+                    disabled={locked}
                     onValueChange={(v) => field.onChange(v ?? "0")}
                   >
                     <SelectTrigger

@@ -13,6 +13,7 @@ import { FieldError } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { formatDate } from "@/lib/format";
 import { DateField } from "./fields";
+import { useFormDisabled } from "./form-disabled";
 import { addPeriodISO, diffPeriodISO, isValidISODate } from "./schema";
 import { TenurePicker } from "./tenure-picker";
 
@@ -43,6 +44,7 @@ export function TenureField<T extends FieldValues & TenureValues, TOut>({
   setValue: UseFormSetValue<T>;
   trigger: UseFormTrigger<T>;
 }) {
+  const locked = useFormDisabled();
   const c = control as unknown as Control<TenureValues>;
   const set = setValue as unknown as UseFormSetValue<TenureValues>;
   const trig = trigger as unknown as UseFormTrigger<TenureValues>;
@@ -110,6 +112,7 @@ export function TenureField<T extends FieldValues & TenureValues, TOut>({
         <span className="text-xs text-muted-foreground">Tenure</span>
         <ToggleGroup
           value={[tenureMode]}
+          disabled={locked}
           onValueChange={(v) => {
             if (v[0]) switchTenureMode(v[0] as TenureMode);
           }}

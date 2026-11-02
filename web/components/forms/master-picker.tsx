@@ -18,6 +18,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { apiGet, toApiMessage } from "@/lib/api";
+import { useFormDisabled } from "./form-disabled";
 
 const MIN_QUERY = 2;
 const DEBOUNCE_MS = 250;
@@ -54,6 +55,7 @@ export function MasterPicker<T>({
   invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const locked = useFormDisabled();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
@@ -124,7 +126,9 @@ export function MasterPicker<T>({
     >
       <div className="min-w-0 flex-1">{summary}</div>
       <PopoverTrigger
-        render={<Button type="button" variant="ghost" size="sm" />}
+        render={
+          <Button type="button" variant="ghost" size="sm" disabled={locked} />
+        }
       >
         Change
       </PopoverTrigger>
@@ -136,6 +140,7 @@ export function MasterPicker<T>({
           id={id}
           type="button"
           variant="outline"
+          disabled={locked}
           aria-invalid={invalid}
           className="h-8 w-full justify-between rounded-lg px-2.5 font-normal aria-invalid:border-destructive"
         />
@@ -147,7 +152,7 @@ export function MasterPicker<T>({
   );
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
+    <Popover open={open && !locked} onOpenChange={handleOpenChange}>
       <div ref={fieldRef} className="w-full">
         {trigger}
       </div>

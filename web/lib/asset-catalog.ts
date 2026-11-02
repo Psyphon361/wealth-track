@@ -5,6 +5,7 @@ import {
   Wallet,
   LineChart,
   PieChart,
+  Shapes,
   Repeat,
   ScrollText,
   Umbrella,
@@ -84,6 +85,13 @@ export const ASSET_CATALOG: AssetCatalogEntry[] = [
     hint: "Jewellery, coins, bars, digital gold and silver",
     icon: Coins,
     group: "Market-linked",
+  },
+  {
+    type: "other",
+    title: "Other",
+    hint: "Crypto, property, anything else",
+    icon: Shapes,
+    group: "Other",
   },
 ];
 

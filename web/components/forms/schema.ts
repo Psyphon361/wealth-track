@@ -187,6 +187,16 @@ function optionalTextMax(max: number) {
     .transform((v): string | null => (v === "" ? null : v));
 }
 
+export const OTHER_ACQUIRED_AFTER_VALUE_ERROR =
+  "Purchase date can't be after the value date";
+export const MAX_CATEGORY = 40;
+
+export const categoryText = z
+  .string()
+  .trim()
+  .min(1, "Required")
+  .max(MAX_CATEGORY, tooLong(MAX_CATEGORY));
+
 export const optionalText = optionalTextMax(MAX_TEXT);
 export const notesText = optionalTextMax(MAX_NOTES);
 

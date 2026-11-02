@@ -26,6 +26,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_NOTES, MAX_TEXT, MIN_DATE } from "./schema";
+import { useFormDisabled } from "./form-disabled";
 import {
   Select,
   SelectContent,
@@ -52,7 +53,7 @@ interface FieldProps<TIn extends FieldValues, TOut> {
   required?: boolean;
 }
 
-function Label({
+export function Label({
   id,
   label,
   required,
@@ -175,6 +176,7 @@ export function TextField<TIn extends FieldValues, TOut>({
   uppercase?: boolean;
 }) {
   const numeric = inputMode !== undefined;
+  const locked = useFormDisabled();
   return (
     <Controller
       control={control}
@@ -193,6 +195,7 @@ export function TextField<TIn extends FieldValues, TOut>({
                 onValueChange={field.onChange}
                 value={String(field.value ?? "")}
                 placeholder={placeholder}
+                disabled={locked}
                 decimals={decimals}
                 aria-invalid={fieldState.invalid}
                 className={cn(
@@ -215,6 +218,7 @@ export function TextField<TIn extends FieldValues, TOut>({
                 }
                 value={String(field.value ?? "")}
                 placeholder={placeholder}
+                disabled={locked}
                 maxLength={maxLength ?? MAX_TEXT}
                 aria-invalid={fieldState.invalid}
                 className={cn(
@@ -258,6 +262,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
   /** Called with the new value after the field changes. */
   onChange?: (value: string) => void;
 }) {
+  const locked = useFormDisabled();
   return (
     <Controller
       control={control}
@@ -268,6 +273,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
           <Select
             items={options}
             value={String(field.value ?? "")}
+            disabled={locked}
             onValueChange={(v) => {
               field.onChange(v ?? "");
               onChange?.(v ?? "");
@@ -300,6 +306,7 @@ export function NotesField<TIn extends FieldValues, TOut>({
   control,
   name,
 }: Pick<FieldProps<TIn, TOut>, "control" | "name">) {
+  const locked = useFormDisabled();
   return (
     <Controller
       control={control}
@@ -315,6 +322,7 @@ export function NotesField<TIn extends FieldValues, TOut>({
             onChange={field.onChange}
             value={String(field.value ?? "")}
             aria-invalid={fieldState.invalid}
+            disabled={locked}
             rows={2}
             maxLength={MAX_NOTES}
           />
@@ -353,6 +361,7 @@ export function DateField<TIn extends FieldValues, TOut>({
   toYear?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const locked = useFormDisabled();
   const endYear = Math.max(toYear ?? 0, new Date().getFullYear() + 40);
   const minParsed = parseISODate(MIN_DATE);
   const maxParsed = maxDate ? parseISODate(maxDate) : undefined;
@@ -370,7 +379,7 @@ export function DateField<TIn extends FieldValues, TOut>({
         return (
           <Field data-invalid={fieldState.invalid} className="gap-1.5">
             <Label id={name} label={label} required={required} />
-            <Popover open={open} onOpenChange={setOpen}>
+            <Popover open={open && !locked} onOpenChange={setOpen}>
               <PopoverTrigger
                 render={
                   <Button
@@ -378,6 +387,7 @@ export function DateField<TIn extends FieldValues, TOut>({
                     ref={field.ref}
                     type="button"
                     variant="outline"
+                    disabled={locked}
                     aria-invalid={fieldState.invalid}
                     onBlur={field.onBlur}
                     className="h-8 w-full justify-start rounded-lg px-2.5 font-normal aria-invalid:border-destructive"

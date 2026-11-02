@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FD_ISSUER_CATEGORY_LABELS, type FdIssuer } from "@/lib/types";
 import { apiGet } from "@/lib/api";
+import { useFormDisabled } from "./form-disabled";
 import { MasterPicker } from "./master-picker";
 
 const LINK_BUTTON =
@@ -120,9 +121,11 @@ export function IssuerModeToggle({
   mode: "picker" | "manual";
   onChange: (next: "picker" | "manual") => void;
 }) {
+  const locked = useFormDisabled();
   return (
     <button
       type="button"
+      disabled={locked}
       className={LINK_BUTTON}
       onClick={() => onChange(mode === "picker" ? "manual" : "picker")}
     >

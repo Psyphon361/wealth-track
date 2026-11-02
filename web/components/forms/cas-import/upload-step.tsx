@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { UploadIcon } from "lucide-react";
+import { Loader2, UploadIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiPostForm } from "@/lib/api";
 import { notify } from "@/lib/notify";
 import type { CasPreview } from "@/lib/types";
+import { useReportBusy } from "../form-disabled";
 
 const MAX_BYTES = 4 * 1024 * 1024;
 
@@ -26,6 +27,7 @@ export function CasUploadStep({
   const [password, setPassword] = useState("");
   const [fileError, setFileError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  useReportBusy(loading);
 
   function pickFile(f: File | null) {
     setFile(f);
@@ -116,6 +118,7 @@ export function CasUploadStep({
       </p>
       <div className="flex justify-end">
         <Button type="submit" disabled={loading}>
+          {loading ? <Loader2 className="size-3.5 animate-spin" /> : null}
           {loading ? "Reading…" : "Read statement"}
         </Button>
       </div>

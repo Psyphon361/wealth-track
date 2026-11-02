@@ -169,7 +169,7 @@ export function MfForm({
   const onNavFilled = useCallback(() => markEdited("price"), [markEdited]);
 
   const navHint = useNavAutofill({
-    enabled: mode === "picker",
+    enabled: mode === "picker" && !saving,
     schemeCode,
     purchaseDate: String(purchaseDate ?? ""),
     avgNav: String(avgNav ?? ""),

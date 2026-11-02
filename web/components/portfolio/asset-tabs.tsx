@@ -27,6 +27,7 @@ export const TAB_LABELS: Record<AssetType, string> = {
   cash: "Cash",
   pf: "EPF & PPF",
   nps: "NPS",
+  other: "Other",
 };
 
 const TAB_ICONS = Object.fromEntries(

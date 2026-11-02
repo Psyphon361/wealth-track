@@ -14,6 +14,7 @@ import { fdConfig } from "@/components/portfolio/grid/configs/fd";
 import { goldConfig } from "@/components/portfolio/grid/configs/gold";
 import { mfConfig } from "@/components/portfolio/grid/configs/mf";
 import { npsConfig } from "@/components/portfolio/grid/configs/nps";
+import { otherConfig } from "@/components/portfolio/grid/configs/other";
 import { pfConfig } from "@/components/portfolio/grid/configs/pf";
 import { rdConfig } from "@/components/portfolio/grid/configs/rd";
 import { StatusBadge } from "@/components/portfolio/grid/configs/shared";
@@ -29,6 +30,7 @@ import {
   ASSET_TYPE_LABELS,
   type AssetType,
   type HoldingRow,
+  type OtherItem,
   type PfItem,
 } from "@/lib/types";
 import { KpiStrip } from "./kpi-strip";
@@ -160,7 +162,9 @@ function TypedDetail<TRow extends HoldingRow>({
         showGain={
           config.type === "pf"
             ? (item as PfItem).contributed != null
-            : config.type !== "cash"
+            : config.type === "other"
+              ? (item as OtherItem).invested_amount != null
+              : config.type !== "cash"
         }
       />
       {tenure ? <TenureBar start={tenure.start} end={tenure.end} label={tenure.label} /> : null}
@@ -209,5 +213,7 @@ export function HoldingDetail({ type, id }: { type: AssetType; id: number }) {
       return <TypedDetail config={pfConfig} id={id} />;
     case "nps":
       return <TypedDetail config={npsConfig} id={id} />;
+    case "other":
+      return <TypedDetail config={otherConfig} id={id} />;
   }
 }

@@ -165,8 +165,8 @@ export function createColumnKit<TRow extends HoldingRow>(
       header: head("gain"),
       cell: ({ row }) => (
         <GainCell
-          gain={row.original.gain}
-          pct={row.original.gain_pct}
+          gain={row.original.gain ?? 0}
+          pct={row.original.gain_pct ?? 0}
           showPct={false}
         />
       ),
@@ -177,7 +177,8 @@ export function createColumnKit<TRow extends HoldingRow>(
       id: "gain_pct",
       header: head("gain_pct"),
       cell: ({ row }) => {
-        const { gain: g, gain_pct } = row.original;
+        const g = row.original.gain ?? 0;
+        const gain_pct = row.original.gain_pct ?? 0;
         return (
           <span className={cn("num whitespace-nowrap", gainTone(g))}>
             {g > 0 ? "+" : ""}

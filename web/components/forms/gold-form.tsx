@@ -103,8 +103,9 @@ export function GoldForm({
     control,
     name: ["metal", "purity", "purchase_date", "weight_grams", "invested_amount"],
   });
+  const { saving, save } = useAssetSave("gold", record, onSaved);
   const rateHint = useGoldRateAutofill({
-    enabled: true,
+    enabled: !saving,
     metal: String(metal ?? "gold"),
     purity: String(purity ?? ""),
     purchaseDate: String(purchaseDate ?? ""),
@@ -112,7 +113,6 @@ export function GoldForm({
     invested: String(invested ?? ""),
     setValue,
   });
-  const { saving, save } = useAssetSave("gold", record, onSaved);
 
   const onSubmit = handleSubmit((values) => {
     const payload: GoldInput = {

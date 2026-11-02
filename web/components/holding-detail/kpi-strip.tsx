@@ -25,9 +25,12 @@ export function KpiStrip({
   fourth: DetailKpi;
   showGain?: boolean;
 }) {
-  const tone = gainTone(item.gain);
-  const sign = item.gain > 0 ? "+" : "";
-  const Icon = item.gain < 0 ? TrendingDown : TrendingUp;
+  // "Other" holdings without an invested amount have no gain (the strip hides it).
+  const gain = item.gain ?? 0;
+  const gainPct = item.gain_pct ?? 0;
+  const tone = gainTone(gain);
+  const sign = gain > 0 ? "+" : "";
+  const Icon = gain < 0 ? TrendingDown : TrendingUp;
   return (
     <div
       className={cn(
@@ -55,12 +58,12 @@ export function KpiStrip({
             )}
           >
             {sign}
-            {formatINR(item.gain)}
+            {formatINR(gain)}
           </p>
           <p className={cn("num flex items-center gap-1 text-xs", tone)}>
-            {item.gain !== 0 ? <Icon className="size-3" aria-hidden /> : null}
+            {gain !== 0 ? <Icon className="size-3" aria-hidden /> : null}
             {sign}
-            {formatPct(item.gain_pct)}
+            {formatPct(gainPct)}
           </p>
         </div>
       </Kpi>

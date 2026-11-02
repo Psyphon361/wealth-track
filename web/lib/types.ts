@@ -1,4 +1,4 @@
-export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash" | "pf" | "nps";
+export type AssetType = "fd" | "rd" | "stock" | "bond" | "mf" | "gold" | "cash" | "pf" | "nps" | "other";
 
 export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   fd: "Fixed Deposits",
@@ -10,6 +10,7 @@ export const ASSET_TYPE_LABELS: Record<AssetType, string> = {
   cash: "Cash & Savings",
   pf: "EPF & PPF",
   nps: "NPS",
+  other: "Other",
 };
 
 export type Compounding =
@@ -359,6 +360,16 @@ export interface CashInput {
   notes: string | null;
 }
 
+export interface OtherInput {
+  name: string;
+  category: string;
+  current_value: number;
+  value_date: string;
+  invested_amount: number | null;
+  acquired_on: string | null;
+  notes: string | null;
+}
+
 export interface PfInput {
   name: string;
   kind: PfKind;
@@ -459,6 +470,7 @@ export type MutualFund = MutualFundInput & RecordFields;
 export type Gold = GoldInput & RecordFields;
 export type Cash = CashInput & RecordFields;
 export type Pf = PfInput & RecordFields;
+export type Other = OtherInput & RecordFields;
 export type Nps = NpsInput &
   RecordFields & {
     scheme_name: string;
@@ -476,7 +488,8 @@ export type AssetRecord =
   | Gold
   | Cash
   | Pf
-  | Nps;
+  | Nps
+  | Other;
 
 // Portfolio
 
@@ -570,6 +583,13 @@ export type CashItem = Cash &
     xirr?: number | null;
   };
 
+/** Gain is null when no invested amount was entered. */
+export type OtherItem = Other &
+  Omit<ComputedFields, "gain" | "gain_pct"> & {
+    gain: number | null;
+    gain_pct: number | null;
+  };
+
 export type PfItem = Pf &
   Omit<ComputedFields, "maturity_date"> & {
     accrued_interest: number;
@@ -597,7 +617,8 @@ export type HoldingRow =
   | GoldItem
   | CashItem
   | PfItem
-  | NpsItem;
+  | NpsItem
+  | OtherItem;
 
 export interface FacetValue {
   value: string;
