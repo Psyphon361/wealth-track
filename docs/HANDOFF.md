@@ -1,6 +1,92 @@
 # HANDOFF — session resume notes (2026-11-02)
 
-## Resume here — 2026-11-02 evening (uncommitted work + next steps)
+## Resume here — 2026-11-02 night (handover to a new session)
+
+**Start by reading:** CLAUDE.md, AGENTS.md, `docs/STATUS.md`, then this section. The older sections below are history.
+
+**State:** `main` is clean. `84d9b2a` is pushed; the commit adding these notes may not be pushed yet (check `git status -sb`). Prod migrations are at head `0026`. Nothing uncommitted, no builders running.
+
+**Done in the last session:**
+- `84d9b2a` (pushed): gold workflows fixed.
+  - `gold-history-copy.yml`: the job runs in environment `production` (where `PROD_DATABASE_URL` lives).
+  - `gold-backfill.yml`: job environment is `production` for target prod and `development` for dev. GitHub auto-creates `development` on the first dev run; `DEV_DATABASE_URL` is a repo secret, so dev works there. "Check secrets" picks the URL with a `case` on the target and exports it via `$GITHUB_ENV`. An empty secret fails the run; there is no fallback to dev any more.
+- Prod gold history copied and verified: dry run 41466107183, then apply run 41466318346 inserted 12,864 rows. Prod `gold_rate_history` = 12,888 rows, the same as dev.
+- The earlier "prod" backfill run 41460894796 actually ran on dev (the old fallback bug). Its PDF part finished; Wayback hit HTTP 429 and failed the run. Dev history was already complete, so nothing needs redoing.
+
+**Next, in order:**
+1. **Docs for the Other asset** (API `7c63cfb`, web `b429eae`; migration 0026 is live on prod). Use `git show --stat 7c63cfb b429eae` to find the files; take every fact from the code.
+   - SPEC: fields, validation (including "Purchase date can't be after the value date"), valuation, net worth behaviour, endpoints. Validation wording must match `api/app/schemas/assets.py` and `web/components/forms/schema.ts` exactly.
+   - STATUS: a dated 2026-11-02 entry.
+   - AGENTS.md: ten asset types in "What this is", the new files in the repo layout, 0026 in the alembic list, head `0026` under Checks.
+   - One commit: "Docs: Other asset". Push only with the user's OK.
+2. **Global search in the top nav bar.** The user wants it exceptional. Plan only, then get approval before any builder. The plan must cover:
+   - scope: which holdings fields across all ten types (names, banks/issuers, scheme names, tickers, ISINs, notes?), plus pages and actions (Add asset per type, Recently deleted, Dashboard);
+   - ranking: prefix over substring, exact ticker/ISIN first, recent or high-value holdings boosted, grouped results;
+   - keyboard UX: ⌘K / Ctrl+K and "/", arrows, Enter, Esc, recent searches;
+   - mobile behaviour: icon in the top bar opening a full-screen sheet;
+   - pending states (required everywhere), empty and no-result states, debounce;
+   - API endpoint shape and indexes (trigram is already used for MF master search);
+   - no native controls; result-row text that comes from the API follows the toast rule.
+3. Then the full roadmap below.
+
+**Full roadmap: every noted piece of future work, in the user's order.** The user picked four features on 2026-11-02 to build one at a time, then analytics. Show a numbered plan and get approval before each one, and lead "what next" lists with core features.
+
+1. Soft delete: done (Recently deleted page, 30-day purge, no Undo toast).
+2. "Other" asset: done (the user names it, e.g. Crypto, and enters the value by hand). Only its docs are left (item 1 above).
+3. **Global search** in the top nav bar (item 2 above).
+4. **Mobile optimisation and PWA** (install to home screen). The user sees many issues on phone. Start with a scout audit of every page at 375 px wide, then plan.
+5. **Analytics**, from `docs/ANALYTICS.md` (an Opus research doc written 2026-11-02). Read §3 "Ranking and first slice" and §5 "Open questions" before planning.
+   - Ranked shortlist:
+     1. Asset-class allocation, with concentration as a section. This builds the class mapping: equity/debt/gold/cash, SGB counted as gold, NPS E/C/G.
+     2. Maturity calendar, with a call-out for holdings that matured but are still open.
+     3. Bank safety against the DICGC ₹5L limit.
+     4. Net worth change split into new money vs growth.
+     5. Liquidity ladder, plus emergency-fund months once monthly expenses are stored.
+     6. Returns and a benchmark vs Nifty.
+     7. Data health, with MF hygiene.
+   - Suggested first slice: one `/analytics` "Overview" page with one endpoint, `GET /api/analytics/overview`. The pure maths goes in `services/analytics.py` with unit tests. Sections: allocation, concentration, coming up, bank safety, liquidity, a data-health strip. ANALYTICS.md breaks it into about 5 builder tasks.
+   - Slice 2: net worth change waterfall, returns per class, Nifty index-fund benchmark.
+   - Slice 3, before Jan 2027 (tax season): interest income and TDS by bank, then capital gains.
+   - A possible prerequisite that needs the user's OK because it changes behaviour: value SGBs at grams × IBJA 999 instead of YTM accrual.
+   - Open questions to ask the user before analytics (ANALYTICS.md §5):
+     - tax regime (old or new);
+     - senior citizen;
+     - target allocation;
+     - monthly expenses;
+     - whether to count EPF/PPF/NPS in the main allocation;
+     - hybrid funds as their own slice or split;
+     - a bank link (issuer picker) for cash accounts;
+     - SGB valuation;
+     - a "Sell" action that records realised gains instead of deleting;
+     - which benchmark, and CPI or an FD line;
+     - a sidebar page or dashboard cards.
+   - Deliberately not building: Sharpe/beta-style metrics, Monte Carlo, MF look-through, ITR exports, live prices (see ANALYTICS.md §4).
+
+**Backlog the user asked to keep (side items; mention briefly, after core work):**
+- Password reset and email verification: parked. There is no domain (the app is on .vercel.app). The options are a Gmail SMTP app password, or a domain plus Resend. Don't re-offer unless the user asks.
+- Prune the NAV history of schemes nobody holds (SPEC §1).
+- Deferred in STATUS: SIP support and per-transaction entry for manual holdings; a matured holdings view; duplicate-holding warnings; a full automated test suite.
+- Small known gaps are listed in `docs/STATUS.md` under "Known gaps / small follow-ups".
+
+**Don't offer these:**
+- Stock and bond import from CDSL/NSDL CAS or broker tradebooks: parked 2026-10-31 as "not up to the mark", because there is no buy price or date across brokers.
+- Motilal Oswal Midcap XIRR gap vs Groww: dropped by the user on 2026-11-02.
+
+**Stale lines in `docs/STATUS.md` to fix with the Other docs commit:**
+- Under "Next (backlog…)", the Motilal XIRR item (dropped).
+- The "Gold and silver rate history before 27 Oct 2026" item: done. Dev and prod both hold 2014 to Feb 2018 and May 2022 to today.
+
+**Small follow-up found:** the gold backfill logs "-1 rows inserted" per month (`api/app/services/gold_history.py`; rowcount is probably -1 for that statement under psycopg3). The rows are written; only the count is wrong. Optional fix plus a pytest.
+
+**Working-mode reminders (details in CLAUDE.md and AGENTS.md):**
+- Orchestrator + builders: the main session plans, reviews and commits; `builder` (Sonnet) edits, `scout` (Haiku) reads; `effort: "medium"` on every dispatch; at most 3 builders in parallel.
+- A hook blocks project edits from the main agent; commits only as `git add <paths> && git commit -F <file outside the project>`, as a single command.
+- Check the 5-hour usage window before each dispatch: start nothing new at 75% or more.
+- Show a plan before non-trivial builds; get approval before validation or behaviour changes.
+- The user click-tests the UI (the orchestrator can't log the browser pane in). Probe account `probe-ui3@example.test`; credentials in `~/.config/wealth-track/probe.env`, never printed.
+- Never touch ports 3000/8000. Never push without the user's explicit OK.
+
+## Resume here — 2026-11-02 evening — superseded by the night section above
 
 **Uncommitted in the working tree (lint, tsc and npm test all pass; not browser-checked):**
 - Web for the "Other" asset (API already pushed as 7c63cfb, migration 0026 live on prod): `other-form.tsx`, `category-field.tsx`, `grid/configs/other.tsx`, catalog group "Other" (Shapes icon), types, and wiring in asset-form, add-form-page, asset-tabs, portfolio, holding-detail, kpi-strip, shared.tsx. The user is to click-test it first.
