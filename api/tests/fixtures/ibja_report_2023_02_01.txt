@@ -1,0 +1,18 @@
+Daily Bullion Physical Market Report Date: 01st February 2023
+Description Purity AM PM
+Gold 999 57041 56865
+Gold 995 56813 56637
+Gold 916 52250 52088
+Gold 750 42781 42649
+Gold 585 33369 33266
+Silver 999 67949 67671
+Daily India Spot Market Rates
+Date GOLD* SILVER*
+31st January 2023 56865 67671
+30th January 2023 57079 68149
+27th January 2023 57189 68192
+25th January 2023 57138 67894
+Gold and Silver 999 Watch
+*Rate as exclusive of GST as of 31st January 2023 Gold is Rs/10 Gm & Silver in Rs/Kg The above rates are IBJA PM Rates; *Rates are exclusive of GST
+Description Contract Close Change %Chg
+Gold($/oz) APR 23 1945.30 6.10 0.31
