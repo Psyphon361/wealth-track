@@ -10,6 +10,7 @@ export interface GroupRow {
   allocation_pct: number;
   gain: number | null;
   gain_pct: number | null;
+  gain_base: number;
   day_change: number | null;
 }
 
@@ -36,9 +37,8 @@ function sumNonNull(values: (number | null)[]): number | null {
 }
 
 function subtotal(rows: GroupRow[]): GroupSubtotal {
-  const withGain = rows.filter((r) => r.gain !== null);
   const gain = sumNonNull(rows.map((r) => r.gain));
-  const base = withGain.reduce((s, r) => s + r.invested, 0);
+  const base = rows.reduce((s, r) => s + r.gain_base, 0);
   return {
     count: rows.reduce((s, r) => s + r.count, 0),
     invested: rows.reduce((s, r) => s + r.invested, 0),

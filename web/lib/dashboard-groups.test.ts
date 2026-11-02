@@ -11,6 +11,7 @@ const row = (type: string, o: Partial<GroupRow> = {}): GroupRow => ({
   allocation_pct: 10,
   gain: 10,
   gain_pct: 10,
+  gain_base: 100,
   day_change: null,
   ...o,
 });
@@ -30,7 +31,7 @@ describe("groupRows", () => {
   it("computes subtotals with null handling", () => {
     const g = groupRows([
       row("fd", { gain: 10, day_change: null }),
-      row("cash", { gain: null, gain_pct: null, invested: 500 }),
+      row("cash", { gain: null, gain_pct: null, invested: 500, gain_base: 0 }),
       row("stock"),
     ]);
     const s = g[0].subtotal;
@@ -40,6 +41,19 @@ describe("groupRows", () => {
     expect(s.gain).toBe(10);
     expect(s.gain_pct).toBe(10);
     expect(s.day_change).toBeNull();
+  });
+
+  it("divides the subtotal gain by gain_base, not invested", () => {
+    // Other A (worth 100, no invested) + Other B (invested 100, worth 150): the row has
+    // invested 200 and gain 50, but only B's 100 counts for the percentage.
+    const g = groupRows([
+      row("other", { invested: 200, current: 250, gain: 50, gain_pct: 50, gain_base: 100 }),
+      row("stock"),
+    ]);
+    const s = g.find((x) => x.name === "Other")!.subtotal;
+    expect(s.invested).toBe(200);
+    expect(s.gain).toBe(50);
+    expect(s.gain_pct).toBe(50);
   });
 
   it("returns null gain when all null", () => {

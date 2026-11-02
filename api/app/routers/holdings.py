@@ -287,13 +287,17 @@ def _run(
     invested = sum((_dec(r.get("invested")) for r in active_rows), _ZERO)
     current = sum((_dec(r.get("current_value")) for r in active_rows), _ZERO)
     gain = sum((_dec(r.get("gain")) for r in active_rows), _ZERO)
+    # The % base is the invested of rows that have a gain (Other without invested has none).
+    gain_base = sum(
+        (_dec(r.get("invested")) for r in active_rows if r.get("gain") is not None), _ZERO
+    )
     summary = {
         "count": len(active_rows),
         "matured_count": len(rows) - len(active_rows),
         "invested": _q(invested),
         "current_value": _q(current),
         "gain": _q(gain),
-        "gain_pct": _q(gain / invested * 100) if invested else Decimal("0.00"),
+        "gain_pct": _q(gain / gain_base * 100) if gain_base else Decimal("0.00"),
     }
 
     # Stable tie-break by id, then sort by key; nulls always last.

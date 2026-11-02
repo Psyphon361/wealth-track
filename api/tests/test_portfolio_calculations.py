@@ -66,7 +66,7 @@ def _row(dash, slug):
 def test_aggregate_empty_is_all_zero():
     assert valuation.aggregate([]) == {
         "invested": D("0.00"), "current_value": D("0.00"), "gain": D("0.00"),
-        "gain_pct": D("0.00"),
+        "gain_pct": D("0.00"), "gain_base": D("0.00"),
     }  # fmt: skip
 
 
@@ -93,7 +93,25 @@ def test_aggregate_fractional_amounts():
         "current_value": D("1400.42"),
         "gain": D("66.94"),
         "gain_pct": D("5.02"),  # 66.94 / 1333.48 = 5.0199 %
+        "gain_base": D("1333.48"),  # every result has a gain
     }
+
+
+def _other_mix():
+    """Other A: worth 100, no invested amount (no gain). Other B: worth 150, 100 invested."""
+    return [
+        make_other(current_value=D("100"), invested_amount=None),
+        make_other(current_value=D("150"), invested_amount=D("100")),
+    ]
+
+
+def test_aggregate_gain_pct_ignores_holdings_without_a_gain():
+    results = [valuation.value_other(o, TODAY) for o in _other_mix()]
+    assert valuation.aggregate(results) == {
+        "invested": D("200.00"), "current_value": D("250.00"), "gain": D("50.00"),
+        "gain_pct": D("50.00"),  # 50 / 100 (only B has a gain), not 50 / 200 = 25 %
+        "gain_base": D("100.00"),
+    }  # fmt: skip
 
 
 # --- build_groups: totals per type --------------------------------------------------------
@@ -108,7 +126,7 @@ def test_rd_group_totals_and_matured_count():
     assert [i["status"] for i in group["items"]] == ["active", "matured"]
     assert group["totals"] == {
         "invested": D("1000.00"), "current_value": D("1030.00"), "gain": D("30.00"),
-        "gain_pct": D("3.00"),
+        "gain_pct": D("3.00"), "gain_base": D("1000.00"),
     }  # fmt: skip
 
 
@@ -121,7 +139,7 @@ def test_bond_group_totals_and_matured_count():
     assert group["matured_count"] == 1  # the default bond matured on 2026-10-24
     assert group["totals"] == {
         "invested": D("10000.00"), "current_value": D("11000.00"), "gain": D("1000.00"),
-        "gain_pct": D("10.00"),
+        "gain_pct": D("10.00"), "gain_base": D("10000.00"),
     }  # fmt: skip
 
 
@@ -134,7 +152,7 @@ def test_mf_group_totals_at_latest_nav():
     assert group["matured_count"] == 0
     assert group["totals"] == {
         "invested": D("14000.00"), "current_value": D("15658.00"), "gain": D("1658.00"),
-        "gain_pct": D("11.84"),
+        "gain_pct": D("11.84"), "gain_base": D("14000.00"),
     }  # fmt: skip
 
 
@@ -147,7 +165,7 @@ def test_nps_group_totals_at_latest_nav():
     assert group["matured_count"] == 0
     assert group["totals"] == {
         "invested": D("48000.00"), "current_value": D("54600.00"), "gain": D("6600.00"),
-        "gain_pct": D("13.75"),
+        "gain_pct": D("13.75"), "gain_base": D("48000.00"),
     }  # fmt: skip
 
 
@@ -165,7 +183,7 @@ def test_gold_group_totals_for_gold_and_silver():
     assert group["matured_count"] == 0
     assert group["totals"] == {
         "invested": D("57000.00"), "current_value": D("69000.00"), "gain": D("12000.00"),
-        "gain_pct": D("21.05"),
+        "gain_pct": D("21.05"), "gain_base": D("57000.00"),
     }  # fmt: skip
 
 
@@ -176,7 +194,7 @@ def test_cash_group_totals_have_no_gain():
     assert group["matured_count"] == 0
     assert group["totals"] == {
         "invested": D("26234.56"), "current_value": D("26234.56"), "gain": D("0.00"),
-        "gain_pct": D("0.00"),
+        "gain_pct": D("0.00"), "gain_base": D("26234.56"),
     }  # fmt: skip
 
 
@@ -193,7 +211,7 @@ def test_pf_group_totals_with_and_without_contributions():
     assert group["matured_count"] == 0
     assert group["totals"] == {
         "invested": D("130000.00"), "current_value": D("150600.00"), "gain": D("20600.00"),
-        "gain_pct": D("15.85"),
+        "gain_pct": D("15.85"), "gain_base": D("130000.00"),
     }  # fmt: skip
 
 
@@ -207,7 +225,7 @@ def test_stock_without_master_id_or_price_falls_back_to_invested():
     stock = _group(groups, "stock")
     assert stock["totals"] == {
         "invested": D("2000.00"), "current_value": D("2000.00"), "gain": D("0.00"),
-        "gain_pct": D("0.00"),
+        "gain_pct": D("0.00"), "gain_base": D("2000.00"),
     }  # fmt: skip
     assert [i["current_value"] for i in stock["items"]] == [1000.0, 1000.0]
     assert [i["price"] for i in stock["items"]] == [None, None]
@@ -224,7 +242,7 @@ def test_stock_prices_as_of_is_the_newest_price_time():
     assert stock["prices_as_of"] == datetime(2026, 10, 30, 15, 30)
     assert stock["totals"] == {
         "invested": D("3000.00"), "current_value": D("3155.00"), "gain": D("155.00"),
-        "gain_pct": D("5.17"),
+        "gain_pct": D("5.17"), "gain_base": D("3000.00"),
     }  # fmt: skip
     assert stock["items"][0]["price_time"] == "2026-10-29T15:30:00"
 
@@ -247,7 +265,7 @@ def test_mf_without_nav_falls_back_to_invested():
     mf = _group(build_groups({"mf": [with_code, no_code]}, TODAY, navs={}), "mf")
     assert mf["totals"] == {
         "invested": D("14000.00"), "current_value": D("14000.00"), "gain": D("0.00"),
-        "gain_pct": D("0.00"),
+        "gain_pct": D("0.00"), "gain_base": D("14000.00"),
     }  # fmt: skip
     assert [i["nav"] for i in mf["items"]] == [None, None]
     assert [i["nav_date"] for i in mf["items"]] == [None, None]
@@ -258,7 +276,7 @@ def test_gold_without_matching_rate_falls_back_to_invested():
     gold = _group(build_groups({"gold": [make_gold()]}, TODAY, rates=rates), "gold")
     assert gold["totals"] == {
         "invested": D("50000.00"), "current_value": D("50000.00"), "gain": D("0.00"),
-        "gain_pct": D("0.00"),
+        "gain_pct": D("0.00"), "gain_base": D("50000.00"),
     }  # fmt: skip
     assert gold["items"][0]["rate_per_gram"] is None
     assert gold["items"][0]["rate_date"] is None
@@ -422,6 +440,47 @@ def test_holdings_summary_of_an_empty_type(monkeypatch):
         "count": 0, "matured_count": 0, "invested": D("0.00"), "current_value": D("0.00"),
         "gain": D("0.00"), "gain_pct": D("0.00"),
     }  # fmt: skip
+
+
+def test_holdings_summary_gain_pct_ignores_rows_without_a_gain(monkeypatch):
+    group = _group(build_groups({"other": _other_mix()}, TODAY), "other")
+    assert _summary(monkeypatch, group) == {
+        "count": 2, "matured_count": 0, "invested": D("200.00"), "current_value": D("250.00"),
+        "gain": D("50.00"), "gain_pct": D("50.00"),
+    }  # fmt: skip
+
+
+# --- dashboard gain % base ----------------------------------------------------------------
+
+
+def test_dashboard_gain_pct_ignores_other_holdings_without_a_gain():
+    fd = make_fd(
+        rate=D("7.3"), start_date=date(2026, 5, 2), compounding="simple"
+    )  # 184 days of 7.3 % simple on 100000 = 3680.00
+    dash = build_dashboard(build_groups({"fd": [fd], "other": _other_mix()}, TODAY))
+    assert dash["total_invested"] == D("100200.00")  # displayed totals still count A's 100
+    assert dash["total_current"] == D("103930.00")
+    assert dash["total_gain"] == D("3730.00")
+    assert dash["gain_pct"] == D("3.73")  # 3730 / 100100, not 3730 / 100200 = 3.72 %
+    fd_row, other_row = _row(dash, "fd"), _row(dash, "other")
+    assert fd_row["gain_pct"] == D("3.68") and fd_row["gain_base"] == D("100000.00")
+    assert other_row["invested"] == D("200.00")
+    assert other_row["gain"] == D("50.00")
+    assert other_row["gain_pct"] == D("50.00")  # not 25 %
+    assert other_row["gain_base"] == D("100.00")
+
+
+def test_dashboard_with_only_other_without_invested_has_no_gain():
+    other = make_other(current_value=D("100"), invested_amount=None)
+    dash = build_dashboard(build_groups({"other": [other]}, TODAY))
+    row = _row(dash, "other")
+    assert row["invested"] == D("100.00")
+    assert row["gain"] is None
+    assert row["gain_pct"] is None
+    assert row["gain_base"] == D("0.00")
+    assert dash["total_invested"] == D("100.00")
+    assert dash["total_gain"] == D("0.00")
+    assert dash["gain_pct"] == D("0.00")
 
 
 # --- value_mf -----------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """FD, RD and bond valuation with hand-worked expected values.
 
-All date spans stay within 2025-2027 and avoid 29 Feb on purpose.
+Date spans avoid 29 Feb, except the leap-year tests at the end of the file.
 """
 
 from datetime import date
@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.services import valuation
-from tests.conftest import make_bond, make_fd
+from tests.conftest import make_bond, make_fd, make_pf
 
 D = Decimal
 
@@ -380,3 +380,72 @@ def test_result_rounds_half_up_not_bankers():
     assert valuation._result(D("1.005"), D("2"))["invested"] == D("1.01")
     # gain_pct = 0.01 / 8.00 * 100 = 0.125 -> 0.13 (bankers' would give 0.12)
     assert valuation._result(D("8.00"), D("8.01"))["gain_pct"] == D("0.13")
+
+
+# ---- leap years: whole calendar years from the start plus remaining days / 365 ----
+
+
+def test_cumulative_fd_one_year_across_29_feb_is_exactly_one_year():
+    fd = make_fd(rate=D("7"), start_date=date(2023, 6, 1), compounding="yearly")
+    r = valuation.value_fd(fd, date(2024, 6, 1))  # 366 days, one whole year: t = 1
+    assert r["maturity_date"] == date(2024, 6, 1)
+    assert r["status"] == "matured"
+    assert r["current_value"] == D("107000.00")  # 100000 x 1.07, not 107019.84
+    assert r["gain"] == D("7000.00")
+
+
+def test_cumulative_fd_two_years_across_29_feb():
+    fd = make_fd(
+        rate=D("10"), start_date=date(2023, 6, 1), compounding="yearly", tenure_years=2
+    )
+    r = valuation.value_fd(fd, date(2025, 6, 1))  # 731 days, two whole years: t = 2
+    assert r["current_value"] == D("121000.00")  # 100000 x 1.1^2
+    assert r["gain_pct"] == D("21.00")
+
+
+def test_cumulative_fd_part_year_containing_29_feb_uses_days_over_365():
+    fd = make_fd(rate=D("7.3"), start_date=date(2024, 1, 1), compounding="simple")
+    r = valuation.value_fd(fd, date(2024, 4, 10))  # 31 + 29 + 31 + 9 = 100 days, no whole year
+    assert r["status"] == "active"
+    assert r["current_value"] == D("102000.00")  # 100000 x 7.3 % x 100 / 365 = 2000
+
+
+def test_cumulative_fd_29_feb_start_clamps_the_anniversary():
+    four_years = make_fd(
+        rate=D("10"), start_date=date(2024, 2, 29), compounding="yearly", tenure_years=4
+    )
+    r = valuation.value_fd(four_years, date(2028, 2, 29))  # 1461 days, four whole years
+    assert r["maturity_date"] == date(2028, 2, 29)
+    assert r["current_value"] == D("146410.00")  # 100000 x 1.1^4
+
+    one_year = make_fd(rate=D("10"), start_date=date(2024, 2, 29), compounding="yearly")
+    r = valuation.value_fd(one_year, date(2025, 2, 28))  # anniversary clamps to 28 Feb
+    assert r["maturity_date"] == date(2025, 2, 28)
+    assert r["current_value"] == D("110000.00")
+
+    simple = make_fd(
+        rate=D("8"), start_date=date(2024, 2, 29), compounding="simple", tenure_years=3
+    )
+    r = valuation.value_fd(simple, date(2026, 2, 27))  # one whole year + 364 days
+    assert r["current_value"] == D("115978.08")  # 100000 + 8000 x (1 + 364 / 365)
+
+
+def test_cumulative_fd_span_without_a_leap_day_is_unchanged():
+    fd = make_fd(
+        rate=D("8"), start_date=date(2025, 3, 1), compounding="simple", tenure_years=2
+    )
+    r = valuation.value_fd(fd, date(2026, 9, 1))  # 549 days: one whole year + 184 days
+    assert r["current_value"] == D("112032.88")  # 100000 + 8000 x 549 / 365 = 12032.88
+
+
+def test_pf_simple_interest_for_one_year_across_29_feb_is_one_years_interest():
+    pf = make_pf(balance=D("100000"), interest_rate=D("8"), balance_date=date(2023, 6, 1))
+    r = valuation.value_pf(pf, date(2024, 6, 1))  # 366 days, one whole year
+    assert r["accrued_interest"] == D("8000.00")  # not 8021.92
+    assert r["current_value"] == D("108000.00")
+
+
+def test_pf_part_year_across_29_feb_uses_days_over_365():
+    pf = make_pf(balance=D("100000"), interest_rate=D("7.3"), balance_date=date(2024, 1, 1))
+    r = valuation.value_pf(pf, date(2024, 4, 10))  # 100 days
+    assert r["accrued_interest"] == D("2000.00")

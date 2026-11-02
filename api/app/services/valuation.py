@@ -1,4 +1,5 @@
-"""Pure valuation helpers. Rates are percent p.a.; year fraction = days / 365."""
+"""Pure valuation helpers. Rates are percent p.a.; year fraction = whole calendar years from
+the start plus the remaining days / 365, so a leap day never adds a day. XIRR keeps days / 365."""
 
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timedelta
@@ -15,8 +16,23 @@ def _q(value: float | Decimal) -> Decimal:
     return Decimal(str(value)).quantize(_CENT, rounding=ROUND_HALF_UP)
 
 
+def _effective_days(start: date, end: date) -> int:
+    """365 per whole calendar year from start, plus the days left after the last anniversary.
+
+    A 29 Feb start has its anniversary clamped to 28 Feb in a non-leap year. End before start
+    gives 0. A span with no leap day gives the plain day count.
+    """
+    if end <= start:
+        return 0
+    years = end.year - start.year
+    while years > 0 and start + relativedelta(years=years) > end:
+        years -= 1
+    anchor = start + relativedelta(years=years)
+    return years * 365 + (end - anchor).days
+
+
 def _year_fraction(start: date, end: date) -> float:
-    return max((end - start).days, 0) / 365
+    return _effective_days(start, end) / 365
 
 
 def _grow(amount: Decimal, rate_pct: Decimal, compounding: str, t: float) -> float:
@@ -186,7 +202,7 @@ def value_pf(pf: Any, today: date | None = None) -> dict[str, Any]:
     """Balance plus simple interest since balance_date; invested = contributed, else current."""
     today = today or date.today()
     balance = Decimal(pf.balance)
-    days = max((today - pf.balance_date).days, 0)
+    days = _effective_days(pf.balance_date, today)
     accrued = (balance * Decimal(pf.interest_rate) / 100 * days / 365).quantize(
         _CENT, rounding=ROUND_HALF_UP
     )
@@ -287,21 +303,28 @@ def _mf_day_change(
 
 
 def aggregate(results: Iterable[Mapping[str, Any]]) -> dict[str, Decimal]:
-    """Sum invested/current_value/gain over computed results; gain_pct derived."""
+    """Sum invested/current_value/gain over computed results; gain_pct derived.
+
+    gain_base is the invested of only those results that have a gain; gain_pct divides by it,
+    so "Other" holdings without an invested amount do not dilute the percentage.
+    """
     invested = Decimal("0.00")
     current = Decimal("0.00")
     gain = Decimal("0.00")
+    gain_base = Decimal("0.00")
     for r in results:
         invested += r["invested"]
         current += r["current_value"]
         if r["gain"] is not None:  # "Other" holdings without an invested amount have no gain
             gain += r["gain"]
-    gain_pct = _q(gain / invested * 100) if invested else Decimal("0.00")
+            gain_base += r["invested"]
+    gain_pct = _q(gain / gain_base * 100) if gain_base else Decimal("0.00")
     return {
         "invested": _q(invested),
         "current_value": _q(current),
         "gain": _q(gain),
         "gain_pct": gain_pct,
+        "gain_base": _q(gain_base),
     }
 
 

@@ -533,6 +533,7 @@ export interface DashboardByType {
   allocation_pct: number;
   gain: number | null;
   gain_pct: number | null;
+  gain_base: number;
   day_change: number | null;
 }
 

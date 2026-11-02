@@ -42,6 +42,8 @@ class DashboardByType(BaseModel):
     current: Amount
     gain: Amount | None = None
     gain_pct: Amount | None = None
+    # Invested of only the holdings that have a gain: the base for gain_pct and group subtotals.
+    gain_base: Amount
     day_change: Amount | None = None
     allocation_pct: Amount
 

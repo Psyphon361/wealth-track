@@ -314,7 +314,9 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
     total_invested = _q(sum((g["totals"]["invested"] for g in groups), Decimal("0")))
     total_current = _q(sum((g["totals"]["current_value"] for g in groups), Decimal("0")))
     total_gain = _q(sum((g["totals"]["gain"] for g in groups), Decimal("0")))
-    gain_pct = _q(total_gain / total_invested * 100) if total_invested else Decimal("0.00")
+    # The % base is the invested of holdings that have a gain (Other without invested has none).
+    total_gain_base = _q(sum((g["totals"]["gain_base"] for g in groups), Decimal("0")))
+    gain_pct = _q(total_gain / total_gain_base * 100) if total_gain_base else Decimal("0.00")
     by_type = []
     for g in groups:
         current = g["totals"]["current_value"]
@@ -330,6 +332,7 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
                 "current": current,
                 "gain": g["totals"]["gain"] if has_gain else None,
                 "gain_pct": g["totals"]["gain_pct"] if has_gain else None,
+                "gain_base": g["totals"]["gain_base"],
                 "day_change": None,
                 "allocation_pct": _q(current / total_current * 100)
                 if total_current
