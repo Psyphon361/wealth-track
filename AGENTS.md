@@ -96,11 +96,15 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   components/holding-detail/ holding details page: shared layout for all ten types (header, KPI strip, tenure bar, sections)
   components/asset-type-icon.tsx  shared tinted asset-type icon (details page and add form)
   components/breadcrumb-label.tsx  breadcrumb label context: BreadcrumbLabelProvider (in the (app) layout) and useBreadcrumbLabel (sets the last crumb while mounted)
-  components/dashboard/ KPI cards, net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx) and holdings-by-type table
+  components/dashboard/ hero card with net worth and stats (summary-cards.tsx), net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx), allocation donut (allocation-card.tsx) and holdings-by-type table
   components/ui/        shadcn components (calendar.tsx has a custom inline month/year dropdown)
   lib/api.ts            fetch helpers, ApiError; base URL is same-origin /api
   lib/holding-amounts.ts  bond + MF quantity / price / total helper (vitest tests in holding-amounts.test.ts)
   lib/holdings-cache.ts  version counters bumped on holding create, update, delete or CAS import (markHoldingsStale); the grid, dashboard and details page reload on the next reveal after a change
+  lib/allocation.ts  dashboard donut slices: top 5 by value plus "More" when more than 6 types (allocation.test.ts)
+  lib/asset-colors.ts  fixed colour per asset slug for the donut and table bars; neutral colour for "More"
+  lib/dashboard-groups.ts  groups dashboard rows into Deposits, Market-linked, Other with subtotals; hides types with no holdings (dashboard-groups.test.ts)
+  lib/networth-range.ts  chart maths: growth over the range (change in current − invested) and the Y axis domain (networth-range.test.ts)
   lib/asset-catalog.ts  asset-type registry (title, hint, icon, group) for the /add gallery; its order drives the portfolio tabs, the Add menu, the /add gallery and the /portfolio redirect — add new asset classes here
   lib/notify.ts         toast helpers — render API message/description only
   lib/auth.ts           server-only: auth cookie names and options, token types, safeNext, apiAuthFetch (replaces lib/session.ts)
