@@ -28,7 +28,7 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
     active !== null && active !== key ? "opacity-40" : "opacity-100";
 
   return (
-    <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
+    <Card size="sm" className="h-full min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Net worth change
@@ -50,8 +50,8 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
           </SelectContent>
         </Select>
       </div>
-      <div className="mt-2">
-        <p className={`num text-3xl font-semibold leading-none ${tone(period.change)}`}>
+      <div className="mt-3">
+        <p className={`num text-2xl font-semibold leading-none ${tone(period.change)}`}>
           {signedWhole(period.change)}
         </p>
         <p className="mt-3 text-[13.5px] text-foreground">
@@ -65,7 +65,7 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
         </p>
       </div>
       <div
-        className="mt-4 flex h-2.5 gap-0.5 overflow-hidden rounded-full"
+        className="mt-6 flex h-2.5 gap-0.5 overflow-hidden rounded-full"
         onMouseLeave={() => setActive(null)}
         aria-hidden="true"
       >
@@ -80,7 +80,7 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
           ) : null,
         )}
       </div>
-      <ul className="flex flex-col gap-0.5" onMouseLeave={() => setActive(null)}>
+      <ul className="mt-4 flex flex-col gap-0.5" onMouseLeave={() => setActive(null)}>
         {rows.map((r) => (
           <li
             key={r.key}

@@ -115,19 +115,23 @@ export function Performance() {
         )}
       </div>
 
-      {g.status === "ready" && (
-        <p className="text-xs text-muted-foreground">
-          Based on your current holdings.
-          {g.data.stocks_at_cost_before && (
-            <>
-              {" "}
-              Stocks valued at cost before{" "}
-              <span className="num">{formatDate(g.data.stocks_at_cost_before)}</span>.
-            </>
-          )}
-        </p>
-      )}
-      {r.status === "ready" && <ReturnsExcluded excluded={r.data.excluded} rates={r.data.rates} />}
+      <div className="space-y-0.5">
+        {g.status === "ready" && (
+          <p className="text-xs text-muted-foreground">
+            Based on your current holdings.
+            {g.data.stocks_at_cost_before && (
+              <>
+                {" "}
+                Stocks valued at cost before{" "}
+                <span className="num">{formatDate(g.data.stocks_at_cost_before)}</span>.
+              </>
+            )}
+          </p>
+        )}
+        {r.status === "ready" && (
+          <ReturnsExcluded excluded={r.data.excluded} rates={r.data.rates} />
+        )}
+      </div>
     </div>
   );
 }

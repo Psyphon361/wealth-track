@@ -140,18 +140,38 @@ export function compareFootnote(
   return `Nifty figure replays your own investment dates into ${b.scheme_name}${nav}.`;
 }
 
-/** "3 holdings aren't included: …" or null when everything is counted. */
+function holdingsCount(n: number): string {
+  return n === 1 ? "1 holding" : `${n} holdings`;
+}
+
+/** "Not in returns: 3 holdings with no dated investments (…) and 1 Other holding …." or null. */
 export function excludedText(e: ReturnsExcluded): string | null {
-  const total = e.no_flows + e.at_cost + e.other_without_invested;
-  if (total === 0) return null;
-  const reasons: string[] = [];
-  if (e.no_flows > 0) reasons.push("cash, EPF/PPF and NPS have no dated investments");
-  if (e.at_cost > 0) reasons.push(`${e.at_cost} valued at cost`);
-  if (e.other_without_invested > 0) {
-    reasons.push(`${e.other_without_invested} in Other without an amount invested`);
+  const parts: string[] = [];
+  if (e.no_flows > 0) {
+    parts.push(`${holdingsCount(e.no_flows)} with no dated investments (cash, EPF/PPF, NPS)`);
   }
-  const head = total === 1 ? "1 holding isn't" : `${total} holdings aren't`;
-  return `${head} included: ${reasons.join("; ")}.`;
+  if (e.at_cost > 0) parts.push(`${holdingsCount(e.at_cost)} valued at cost`);
+  if (e.other_without_invested > 0) {
+    parts.push(`${e.other_without_invested} Other ${e.other_without_invested === 1 ? "holding" : "holdings"} without an amount invested`);
+  }
+  if (parts.length === 0) return null;
+  const body =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+  return `Not in returns: ${body}.`;
+}
+
+/** "#1", "#2" … for a zero-based position. */
+export function rankLabel(index: number): string {
+  return `#${index + 1}`;
+}
+
+/** Bar width (0–100) of a return relative to the reference (first tile) return, by size. */
+export function relativeBarWidth(value: number, reference: number): number {
+  const ref = Math.abs(reference);
+  if (ref === 0) return 0;
+  return Math.max(0, Math.min(100, (Math.abs(value) / ref) * 100));
 }
 
 /** "EPF 8.25% · PPF 7.1% · NPS (Scheme) 11.2% a year"; null rates omitted. */

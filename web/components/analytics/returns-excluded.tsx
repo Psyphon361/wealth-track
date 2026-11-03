@@ -7,7 +7,7 @@ export function ReturnsExcluded({ excluded, rates }: { excluded: Excluded; rates
   if (!text && !rateLine) return null;
 
   return (
-    <div className="space-y-1 px-1 text-[13.2px] text-muted-foreground">
+    <div className="space-y-0.5 text-xs text-muted-foreground">
       {text && <p>{text}</p>}
       {rateLine && <p className="num">{rateLine}</p>}
     </div>

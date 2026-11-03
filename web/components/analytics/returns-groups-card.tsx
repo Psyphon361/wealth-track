@@ -41,7 +41,7 @@ export function ReturnsGroupsCard({
   const headline = overall ? overallHeadline(overall) : null;
 
   return (
-    <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
+    <Card size="sm" className="h-full min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           Your returns
@@ -66,10 +66,10 @@ export function ReturnsGroupsCard({
           </SelectContent>
         </Select>
       </div>
-      <div className="mt-2">
+      <div className="mt-3">
         {overall && headline ? (
           <>
-            <p className={`num text-3xl font-semibold leading-none ${tone(overall.return_pct ?? 0)}`}>
+            <p className={`num text-2xl font-semibold leading-none ${tone(overall.return_pct ?? 0)}`}>
               {headline.value}{" "}
               <span className="text-[15.4px] font-normal text-muted-foreground">
                 {headline.suffix}
@@ -84,7 +84,7 @@ export function ReturnsGroupsCard({
       </div>
       {groups.length > 0 && (
         <>
-          <ul className="flex flex-col gap-0.5" onMouseLeave={() => setPicked(null)}>
+          <ul className="mt-6 flex flex-col gap-0.5" onMouseLeave={() => setPicked(null)}>
             {groups.map((g, i) => {
               const b = bars[i];
               const pct = g.return_pct as number;
