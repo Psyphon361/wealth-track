@@ -67,7 +67,7 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   isActive={pathname.startsWith("/deleted")}
                   tooltip="Recently deleted"
-                  className="rounded-md border border-destructive/30 bg-destructive/[0.08] text-[13.5px] text-foreground/80 hover:border-destructive/40 hover:bg-destructive/[0.12] hover:text-foreground data-active:bg-destructive/[0.12] data-active:text-foreground [&>svg]:text-destructive/65 hover:[&>svg]:text-destructive/85"
+                  className="text-[13.5px] text-muted-foreground hover:text-foreground data-active:text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground data-active:[&>svg]:text-foreground"
                   render={<Link href="/deleted" />}
                 >
                   <Trash2 />
