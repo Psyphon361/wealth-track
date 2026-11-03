@@ -157,7 +157,7 @@ No minimum amounts beyond > 0 (user decision). Cross-field errors are attached t
 
 ## 3. Valuation (server side, `valuation.py`)
 
-Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly 4, half_yearly 2, yearly 1.
+Year fraction = (365 per whole calendar year from the start date, plus the days left after the last anniversary) / 365, so a leap day never inflates a full year (`_effective_days`; a 29 Feb start has its anniversary clamped to 28 Feb in a non-leap year; a span with no leap day is the plain day count). Rates are percent. Periods/yr: monthly 12, quarterly 4, half_yearly 2, yearly 1.
 
 - **Maturity date** (FD, RD) = start + relativedelta(years, months) + days. **Status** = `matured` if today ≥ maturity else `active` (bond: from maturity_date).
 - **FD cumulative**: invested = principal; current = P × (1 + r/n)^(n·t), `simple` → P × (1 + r·t); t from start to min(today, maturity).
@@ -172,7 +172,7 @@ Year fraction = days / 365. Rates are percent. Periods/yr: monthly 12, quarterly
 - **EPF & PPF**: current = balance + simple interest at `interest_rate` from `balance_date` to today (balance × rate/100 × days / 365, 2 dp); `accrued_interest` = current − balance. Invested = `contributed` when set, else current (gain 0). xirr null. PPF maturity = 1 April of (the year the opening financial year ends + 15), e.g. opened 2026-06-01 → 2042-04-01; EPF and VPF have none. A PPF is never "matured": status is always active. Past maturity, `extended_until` = the end of the current 5-year block (maturity + 5 × n years, the first one after today); null before maturity.
 - **NPS**: invested = `contributed`. Current = units × latest NAV (`nps_nav_latest`, 4 dp); with no NAV, current = contributed. `nav` and `nav_date` are in API items; `day_change` = units × (nav − previous stored NAV), as for MF. No XIRR; no status (always active).
 - **Other**: current = `current_value` as entered (no price lookup; it changes only when the user edits it). With `invested_amount` set: invested = `invested_amount`, gain = current − invested, gain_pct = gain / invested × 100. Without it: invested = current, and `gain` and `gain_pct` are null (no gain is shown). xirr null. Always active (never matures). Totals skip a null gain, so those holdings add nothing to gain.
-- gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested; null gains are skipped). Outputs rounded to 2 dp.
+- gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested; null gains are skipped). Aggregates also return `gain_base` = the invested of only those holdings that have a gain; the aggregate `gain_pct` = gain / `gain_base` × 100, so "Other" holdings without an invested amount don't dilute it. Outputs rounded to 2 dp.
 - **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
 
 Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 → 107185.90. Payout FD 100000 @ 7.2% quarterly 1y → 3600.00 after 2 quarters, 7200.00 at maturity. Bond 10 × 1000, ytm 8, 1 year → 10800.00.
@@ -461,3 +461,67 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - "Transaction units must be greater than 0"
   - "Transactions: at most 2000 per fund"
 - 200 → `message` "Imported N funds" ("Imported 1 fund" for one), `description` "X added, Y updated.", `created`, `updated`.
+
+## 9. Analytics (slice 1: Overview)
+
+`GET /api/analytics/overview` (`routers/analytics.py`; maths in `services/analytics.py`, shapes in `schemas/analytics.py`) returns `as_of` plus six sections computed from the user's valued holdings and loaded masters. Only active holdings count; matured ones are excluded from every figure except the already-matured and data-health lists. Money is 2 dp; percents are of the section's own total.
+
+### Sections
+
+- **allocation**: `including_retirement` and `excluding_retirement` views (`total`, `classes` → `types` → `holdings`, each with `value` and `percent`; classes with no value are left out), plus `retirement_value` and `retirement_percent`. Retirement = EPF, VPF, PPF and NPS Tier I (a missing tier counts as Tier I).
+- **concentration**: `top_holdings` (10, by value), `rollups` (stock company, MF AMC, FD/RD bank, bond issuer, NPS PFM; bar percent is of that group's total; ETF bars are `passive`) and `flags`.
+- **liquidity**: six buckets, always listed, adding up to the active total.
+- **coming_up**: `next_30_days`, `next_90_days`, `next_180_days`, `next_12_months` windows and `already_matured`.
+- **bank_safety**: DICGC cover per bank.
+- **data_health**: `at_cost`, `stale_balances`, `matured_open`, `latest` price dates.
+
+### Classification (equity, debt, hybrid, gold, cash, other)
+
+- Stock: equity. An ETF is classified by its name (below), default equity.
+- MF: by the linked scheme's AMFI category: equity scheme or ELSS → equity; arbitrage → debt; hybrid scheme → hybrid; debt or income/debt scheme → debt; gold or silver → gold; overseas → equity; index fund or ETF category → by name, default equity; domestic fund of funds and solution-oriented → by name, default hybrid. With no linked scheme or no rule: by name, then the holding's own category (equity, ELSS and index → equity; debt and liquid → debt; hybrid → hybrid), else other.
+- Bond: debt; an SGB (holding or master `bond_type`) is gold. FD, RD, EPF, VPF, PPF: debt. Gold & Silver: gold. Cash: cash. Other: other.
+- NPS: by the scheme's asset class: E → equity; C, G and A → debt. Themed, lifecycle, composite, tax saver and similar schemes have none, so by name: a whole word EQUITY → equity; a debt name → debt; otherwise hybrid.
+- By name (`classify_by_name`, whole tokens, in order): gold or silver → gold; liquid, overnight, arbitrage, gilt, SDL, bond, Bharat Bond, target maturity, money market, G-sec, T-bill, debt, income → debt (so a "Nifty SDL" or target-maturity index fund is debt, not equity); NIFTY or SENSEX → equity; otherwise the default.
+
+### Liquidity buckets
+
+Instant: cash. 1-3 days: stocks and ETFs, MF other than ELSS, digital gold and silver, NPS Tier II. Breakable: FD and RD. Illiquid: bonds, physical gold and silver. Locked: EPF, VPF, PPF, NPS Tier I, and the ELSS part inside its 3-year lock. Not classified: Other. Retirement money is included.
+
+ELSS funds are split per lot: purchases and redemptions from stored transactions, FIFO redemptions, then the value is split by remaining units still inside the lock-in (a unit bought exactly 3 years ago is free; the locked part is rounded to 2 dp and the free part is the rest). Without usable lots the whole fund follows its purchase date; with no date it counts as locked.
+
+### Coming up
+
+Active FDs, RDs, bonds and PPFs maturing strictly after today. Windows end at today + 30, 90 and 180 days and today + 1 calendar year, all inclusive; each longer window includes the shorter ones. Rows are sorted by date, type, id and carry `amount`, `rate`, `days_left` and `approximate`.
+
+- Amount: cumulative FD, value on maturity; payout FD, its principal; RD, value on maturity with every instalment paid (approximate); bond, face value × quantity (SGB: its current value; a bond with no face value: invested amount grown at the yield; both approximate); PPF, balance plus interest to maturity (approximate, later contributions are unknown). Perpetual bonds have no date and are skipped.
+- `already_matured` lists holdings whose status is matured (count and rows). They are never counted in a window total.
+
+### Bank safety
+
+FD and RD only (cash isn't linked to a bank). Exposure per deposit is its current value; a payout FD counts its principal only. A deposit rolls up to a bank by this chain: the issuer link followed through `merged_into_id` to the surviving issuer; else the issuer whose name or short name equals the entered bank (trimmed, case-insensitive, following merges); else the entered name, grouped case-insensitively. Each bank row is rounded to 2 dp and totals are sums of rows.
+
+- Cover is `limit` = ₹5,00,000 per bank (DICGC). Status from the surviving issuer: `insured` (insured = min(total, 5,00,000), excess = the rest); `not_insured` (insured 0, excess = total; NBFCs and HFCs always, other banks when the DICGC flag is false); `sovereign` (Post Office: no cover figure, excess 0); `unknown` (flag NULL or no linked issuer: insured and excess null, never counted as uninsured).
+- Badges: not_dicgc, cooperative, small_finance, post_office. Banks sort by excess, then total, largest first. `total_deposits` = insured + uninsured_excess + unknown_amount + sovereign_amount.
+- Caveat: the cover is per depositor per bank per capacity. Joint accounts and other capacities are insured separately, so this can over-warn (the card's info tooltip says so).
+
+### Concentration
+
+The web shows Top 10 (holdings by value, % of total) or one rollup chosen in a Select. Flags (strictly over): a non-ETF stock company above 10% of the equity class total (retirement money included), and an AMC above 30% of the MF total. ETFs and passive funds never get the single-stock flag. Each flag carries its `threshold`.
+
+### Data health
+
+- `at_cost`: active stocks, MFs, NPS and gold with no price, NAV or rate (valued at cost).
+- `stale_balances`: active cash, EPF/PPF and Other whose balance or value date is more than 6 calendar months old (exactly 6 months is not stale); items carry `as_of`.
+- `matured_open`: holdings whose status is matured.
+- `latest`: newest stock price, MF NAV, NPS NAV and gold rate dates among held items (null when none).
+
+### Page (`/analytics`, sidebar "Analytics")
+
+- Top to bottom: the data-health strip, then Allocation beside Liquidity, Bank safety beside Coming up (two columns from `lg`, stacked below), then Concentration full width, then the footer line "Prices as of <newest `latest` date>" (right-aligned; hidden when there is none).
+- Data-health strip: an amber strip shown only when `at_cost` or `stale_balances` has items ("Some figures may be off: N valued at cost · N stale balances"); a Details toggle lists the items, each linking to its holding. `matured_open` is not shown there (already-matured lives on the Coming up card).
+- Allocation: donut (shared `components/charts/donut.tsx`, also used by the dashboard allocation card) with class rows that expand to asset types and holdings (links to the holding). An "Include retirement" switch swaps the view; off shows a line with the excluded retirement amount and percent. Fixed colour per class.
+- Liquidity: headline = instant + 1-3 days amount, subline "available within 3 days · N% of your portfolio", a segmented bar and bucket rows (zero buckets hidden).
+- Bank safety: headline in red when over the cover ("₹X over the ₹5L cover"), muted when only unknown cover, green when all covered; bank rows expand to their deposits (links).
+- Coming up: themed Select for the window (Next 30 / 90 / 180 days, Next 1 year; default 90 days), total, rows with a date block, type, rate, "~ approximate" and amount (links), and an expandable "N already matured" list.
+- Hover is linked: hovering a donut slice, bar segment or legend row dims the others. No native controls.
+- States: skeleton while loading, API-sourced error with Retry, and an empty state ("No holdings yet" with an "Add a holding" button) when there are no active holdings. The page reloads after holding changes (`holdings-cache`).

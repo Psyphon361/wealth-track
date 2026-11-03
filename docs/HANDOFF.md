@@ -35,7 +35,7 @@
 2. "Other" asset: done (the user names it, e.g. Crypto, and enters the value by hand). Only its docs are left (item 1 above).
 3. **Global search** in the top nav bar (item 2 above).
 4. **Mobile optimisation and PWA** (install to home screen). The user sees many issues on phone. Start with a scout audit of every page at 375 px wide, then plan.
-5. **Analytics**, from `docs/ANALYTICS.md` (an Opus research doc written 2026-11-02). Read §3 "Ranking and first slice" and §5 "Open questions" before planning.
+5. **Analytics**, from `docs/ANALYTICS.md` (an Opus research doc written 2026-11-02). **Slice 1 (Overview) has shipped (2026-11-03; SPEC §9, STATUS); slices 2 and 3 below remain.** Read §3 "Ranking and first slice" and §5 "Open questions" before planning.
    - Ranked shortlist:
      1. Asset-class allocation, with concentration as a section. This builds the class mapping: equity/debt/gold/cash, SGB counted as gold, NPS E/C/G.
      2. Maturity calendar, with a call-out for holdings that matured but are still open.

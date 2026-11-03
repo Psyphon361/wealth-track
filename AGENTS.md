@@ -6,7 +6,7 @@ Guide for any AI coding agent working in this repo. Read this first, then `docs/
 
 Personal wealth tracker for one user in India (INR only). Manual entry of ten asset types — Fixed Deposits (FD), Recurring Deposits (RD), Stocks, Bonds, Mutual Funds (MF), NPS (units valued at the NPS Trust latest NAV; contributed is the invested value), Gold & Silver (gold or silver, physical or digital, valued at the IBJA per-gram rate for its metal and purity; silver 925 is derived from the 999 rate), Cash & Savings (savings and current accounts, cash in hand; valued at its balance), EPF & PPF (EPF, VPF and PPF; balance plus simple interest since its balance date), Other (crypto, property or anything else: a name, a free-text category, a current value you enter and the date it was read, with an optional amount invested and purchase date; gain only when an amount invested is set) — with a Dashboard (totals + allocation by type) and a Portfolio tab (per-asset-type tabs and grids with filters, sorting, edit/delete). Prices: stock current value = quantity × latest price (latest NSE/BSE bhavcopy close, stored nightly by the securities import); MF uses the latest AMFI NAV and NPS the latest NPS Trust NAV; a holding with no price is valued at invested.
 
-Philosophy: build fast, small steps, verify by build/lint, curl, and browser click-through. API has pytest in `api/tests` (run `cd api && .venv/bin/python -m pytest -q`); tests are added per bug fix, there is no full suite.
+Philosophy: build fast, small steps, verify by build/lint, curl, and browser click-through. API has pytest in `api/tests` (run `cd api && .venv/bin/python -m pytest -q`); tests are added per bug fix, there is no full suite, except that numerical code in the analytics, portfolio and dashboard APIs must have passing unit tests before commit (see rule 9).
 
 ## Repo layout (monorepo)
 
@@ -39,6 +39,9 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
   app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
+  app/routers/analytics.py  GET /api/analytics/overview: allocation, concentration, liquidity, coming up, bank safety and data health in one response (SPEC §9)
+  app/services/analytics.py  pure analytics maths (classification, liquidity buckets, maturities, DICGC cover, concentration flags, data health); tests in api/tests/test_analytics.py and test_analytics_api.py
+  app/schemas/analytics.py  response models for the analytics overview
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/nps, /nps/{scheme_id}: NPS scheme search (scheme or PFM name, with latest NAV) and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?metal&purity&date: IBJA gold or silver rate on or up to 7 days before a date (gold form auto-fill); /api/master/other/categories: the user's Other categories, most used first (category field suggestions)
@@ -104,6 +107,10 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/allocation.ts  dashboard donut slices: top 5 by value plus "More" when more than 6 types (allocation.test.ts)
   lib/asset-colors.ts  fixed colour per asset slug for the donut and table bars; neutral colour for "More"
   lib/dashboard-groups.ts  groups dashboard rows into Deposits, Market-linked, Other with subtotals; hides types with no holdings (dashboard-groups.test.ts)
+  app/(app)/analytics/  /analytics page (sidebar "Analytics"); renders components/analytics/analytics.tsx
+  components/analytics/ analytics cards: analytics.tsx (container, states, "Prices as of" footer), allocation-card, liquidity-card (style reference), bank-safety-card, coming-up-card, concentration-card, data-health-strip
+  components/charts/donut.tsx  shared donut (analytics allocation card and the dashboard allocation card)
+  lib/analytics.ts      analytics endpoint path, class colours, percent text
   lib/networth-range.ts  chart maths: growth over the range (change in current − invested) and the Y axis domain (networth-range.test.ts)
   lib/asset-catalog.ts  asset-type registry (title, hint, icon, group) for the /add gallery; its order drives the portfolio tabs, the Add menu, the /add gallery and the /portfolio redirect — add new asset classes here
   lib/notify.ts         toast helpers — render API message/description only
@@ -151,6 +158,9 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 6. **Never touch the user's running dev servers** (ports 3000/8000). Use spare ports (8010+, 3010+) for your own test servers and stop them when done.
 7. **Secrets**: never print or commit `api/.env`, connection strings, API keys, passwords. Production credentials are handled by the user only.
 8. Dark theme only; compact, minimal style; Geist fonts; `num` utility (Geist sans + tabular-nums) for figures; gain/loss colours via `text-gain` / `text-loss`. Type scale: 13.5px body, 15.4px titles, 11px uppercase labels, 13.2px helper text, inputs `text-base` on phones (SPEC §5).
+
+9. **Numerical code needs passing unit tests before commit**: the analytics, portfolio and dashboard APIs (valuation, aggregation, classification, windows, thresholds). Keep the tests up to date whenever a calculation changes.
+10. **Analytics UI uses the modern minimal card style**, with `web/components/analytics/liquidity-card.tsx` as the reference: small uppercase label, headline figure and subline, one compact visual, legend rows, linked hover across visual and rows, and a themed Select (not chips) for any view switch.
 
 ## Gotchas
 
