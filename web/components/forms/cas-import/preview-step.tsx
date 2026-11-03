@@ -36,8 +36,8 @@ import type {
 type RowAction = "update" | "create";
 
 const ACTION_OPTIONS = [
-  { value: "update", label: "Update existing" },
-  { value: "create", label: "Add as new" },
+  { value: "update", label: "Update Existing" },
+  { value: "create", label: "Add as New" },
 ];
 
 const PLAN_LABELS = { direct: "Direct", regular: "Regular" } as const;

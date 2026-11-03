@@ -141,3 +141,12 @@ export function monthColumns(
   });
   return { columns, zero };
 }
+
+/** Totals over the given months (the 12-month summary line): money in, growth, average money a month. */
+export function monthsSummary(
+  months: { new_money: number; growth: number }[],
+): { newMoney: number; growth: number; perMonth: number } {
+  const newMoney = months.reduce((s, m) => s + m.new_money, 0);
+  const growth = months.reduce((s, m) => s + m.growth, 0);
+  return { newMoney, growth, perMonth: newMoney / 12 };
+}

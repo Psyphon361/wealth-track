@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { CardInfo } from "@/components/analytics/card-info";
-import { MONEY_COLOR, columnLabel, monthColumns, monthLabel, signedWhole } from "@/lib/growth";
+import { formatINRWhole } from "@/lib/format";
+import {
+  MONEY_COLOR,
+  columnLabel,
+  monthColumns,
+  monthLabel,
+  monthsSummary,
+  signedWhole,
+} from "@/lib/growth";
 import type { AnalyticsGrowthMonth } from "@/lib/types";
 
 function tone(n: number): string {
@@ -27,9 +35,10 @@ export function GrowthMonthsCard({ months }: { months: AnalyticsGrowthMonth[] })
   const activeMonth = picked ?? newest;
   const activeData = months.find((m) => m.month === activeMonth);
   const growthColor = activeData && activeData.growth < 0 ? "var(--loss)" : "var(--gain)";
+  const summary = monthsSummary(months);
 
   return (
-    <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
+    <Card size="sm" className="min-w-0 gap-4 px-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -99,28 +108,41 @@ export function GrowthMonthsCard({ months }: { months: AnalyticsGrowthMonth[] })
           );
         })}
       </div>
-      {activeData && (
-        <div
-          className="mt-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-border/50 pt-3 text-[13.5px]"
-          aria-live="polite"
-        >
-          <span className="font-medium">{monthLabel(activeData.month)}</span>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-            <span className="flex items-center gap-1.5">
-              <Dot color={MONEY_COLOR} />
-              <span className="text-muted-foreground">Your money</span>
-              <span className="num">{signedWhole(activeData.new_money)}</span>
-            </span>
-            <span className="flex items-center gap-1.5">
-              <Dot color={growthColor} />
-              <span className="text-muted-foreground">Market growth</span>
-              <span className={`num ${tone(activeData.growth)}`}>
-                {signedWhole(activeData.growth)}
+      <div className="flex flex-col gap-3">
+        {months.length > 0 && (
+          <p className="text-[13.2px] text-muted-foreground">
+            Last 12 months: you put in{" "}
+            <span className="num text-foreground">{formatINRWhole(Math.round(summary.newMoney))}</span>
+            {" · "}growth{" "}
+            <span className={`num ${tone(summary.growth)}`}>{signedWhole(summary.growth)}</span>
+            {" · "}
+            <span className="num text-foreground">{formatINRWhole(Math.round(summary.perMonth))}</span>{" "}
+            a month on average
+          </p>
+        )}
+        {activeData && (
+          <div
+            className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 border-t border-border/50 pt-3 text-[13.5px]"
+            aria-live="polite"
+          >
+            <span className="font-medium">{monthLabel(activeData.month)}</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <span className="flex items-center gap-1.5">
+                <Dot color={MONEY_COLOR} />
+                <span className="text-muted-foreground">Your money</span>
+                <span className="num">{signedWhole(activeData.new_money)}</span>
               </span>
-            </span>
+              <span className="flex items-center gap-1.5">
+                <Dot color={growthColor} />
+                <span className="text-muted-foreground">Market growth</span>
+                <span className={`num ${tone(activeData.growth)}`}>
+                  {signedWhole(activeData.growth)}
+                </span>
+              </span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </Card>
   );
 }

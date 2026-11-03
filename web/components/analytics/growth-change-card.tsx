@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { CardInfo } from "@/components/analytics/card-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { titleCase } from "@/components/forms/fields";
 import { formatINRWhole } from "@/lib/format";
 import { MONEY_COLOR, changeSentence, dateRangeLabel, signedWhole, splitShares } from "@/lib/growth";
 import type { AnalyticsGrowthPeriod } from "@/lib/types";
@@ -18,7 +19,7 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
   const period = periods.find((p) => p.key === periodKey) ?? periods[0];
   if (!period) return null;
 
-  const items = periods.map((p) => ({ value: p.key, label: p.label }));
+  const items = periods.map((p) => ({ value: p.key, label: titleCase(p.label) }));
   const shares = splitShares(period.new_money, period.growth);
   const growthColor = period.growth < 0 ? "var(--loss)" : "var(--gain)";
   const rows = [
@@ -29,7 +30,7 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
     active !== null && active !== key ? "opacity-40" : "opacity-100";
 
   return (
-    <Card size="sm" className="h-full min-w-0 gap-0 px-4">
+    <Card size="sm" className="min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">

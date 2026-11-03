@@ -5,6 +5,7 @@ import {
   dateRangeLabel,
   monthColumns,
   monthLabel,
+  monthsSummary,
   signOf,
   signedWhole,
   splitShares,
@@ -112,5 +113,17 @@ describe("monthColumns", () => {
     const { columns, zero } = monthColumns([{ month: "2026-01", new_money: 0, growth: 0 }]);
     expect(zero).toBe(0);
     expect(columns[0].segments.every((s) => s.height === 0)).toBe(true);
+  });
+});
+
+describe("monthsSummary", () => {
+  it("sums money and growth and averages money over 12 months", () => {
+    const s = monthsSummary([
+      { new_money: 1200, growth: 50 },
+      { new_money: 600, growth: -20 },
+    ]);
+    expect(s.newMoney).toBe(1800);
+    expect(s.growth).toBe(30);
+    expect(s.perMonth).toBe(150);
   });
 });

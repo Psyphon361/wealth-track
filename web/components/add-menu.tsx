@@ -15,7 +15,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ASSET_CATALOG, ASSET_GROUPS } from "@/lib/asset-catalog";
+import { titleCase } from "@/components/forms/fields";
+import { ASSET_CATALOG,ASSET_GROUPS } from "@/lib/asset-catalog";
 
 /**
  * Modal overlays: dialogs, alert dialogs and sheets (all base-ui dialog popups, told apart from
@@ -79,7 +80,7 @@ export function AddMenu() {
         render={<Link href={`/add/${entry.type}`} />}
       >
         <entry.icon />
-        {entry.title}
+        {titleCase(entry.title)}
       </DropdownMenuItem>
     );
   }
@@ -117,7 +118,7 @@ export function AddMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/add" />}>
           <LayoutGrid />
-          All asset types
+          All Asset Types
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

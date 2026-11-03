@@ -73,7 +73,7 @@ export function UserMenu() {
           }}
         >
           <LogOut />
-          Log out
+          Log Out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

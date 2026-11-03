@@ -12,10 +12,10 @@ import type { AnalyticsComingUp } from "@/lib/types";
 type Period = "30d" | "90d" | "180d" | "12m";
 
 const PERIODS: { value: Period; label: string }[] = [
-  { value: "30d", label: "Next 30 days" },
-  { value: "90d", label: "Next 90 days" },
-  { value: "180d", label: "Next 180 days" },
-  { value: "12m", label: "Next 1 year" },
+  { value: "30d", label: "Next 30 Days" },
+  { value: "90d", label: "Next 90 Days" },
+  { value: "180d", label: "Next 180 Days" },
+  { value: "12m", label: "Next 1 Year" },
 ];
 
 const WINDOW_KEYS = {
@@ -33,17 +33,20 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const rowCls =
-  "flex items-center gap-3 rounded-md px-1.5 py-1.5 text-[13.5px] transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "flex items-center gap-3 px-3 py-2.5 text-[13.5px] transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring";
+
+const listCls =
+  "flex flex-col divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60";
 
 function DateBlock({ iso }: { iso: string | null }) {
-  if (!iso) return <span className="w-9 shrink-0" aria-hidden="true" />;
+  if (!iso) return <span className="w-11 shrink-0" aria-hidden="true" />;
   const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
   const month = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-GB", {
     month: "short",
     timeZone: "UTC",
   });
   return (
-    <span className="num w-9 shrink-0 text-center leading-tight">
+    <span className="num w-11 shrink-0 rounded-md bg-muted/50 py-1 text-center leading-tight">
       <span className="block text-[13.5px] font-medium">{d}</span>
       <span className="block text-[11px] text-muted-foreground">
         {month} {String(y).slice(2)}
@@ -100,7 +103,7 @@ export function ComingUpCard({ comingUp }: { comingUp: AnalyticsComingUp }) {
       {count === 0 ? (
         <p className="text-[13.2px] text-muted-foreground">Nothing matures in this period</p>
       ) : (
-        <ul className="mt-3 flex flex-col">
+        <ul className={`mt-3 ${listCls}`}>
           {window.rows.map((r) => (
             <li key={`${r.type}-${r.id}`}>
               <Link href={`/portfolio/${r.type}/${r.id}`} className={rowCls}>
@@ -120,7 +123,7 @@ export function ComingUpCard({ comingUp }: { comingUp: AnalyticsComingUp }) {
         </ul>
       )}
       {matured.count > 0 && (
-        <div className="mt-auto">
+        <div>
           <button
             type="button"
             onClick={() => setShowMatured((o) => !o)}
@@ -133,7 +136,7 @@ export function ComingUpCard({ comingUp }: { comingUp: AnalyticsComingUp }) {
             />
           </button>
           {showMatured && (
-            <ul className="mt-1 flex flex-col">
+            <ul className={`mt-1.5 ${listCls}`}>
               {matured.rows.map((r) => (
                 <li key={`${r.type}-${r.id}`}>
                   <Link href={`/portfolio/${r.type}/${r.id}`} className={rowCls}>

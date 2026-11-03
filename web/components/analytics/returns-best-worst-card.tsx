@@ -9,25 +9,17 @@ import { ASSET_TYPE_LABELS, type RankedHolding } from "@/lib/types";
 
 const LABEL = "text-[11px] font-medium uppercase tracking-wider text-muted-foreground";
 
-const TONES = {
-  gain: { text: "text-gain" },
-  loss: { text: "text-loss" },
-} as const;
-
 function Rows({
   title,
   items,
-  tone,
   active,
   setActive,
 }: {
   title?: string;
   items: RankedHolding[];
-  tone: keyof typeof TONES;
   active: string | null;
   setActive: (key: string | null) => void;
 }) {
-  const t = TONES[tone];
   const dim = (key: string) => (active !== null && active !== key ? "opacity-40" : "opacity-100");
   return (
     <div className="min-w-0">
@@ -56,7 +48,9 @@ function Rows({
                   </span>
                 </span>
                 <span className="shrink-0 text-right">
-                  <span className={`num block ${t.text}`}>{signedPct1(h.return_pct)}</span>
+                  <span className={`num block ${h.return_pct >= 0 ? "text-gain" : "text-loss"}`}>
+                    {signedPct1(h.return_pct)}
+                  </span>
                   <span className="num block text-xs text-muted-foreground">
                     {signedWhole(h.gain)}
                   </span>
@@ -92,10 +86,12 @@ export function ReturnsBestWorstCard({
           Highest yearly returns among holdings held for at least 6 months
         </p>
       </div>
-      {best.length > 0 && <Rows items={best} tone="gain" active={active} setActive={setActive} />}
-      {worst.length > 0 && (
-        <Rows title="Lagging" items={worst} tone="loss" active={active} setActive={setActive} />
-      )}
+      <div className="flex flex-col gap-3">
+        {best.length > 0 && <Rows items={best} active={active} setActive={setActive} />}
+        {worst.length > 0 && (
+          <Rows title="Lagging" items={worst} active={active} setActive={setActive} />
+        )}
+      </div>
     </Card>
   );
 }

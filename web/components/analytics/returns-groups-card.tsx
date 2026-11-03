@@ -15,8 +15,8 @@ import {
 import type { ReturnGroup } from "@/lib/types";
 
 const VIEWS = [
-  { value: "class", label: "By asset class" },
-  { value: "type", label: "By type" },
+  { value: "type", label: "By Type" },
+  { value: "class", label: "By Asset Class" },
 ];
 
 function tone(n: number): string {
@@ -32,7 +32,7 @@ export function ReturnsGroupsCard({
   byClass: ReturnGroup[];
   byType: ReturnGroup[];
 }) {
-  const [view, setView] = useState("class");
+  const [view, setView] = useState("type");
   const [picked, setPicked] = useState<string | null>(null);
   const groups = (view === "class" ? byClass : byType).filter((g) => g.return_pct !== null);
   const bars = returnBars(groups.map((g) => g.return_pct));
@@ -42,7 +42,7 @@ export function ReturnsGroupsCard({
   const headline = overall ? overallHeadline(overall) : null;
 
   return (
-    <Card size="sm" className="h-full min-w-0 gap-0 px-4">
+    <Card size="sm" className="min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -57,7 +57,7 @@ export function ReturnsGroupsCard({
           items={VIEWS}
           value={view}
           onValueChange={(v) => {
-            setView((v as string | null) ?? "class");
+            setView((v as string | null) ?? "type");
             setPicked(null);
           }}
         >

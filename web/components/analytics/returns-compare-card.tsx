@@ -18,7 +18,7 @@ export function ReturnsCompareCard({ benchmark }: { benchmark: ReturnsBenchmark 
   const sentence = compareSentence(benchmark);
 
   return (
-    <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
+    <Card size="sm" className="min-w-0 gap-4 px-4">
       <div className="flex items-center gap-1.5">
         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
           How you compare

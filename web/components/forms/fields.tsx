@@ -37,12 +37,27 @@ import {
 
 export type Option = { value: string; label: string };
 
+const SMALL_WORDS = new Set(["a", "an", "the", "of", "in", "on", "to", "by", "and", "or"]);
+
+/** Title Case for dropdown option labels; acronyms and digits stay as is. */
+export function titleCase(text: string): string {
+  let first = true;
+  return text.replace(/[A-Za-z][A-Za-z']*/g, (word, offset: number) => {
+    const isFirst = first;
+    first = false;
+    if (word === word.toUpperCase()) return word;
+    const afterHyphen = offset > 0 && text[offset - 1] === "-";
+    if (!isFirst && !afterHyphen && SMALL_WORDS.has(word.toLowerCase())) return word;
+    return word[0].toUpperCase() + word.slice(1);
+  });
+}
+
 export function toOptions<K extends string>(
   labels: Record<K, string>,
 ): Option[] {
   return (Object.keys(labels) as K[]).map((value) => ({
     value,
-    label: labels[value],
+    label: titleCase(labels[value]),
   }));
 }
 

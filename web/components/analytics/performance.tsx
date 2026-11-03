@@ -1,6 +1,5 @@
 "use client";
 
-import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ANALYTICS_GROWTH_PATH, ANALYTICS_RETURNS_PATH } from "@/lib/analytics";
@@ -13,11 +12,6 @@ import { ReturnsCompareCard } from "./returns-compare-card";
 import { ReturnsExcluded } from "./returns-excluded";
 import { ReturnsGroupsCard } from "./returns-groups-card";
 import { useAnalyticsSection, type SectionState } from "./use-analytics-section";
-
-// Phone: growth story first, then returns. From lg: two independent columns.
-function Column({ children }: { children: ReactNode }) {
-  return <div className="flex min-w-0 flex-col gap-3">{children}</div>;
-}
 
 function ErrorCard({
   state,
@@ -43,15 +37,14 @@ function ErrorCard({
   );
 }
 
-function Loading() {
+function Skeletons({ count }: { count: number }) {
   return (
     <>
-      <div className="min-w-0" aria-busy="true" aria-label="Loading…">
-        <Skeleton className="h-[360px] rounded-xl" />
-      </div>
-      <div className="min-w-0" aria-busy="true" aria-label="Loading…">
-        <Skeleton className="h-[360px] rounded-xl" />
-      </div>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} aria-busy="true" aria-label="Loading…">
+          <Skeleton className="h-[360px] rounded-xl" />
+        </div>
+      ))}
     </>
   );
 }
@@ -62,47 +55,37 @@ export function Performance() {
   const g = growth.state;
   const r = returns.state;
 
+  const hasTop = r.status === "ready" && (r.data.best.length > 0 || r.data.worst.length > 0);
+
   return (
     <div className="space-y-3">
       <div className="grid items-start gap-3 lg:grid-cols-2">
-        <Column>
-          {g.status === "loading" && <Loading />}
+        <div className="flex min-w-0 flex-col gap-3">
+          {g.status === "loading" && <Skeletons count={2} />}
           {g.status === "error" && <ErrorCard state={g} retry={growth.retry} />}
           {g.status === "ready" && (
             <>
-              <div className="min-w-0">
-                <GrowthChangeCard periods={g.data.periods} />
-              </div>
-              <div className="min-w-0">
-                <GrowthMonthsCard months={g.data.months} />
-              </div>
+              <GrowthChangeCard periods={g.data.periods} />
+              <GrowthMonthsCard months={g.data.months} />
             </>
           )}
-        </Column>
+          {hasTop && <ReturnsBestWorstCard best={r.data.best} worst={r.data.worst} />}
+        </div>
 
-        <Column>
-          {r.status === "loading" && <Loading />}
+        <div className="flex min-w-0 flex-col gap-3">
+          {r.status === "loading" && <Skeletons count={2} />}
           {r.status === "error" && <ErrorCard state={r} retry={returns.retry} />}
           {r.status === "ready" && (
             <>
-              <div className="min-w-0">
-                <ReturnsGroupsCard
-                  overall={r.data.overall}
-                  byClass={r.data.by_class}
-                  byType={r.data.by_type}
-                />
-              </div>
-              <div className="min-w-0">
-                <ReturnsCompareCard benchmark={r.data.benchmark ?? null} />
-              </div>
-              {(r.data.best.length > 0 || r.data.worst.length > 0) && (
-                <div className="min-w-0">
-                  <ReturnsBestWorstCard best={r.data.best} worst={r.data.worst} />
-                </div>
-              )}
+              <ReturnsGroupsCard
+                overall={r.data.overall}
+                byClass={r.data.by_class}
+                byType={r.data.by_type}
+              />
+              <ReturnsCompareCard benchmark={r.data.benchmark ?? null} />
             </>
           )}
-        </Column>
+        </div>
       </div>
 
       <div className="space-y-0.5">
@@ -118,9 +101,7 @@ export function Performance() {
             )}
           </p>
         )}
-        {r.status === "ready" && (
-          <ReturnsExcluded excluded={r.data.excluded} rates={r.data.rates} />
-        )}
+        {r.status === "ready" && <ReturnsExcluded excluded={r.data.excluded} />}
       </div>
     </div>
   );

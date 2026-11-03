@@ -15,10 +15,10 @@ const OTHERS = "others";
 
 const LABELS: Record<string, string> = {
   stock: "Stocks",
-  mf_amc: "Mutual fund AMCs",
+  mf_amc: "Mutual Fund AMCs",
   bank: "Banks",
-  bond_issuer: "Bond issuers",
-  nps_pfm: "NPS managers",
+  bond_issuer: "Bond Issuers",
+  nps_pfm: "NPS Managers",
 };
 
 const NOUNS: Record<string, string> = {
