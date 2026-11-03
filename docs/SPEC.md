@@ -515,6 +515,15 @@ The web shows Top 10 (holdings by value, % of total; the remainder appears as an
 - `matured_open`: holdings whose status is matured.
 - `latest`: newest stock price, MF NAV, NPS NAV and gold rate dates among held items (null when none).
 
+### Growth (`GET /api/analytics/growth`)
+
+Splits the change in net worth into new money and growth. Pure maths in `services/analytics_growth.py`; the daily points come from the net worth history (`load_history`, range `1y`), so valuation is not duplicated. Response: `as_of`, `stocks_at_cost_before` (passed through from the history), `periods` and `months`; money and percents 2 dp.
+
+- `periods` (in order): `this_month` ("This month"), `last_month` ("Last month"), `fy` ("FY to date"), `ytd` ("This year"), `1y` ("1 year"). Each has `start_date`, `end_date`, `start_value`, `end_value`, `new_money`, `growth`, `change`, `growth_pct`.
+- Start dates: this month = last day of the previous month; last month = last day of the month before last; FY = 31 March of the current Indian FY (1 April start; in Jan–Mar, 31 March of the previous calendar year); YTD = 31 Dec of the previous year; 1 year = today minus 1 year. End = today, except last month = last day of last month.
+- A date's value is the history point on or before it (`current` for value, `invested` for new money). With no such point (holdings began later) the start values are 0.
+- `new_money` = invested(end) − invested(start); `change` = current(end) − current(start); `growth` = `change` − `new_money`; `growth_pct` = growth ÷ start value × 100, null when the start value is 0.
+- `months`: the last 12 calendar months, oldest first, each `month` (YYYY-MM), `start_value`, `end_value`, `new_money`, `growth`, `change`, by the same rules (start = last day of the previous month, end = last day of the month, today for the current month).
 ### Page (`/analytics`, sidebar "Analytics")
 
 - Top to bottom: the data-health strip, then Allocation beside Liquidity, Bank safety beside Coming up (two columns from `lg`, stacked below), then Concentration full width, then the footer line "Prices as of <newest `latest` date>" (right-aligned; hidden when there is none).

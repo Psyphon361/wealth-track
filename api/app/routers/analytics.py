@@ -17,9 +17,11 @@ from app.models.mutual_fund import MutualFund
 from app.models.stock import Stock
 from app.models.stock_master import StockMaster
 from app.models.user import User
+from app.routers.networth import load_history
 from app.routers.portfolio import load_groups
 from app.schemas.analytics import AnalyticsOverview
-from app.services import analytics
+from app.schemas.analytics_growth import AnalyticsGrowth
+from app.services import analytics, analytics_growth
 
 router = APIRouter(tags=["analytics"])
 
@@ -122,3 +124,13 @@ def get_overview(db: Session = Depends(get_db), user: User = Depends(current_use
         "bank_safety": analytics.bank_safety(groups, issuer_masters),
         "data_health": analytics.data_health(groups, today),
     }
+
+
+@router.get("/analytics/growth", response_model=AnalyticsGrowth)
+def get_growth(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Net worth change split into new money and growth, per period and per month."""
+    today = date.today()
+    history = load_history(db, user.id, "1y", today)
+    return analytics_growth.build_growth(
+        history["points"], today, history.get("stocks_at_cost_before")
+    )
