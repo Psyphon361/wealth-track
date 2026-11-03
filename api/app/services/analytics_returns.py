@@ -1,7 +1,8 @@
 """Returns (XIRR) overall, per asset class and per asset type. Pure maths over valued holdings
 ({type, items}) plus plain MF transactions; no DB. See SPEC §9 "Returns".
 
-Cash flows per holding: negative = money in, positive = value today. Cash, EPF/VPF/PPF and NPS
+Cash flows per holding: negative = money in, positive = value today and any interest paid out
+(payout FDs) on its payout date; gain includes that interest. Cash, EPF/VPF/PPF and NPS
 have no stored flows, so they are excluded from XIRR and listed in `rates` instead.
 """
 
@@ -14,7 +15,7 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 from dateutil.relativedelta import relativedelta
 
 from app.services import analytics, analytics_benchmark
-from app.services.valuation import xirr
+from app.services.valuation import payout_fd_flows, xirr
 
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -59,6 +60,28 @@ def _single(item: Mapping[str, Any], start_field: str, today: date) -> HoldingFl
     return HoldingFlows(
         [(start, -invested), (today, _dec(item.get("current_value")))], "purchase_date"
     )
+
+
+def _payout_fd_flows(item: Mapping[str, Any], today: date) -> HoldingFlows:
+    """-principal on the start date, +each interest payout on its payout date (the schedule of
+    `value_fd`), +principal (the current value) today; a payout falling today joins that last flow."""
+    base = _single(item, "start_date", today)
+    maturity = analytics._to_date(item.get("maturity_date"))
+    if base.reason is not None or maturity is None:
+        return base
+    payouts = payout_fd_flows(
+        analytics._to_date(item.get("start_date")),
+        item["compounding"], item["rate"], item["principal"], today, maturity,
+    )  # fmt: skip
+    flows = list(base.flows[:-1])
+    final = base.flows[-1][1]
+    for day, amount in payouts:
+        if day >= today:
+            final += _q(_dec(amount))
+        else:
+            flows.append((day, _q(_dec(amount))))
+    flows.append((today, final))
+    return HoldingFlows(flows, base.basis)
 
 
 def _rd_flows(item: Mapping[str, Any], today: date) -> HoldingFlows:
@@ -126,6 +149,8 @@ def holding_flows(
     start_field = {"fd": "start_date", "bond": "purchase_date", "stock": "buy_date"}.get(
         asset_type, "purchase_date"
     )
+    if asset_type == "fd" and item.get("payout_type") == "payout":
+        return _payout_fd_flows(item, today)
     return _single(item, start_field, today)
 
 
@@ -147,7 +172,7 @@ def _group(
     flows: Flows = [f for m in members for f in m["flows"]]
     invested = sum((m["invested"] for m in members), ZERO)
     current = sum((m["current"] for m in members), ZERO)
-    gain = current - invested
+    gain = sum((m["gain"] for m in members), ZERO)
     pct, annualised = return_of(flows, invested, gain, today)
     bases = {m["basis"] for m in members}
     return {
@@ -265,12 +290,14 @@ def returns(
         else:
             invested = _dec(h.item.get("invested"))
         current = _dec(h.item.get("current_value"))
-        pct, annualised = return_of(built.flows, invested, current - invested, today)
+        item_gain = h.item.get("gain")
+        gain = _dec(item_gain) if item_gain is not None else current - invested
+        pct, annualised = return_of(built.flows, invested, gain, today)
         included.append(
             {
                 "type": h.type, "type_label": h.type_label, "cls": h.cls, "id": h.id,
                 "name": h.name, "flows": built.flows, "basis": built.basis,
-                "invested": invested, "current": current, "gain": current - invested,
+                "invested": invested, "current": current, "gain": gain,
                 "return_pct": pct, "annualised": annualised,
             }
         )  # fmt: skip

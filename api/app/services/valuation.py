@@ -90,20 +90,50 @@ def value_fd(fd: Any, today: date | None = None) -> dict[str, Any]:
     return _result(fd.principal, current, maturity, _status(today, maturity))
 
 
-def _value_payout_fd(fd: Any, today: date, maturity: date) -> dict[str, Any]:
-    periods = PERIODS_PER_YEAR[fd.compounding]
-    step = 12 // periods
-    principal = float(fd.principal)
-    annual = principal * float(fd.rate) / 100
+def payout_periods(
+    start_date: date, compounding: str, today: date, maturity: date
+) -> tuple[int, date, list[date]]:
+    """Completed payout periods of a payout FD up to min(today, maturity): (count, end date of
+    the last one, every period end date)."""
+    step = 12 // PERIODS_PER_YEAR[compounding]
     end = min(today, maturity)
     completed = 0
-    last_end = fd.start_date
+    last_end = start_date
+    ends: list[date] = []
     while True:
-        period_end = fd.start_date + relativedelta(months=step * (completed + 1))
+        period_end = start_date + relativedelta(months=step * (completed + 1))
         if period_end > end:
             break
         completed += 1
         last_end = period_end
+        ends.append(period_end)
+    return completed, last_end, ends
+
+
+def payout_fd_flows(
+    start_date: date,
+    compounding: str,
+    rate: Decimal | float,
+    principal: Decimal | float,
+    today: date,
+    maturity: date,
+) -> list[tuple[date, float]]:
+    """Interest paid out so far by a payout FD, as (date, amount): one per completed period, plus
+    the final part-period at maturity. Same schedule as `_value_payout_fd`."""
+    periods = PERIODS_PER_YEAR[compounding]
+    annual = float(principal) * float(rate) / 100
+    completed, last_end, ends = payout_periods(start_date, compounding, today, maturity)
+    out = [(d, annual / periods) for d in ends]
+    if today >= maturity:
+        out.append((maturity, annual * _year_fraction(last_end, maturity)))
+    return out
+
+
+def _value_payout_fd(fd: Any, today: date, maturity: date) -> dict[str, Any]:
+    periods = PERIODS_PER_YEAR[fd.compounding]
+    principal = float(fd.principal)
+    annual = principal * float(fd.rate) / 100
+    completed, last_end, _ = payout_periods(fd.start_date, fd.compounding, today, maturity)
     interest = annual / periods * completed
     if today >= maturity:
         interest += annual * _year_fraction(last_end, maturity)

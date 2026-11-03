@@ -501,3 +501,77 @@ def test_endpoint_returns_benchmark(client, seeded, monkeypatch):  # noqa: F811
     assert bench["fd_rate"] == 8.0
     assert bench["overall"]["benchmark_pct"] is not None
     assert bench["inflation_period"].endswith("–2025")
+
+
+# --- Payout FDs: interest paid out is a cash flow on its payout date ----------------------------
+
+
+def _fd_item(compounding, payout, start=date(2024, 11, 2), years=3, principal=100000, rate=8):
+    from app.services.valuation import value_fd
+
+    fd = SimpleNamespace(
+        principal=D(principal), rate=D(rate), start_date=start, compounding=compounding,
+        payout_type=payout, tenure_years=years, tenure_months=0, tenure_days=0,
+    )  # fmt: skip
+    value = value_fd(fd, TODAY)
+    return {
+        "id": 1, "bank": "Bank 1", "label": None, "principal": fd.principal, "rate": fd.rate,
+        "start_date": start, "compounding": compounding, "payout_type": payout, **value,
+    }  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "compounding,periods,expected_pct",
+    [("quarterly", 4, 8.2432), ("monthly", 12, 8.3000)],  # (1 + 8% / n) ** n - 1, hand-computed
+)
+def test_payout_fd_xirr_is_the_effective_annual_rate(compounding, periods, expected_pct):
+    item = _fd_item(compounding, "payout")
+    built = ar.holding_flows("fd", item, TODAY)
+    assert built.flows[0] == (date(2024, 11, 2), D(-100000))
+    assert built.flows[-1][0] == TODAY
+    payouts = built.flows[1:-1]
+    assert len(payouts) + 1 == 2 * periods  # the payout falling today joins the last flow
+    assert payouts[0][1] == (D(100000) * D("0.08") / periods).quantize(D("0.01"))
+    out = ar.returns([_group("fd", item)], TODAY)
+    assert out["overall"]["annualised"] is True
+    assert abs(float(out["overall"]["return_pct"]) - expected_pct) < 0.05
+    assert out["overall"]["gain"] == D(str(item["gain"])) == D(str(item["interest_received"]))
+
+
+def test_payout_fd_flows_total_the_interest_received():
+    item = _fd_item("quarterly", "payout")
+    built = ar.holding_flows("fd", item, TODAY)
+    total = sum(a for _, a in built.flows)
+    assert total == D(str(item["interest_received"]))
+
+
+def test_cumulative_fd_flows_unchanged():
+    item = _fd_item("quarterly", "cumulative")
+    built = ar.holding_flows("fd", item, TODAY)
+    assert built.flows == [
+        (date(2024, 11, 2), D(-100000)),
+        (TODAY, D(str(item["current_value"]))),
+    ]
+    out = ar.returns([_group("fd", item)], TODAY)
+    assert out["overall"]["gain"] == D(str(item["gain"]))
+
+
+def test_bond_has_no_interest_received_so_keeps_two_flows():
+    from app.services.valuation import value_bond
+
+    bond = SimpleNamespace(
+        invested_amount=D(100000), ytm=D(8), purchase_date=date(2024, 11, 2),
+        maturity_date=date(2029, 11, 2),
+    )  # fmt: skip
+    value = value_bond(bond, TODAY)
+    assert "interest_received" not in value
+    item = {"id": 1, "name": "B", "status": "active", "purchase_date": bond.purchase_date, **value}
+    assert len(ar.holding_flows("bond", item, TODAY).flows) == 2
+
+
+def test_benchmark_replay_treats_intermediate_payouts_as_redemptions():
+    rows = [(date(2000, 1, 1), D(100))]
+    flows = [(date(2026, 1, 2), D(-100)), (date(2026, 5, 2), D(10)), (TODAY, D(100))]
+    pct, annualised = ab.replay(flows, rows, TODAY)
+    # 1 unit bought, 0.1 sold for 10, 0.9 units left worth 90: (90 + 10 - 100) / 100
+    assert annualised is False and pct == D("0.00")
