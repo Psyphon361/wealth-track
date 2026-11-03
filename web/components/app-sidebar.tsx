@@ -67,7 +67,7 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   isActive={pathname.startsWith("/deleted")}
                   tooltip="Recently deleted"
-                  className="text-[13.5px] text-muted-foreground hover:text-foreground data-active:text-foreground [&>svg]:text-muted-foreground hover:[&>svg]:text-foreground data-active:[&>svg]:text-foreground"
+                  className="text-[13.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive focus-visible:bg-destructive/10 focus-visible:text-destructive data-active:bg-destructive/10 data-active:text-destructive [&>svg]:text-destructive/70 hover:[&>svg]:text-destructive focus-visible:[&>svg]:text-destructive data-active:[&>svg]:text-destructive"
                   render={<Link href="/deleted" />}
                 >
                   <Trash2 />
@@ -78,7 +78,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarRail />
+      <SidebarRail className="after:inset-y-6 after:rounded-full group-data-[collapsible=icon]:after:translate-x-[calc(0.5rem-2px)]" />
     </Sidebar>
   );
 }
