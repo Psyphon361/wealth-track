@@ -14,30 +14,20 @@ import { ReturnsExcluded } from "./returns-excluded";
 import { ReturnsGroupsCard } from "./returns-groups-card";
 import { useAnalyticsSection, type SectionState } from "./use-analytics-section";
 
-// Phone order: growth story first, then returns. From lg: two columns.
-const SLOT = {
-  change: "order-1 lg:order-none lg:col-start-1 lg:row-start-1",
-  months: "order-2 lg:order-none lg:col-start-1 lg:row-start-2",
-  groups: "order-3 lg:order-none lg:col-start-2 lg:row-start-1",
-  compare: "order-4 lg:order-none lg:col-start-2 lg:row-start-2",
-  best: "order-5 lg:order-none lg:col-span-2 lg:col-start-1 lg:row-start-3",
-};
-
-function Slot({ className, children }: { className: string; children: ReactNode }) {
-  return <div className={`min-w-0 [&>*]:h-full ${className}`}>{children}</div>;
+// Phone: growth story first, then returns. From lg: two independent columns.
+function Column({ children }: { children: ReactNode }) {
+  return <div className="flex min-w-0 flex-col gap-3">{children}</div>;
 }
 
 function ErrorCard({
   state,
   retry,
-  className,
 }: {
   state: Extract<SectionState<unknown>, { status: "error" }>;
   retry: () => void;
-  className: string;
 }) {
   return (
-    <div className={`min-w-0 lg:row-span-2 ${className}`}>
+    <div className="min-w-0">
       <div className="flex flex-col items-start gap-3 rounded-lg border border-destructive/30 p-4">
         <div>
           <p className="text-[13.5px] font-medium text-destructive">{state.message}</p>
@@ -53,13 +43,13 @@ function ErrorCard({
   );
 }
 
-function Loading({ first, second }: { first: string; second: string }) {
+function Loading() {
   return (
     <>
-      <div className={`min-w-0 ${first}`} aria-busy="true" aria-label="Loading…">
+      <div className="min-w-0" aria-busy="true" aria-label="Loading…">
         <Skeleton className="h-[360px] rounded-xl" />
       </div>
-      <div className={`min-w-0 ${second}`} aria-busy="true" aria-label="Loading…">
+      <div className="min-w-0" aria-busy="true" aria-label="Loading…">
         <Skeleton className="h-[360px] rounded-xl" />
       </div>
     </>
@@ -74,45 +64,45 @@ export function Performance() {
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 lg:grid-cols-2">
-        {g.status === "loading" && <Loading first={SLOT.change} second={SLOT.months} />}
-        {g.status === "error" && (
-          <ErrorCard state={g} retry={growth.retry} className={SLOT.change} />
-        )}
-        {g.status === "ready" && (
-          <>
-            <Slot className={SLOT.change}>
-              <GrowthChangeCard periods={g.data.periods} />
-            </Slot>
-            <Slot className={SLOT.months}>
-              <GrowthMonthsCard months={g.data.months} />
-            </Slot>
-          </>
-        )}
-
-        {r.status === "loading" && <Loading first={SLOT.groups} second={SLOT.compare} />}
-        {r.status === "error" && (
-          <ErrorCard state={r} retry={returns.retry} className={SLOT.groups} />
-        )}
-        {r.status === "ready" && (
-          <>
-            <Slot className={SLOT.groups}>
-              <ReturnsGroupsCard
-                overall={r.data.overall}
-                byClass={r.data.by_class}
-                byType={r.data.by_type}
-              />
-            </Slot>
-            <Slot className={SLOT.compare}>
-              <ReturnsCompareCard benchmark={r.data.benchmark ?? null} />
-            </Slot>
-            {(r.data.best.length > 0 || r.data.worst.length > 0) && (
-              <div className={`min-w-0 ${SLOT.best}`}>
-                <ReturnsBestWorstCard best={r.data.best} worst={r.data.worst} />
+      <div className="grid items-start gap-3 lg:grid-cols-2">
+        <Column>
+          {g.status === "loading" && <Loading />}
+          {g.status === "error" && <ErrorCard state={g} retry={growth.retry} />}
+          {g.status === "ready" && (
+            <>
+              <div className="min-w-0">
+                <GrowthChangeCard periods={g.data.periods} />
               </div>
-            )}
-          </>
-        )}
+              <div className="min-w-0">
+                <GrowthMonthsCard months={g.data.months} />
+              </div>
+            </>
+          )}
+        </Column>
+
+        <Column>
+          {r.status === "loading" && <Loading />}
+          {r.status === "error" && <ErrorCard state={r} retry={returns.retry} />}
+          {r.status === "ready" && (
+            <>
+              <div className="min-w-0">
+                <ReturnsGroupsCard
+                  overall={r.data.overall}
+                  byClass={r.data.by_class}
+                  byType={r.data.by_type}
+                />
+              </div>
+              <div className="min-w-0">
+                <ReturnsCompareCard benchmark={r.data.benchmark ?? null} />
+              </div>
+              {(r.data.best.length > 0 || r.data.worst.length > 0) && (
+                <div className="min-w-0">
+                  <ReturnsBestWorstCard best={r.data.best} worst={r.data.worst} />
+                </div>
+              )}
+            </>
+          )}
+        </Column>
       </div>
 
       <div className="space-y-0.5">

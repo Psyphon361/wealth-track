@@ -33,7 +33,7 @@ function Rows({
     <div className="min-w-0">
       {title && <p className={`${LABEL} mb-1`}>{title}</p>}
       <ul
-        className="grid grid-cols-1 gap-x-6 md:grid-cols-2"
+        className="grid grid-cols-1"
         onMouseLeave={() => setActive(null)}
       >
         {items.map((h, i) => {
@@ -85,11 +85,11 @@ export function ReturnsBestWorstCard({
         <div className="flex items-center gap-1.5">
           <p className={LABEL}>Top performers</p>
           <CardInfo>
-            Your holdings with the highest yearly returns, among those held for over a year.
+            Your holdings with the highest yearly returns, among those held for at least 6 months.
           </CardInfo>
         </div>
         <p className="text-[13.2px] text-muted-foreground">
-          Highest yearly returns among holdings held for over a year
+          Highest yearly returns among holdings held for at least 6 months
         </p>
       </div>
       {best.length > 0 && <Rows items={best} tone="gain" active={active} setActive={setActive} />}
