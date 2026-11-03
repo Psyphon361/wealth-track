@@ -1217,8 +1217,32 @@ def test_bank_safety_rollup_totals_and_sort_order():
     sbi = rows[1]
     assert sbi["key"] == "issuer:1"
     assert sbi["holdings"] == [
-        {"type": "fd", "id": 1, "name": "Bank 1", "amount": D("300000.00")},
-        {"type": "rd", "id": 2, "name": "Bank 2", "amount": D("250000.50")},
+        {
+            "type": "fd", "id": 1, "name": "Bank 1", "label": None, "rate": None,
+            "maturity_date": None, "payout": False, "amount": D("300000.00"),
+        },
+        {
+            "type": "rd", "id": 2, "name": "Bank 2", "label": None, "rate": None,
+            "maturity_date": None, "payout": False, "amount": D("250000.50"),
+        },
+    ]  # fmt: skip
+
+
+def test_bank_safety_holding_rows_carry_label_rate_maturity_and_payout():
+    groups = groups_of(
+        dep("fd", 1, 100000.0, issuer_id=1, label="Joint", rate=8.25, maturity_date="2026-12-12"),
+        dep("fd", 2, 200000.0, issuer_id=1, rate=7.5, maturity_date="2027-03-01",
+            payout_type="payout", principal=190000.0),
+        dep("rd", 3, 5000.0, issuer_id=1, rate=6, maturity_date="2027-01-15"),
+    )  # fmt: skip
+    holdings = analytics.bank_safety(groups, _BANKS)["banks"][0]["holdings"]
+    assert [
+        (x["type"], x["id"], x["label"], x["rate"], x["maturity_date"], x["payout"], x["amount"])
+        for x in holdings
+    ] == [
+        ("fd", 1, "Joint", D("8.25"), date(2026, 12, 12), False, D("100000.00")),
+        ("fd", 2, None, D("7.50"), date(2027, 3, 1), True, D("190000.00")),
+        ("rd", 3, None, D("6.00"), date(2027, 1, 15), False, D("5000.00")),
     ]
 
 

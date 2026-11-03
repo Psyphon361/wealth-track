@@ -893,7 +893,7 @@ def bank_safety(
 
     Returns {"limit", "total_deposits", "insured", "uninsured_excess", "unknown_amount",
     "sovereign_amount", "banks": [{key, name, issuer_id, category, status, badges, total,
-    insured, excess, holdings: [{type, id, name, amount}]}]}, banks sorted by excess then total,
+    insured, excess, holdings: [{type, id, name, label, rate, maturity_date, payout, amount}]}]}, banks sorted by excess then total,
     largest first. total_deposits = insured + uninsured_excess + unknown_amount +
     sovereign_amount.
     """
@@ -911,7 +911,16 @@ def bank_safety(
         entry = banks.setdefault(bank.key, {"bank": bank, "_total": _ZERO, "holdings": []})
         entry["_total"] += amount
         entry["holdings"].append(
-            {"type": h.type, "id": h.id, "name": h.name, "amount": _q(amount)}
+            {
+                "type": h.type,
+                "id": h.id,
+                "name": h.name,
+                "label": item.get("label") or None,
+                "rate": _q(_dec(item.get("rate"))) if item.get("rate") is not None else None,
+                "maturity_date": _to_date(item.get("maturity_date")),
+                "payout": h.type == "fd" and item.get("payout_type") == "payout",
+                "amount": _q(amount),
+            }
         )
 
     rows = []

@@ -152,6 +152,10 @@ class BankHolding(BaseModel):
     type: AssetType
     id: int
     name: str
+    label: str | None = None
+    rate: Amount | None = None
+    maturity_date: date | None = None
+    payout: bool = False
     amount: Amount
 
 

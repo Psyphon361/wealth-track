@@ -657,6 +657,15 @@ def test_bank_safety_rolls_up_merged_and_name_matched_banks(client, seeded):
     assert [(h["type"], h["id"], h["name"], h["amount"]) for h in banks[3]["holdings"]] == [
         ("rd", 1, "SBI", 5000)
     ]
+    assert [
+        (h["id"], h["label"], h["rate"], h["maturity_date"], h["payout"])
+        for h in banks[0]["holdings"]
+    ] == [
+        (1, "Joint", 8, "2027-11-02", False),
+        (2, None, 8, "2027-11-02", True),
+    ]
+    (rd,) = banks[3]["holdings"]
+    assert (rd["label"], rd["rate"], rd["payout"]) == (None, 6, False)
 
 
 # --- Data health -------------------------------------------------------------------------------
