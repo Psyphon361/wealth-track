@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Check, ChevronRight, Info } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CardInfo } from "@/components/analytics/card-info";
 import { formatDate, formatINR, formatINRCompact } from "@/lib/format";
 import type { AnalyticsBankRow, AnalyticsBankSafety } from "@/lib/types";
 
@@ -109,18 +109,10 @@ export function BankSafetyCard({ bankSafety }: { bankSafety: AnalyticsBankSafety
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Bank safety
           </p>
-          <Tooltip>
-            <TooltipTrigger
-              aria-label="About bank safety"
-              className={`rounded-full text-muted-foreground hover:text-foreground ${focusCls}`}
-            >
-              <Info className="size-3.5" aria-hidden="true" />
-            </TooltipTrigger>
-            <TooltipContent>
-              FD and RD only; cash isn&apos;t linked to a bank yet. Joint accounts and different
-              capacities are insured separately, so this can over-warn.
-            </TooltipContent>
-          </Tooltip>
+          <CardInfo>
+            FD and RD only; cash isn&apos;t linked to a bank yet. Joint accounts and different
+            capacities are insured separately, so this can over-warn.
+          </CardInfo>
         </div>
         {bankSafety.uninsured_excess > 0 ? (
           <span className="text-xs text-loss">

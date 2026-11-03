@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MORE_COLOR } from "@/lib/asset-colors";
 import { formatINR, formatPct } from "@/lib/format";
@@ -95,9 +96,16 @@ export function ConcentrationCard({ concentration }: { concentration: AnalyticsC
   return (
     <Card size="sm" className="h-full min-w-0 gap-3 px-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Concentration
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Concentration
+          </p>
+          <CardInfo>
+            Your largest holdings, and how much sits with one company, fund house, bank, bond
+            issuer or pension fund manager. It flags a single stock above 10% of your equity or
+            a fund house above 30% of your mutual funds.
+          </CardInfo>
+        </div>
         <Select
           items={items.map((i) => ({ value: i.key, label: i.label }))}
           value={current}

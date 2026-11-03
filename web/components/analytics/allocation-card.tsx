@@ -6,6 +6,7 @@ import { Switch } from "@base-ui/react/switch";
 import { ChevronRight } from "lucide-react";
 import { Donut } from "@/components/charts/donut";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { classColor, pctText } from "@/lib/analytics";
 import { formatINR } from "@/lib/format";
 import type { AnalyticsAllocation, AnalyticsAllocationClass } from "@/lib/types";
@@ -123,10 +124,14 @@ export function AllocationCard({ allocation }: { allocation: AnalyticsAllocation
   return (
     <Card size="sm" className="h-full min-w-0 gap-3 px-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Allocation
           </p>
+          <CardInfo>
+            How your money is split across equity, debt, gold and silver, and cash. You can
+            include or leave out retirement accounts (EPF, PPF and NPS Tier I).
+          </CardInfo>
         </div>
         <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
           Include retirement

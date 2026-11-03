@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { formatDate } from "@/lib/format";
 import { MONEY_COLOR } from "@/lib/growth";
 import { compareFootnote, compareRows, compareSentence, pct1, returnBars } from "@/lib/returns";
@@ -18,9 +19,15 @@ export function ReturnsCompareCard({ benchmark }: { benchmark: ReturnsBenchmark 
 
   return (
     <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        How you compare
-      </p>
+      <div className="flex items-center gap-1.5">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          How you compare
+        </p>
+        <CardInfo>
+          Your return next to a Nifty 50 index fund bought on the same dates, the average rate of
+          your FDs, and inflation.
+        </CardInfo>
+      </div>
       {!benchmark || rows.length === 0 ? (
         <p className="text-[13.5px] text-muted-foreground">
           Comparison isn&apos;t available right now.

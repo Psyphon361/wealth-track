@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { MONEY_COLOR, columnLabel, monthColumns, monthLabel, signedWhole } from "@/lib/growth";
 import type { AnalyticsGrowthMonth } from "@/lib/types";
 
@@ -30,9 +31,15 @@ export function GrowthMonthsCard({ months }: { months: AnalyticsGrowthMonth[] })
   return (
     <Card size="sm" className="h-full min-w-0 justify-between gap-4 px-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Month by month
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Month by month
+          </p>
+          <CardInfo>
+            The same split for each of the last 12 months: money you put in or took out, and
+            growth from markets and interest.
+          </CardInfo>
+        </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <Dot color={MONEY_COLOR} />

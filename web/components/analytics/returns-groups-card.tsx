@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   groupDetail,
@@ -43,9 +44,15 @@ export function ReturnsGroupsCard({
   return (
     <Card size="sm" className="h-full min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Your returns
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Your returns
+          </p>
+          <CardInfo>
+            Your yearly return (XIRR), worked out from when you actually invested. Holdings held
+            for under a year show a simple return instead.
+          </CardInfo>
+        </div>
         <Select
           items={VIEWS}
           value={view}

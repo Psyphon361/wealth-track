@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatINRWhole } from "@/lib/format";
 import { MONEY_COLOR, changeSentence, dateRangeLabel, signedWhole, splitShares } from "@/lib/growth";
@@ -30,9 +31,15 @@ export function GrowthChangeCard({ periods }: { periods: AnalyticsGrowthPeriod[]
   return (
     <Card size="sm" className="h-full min-w-0 gap-0 px-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Net worth change
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Net worth change
+          </p>
+          <CardInfo>
+            How much your net worth changed in the period, split into money you put in and
+            growth from markets and interest.
+          </CardInfo>
+        </div>
         <Select
           items={items}
           value={periodKey}

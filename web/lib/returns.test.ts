@@ -8,9 +8,7 @@ import {
   overallHeadline,
   overallSentence,
   pct1,
-  rankLabel,
   ratesText,
-  relativeBarWidth,
   returnBars,
   signedPct1,
   signedWhole,
@@ -132,14 +130,6 @@ describe("footnotes", () => {
     expect(excludedText({ at_cost: 2, no_flows: 3, other_without_invested: 1 })).toBe(
       "Not in returns: 3 holdings with no dated investments (cash, EPF/PPF, NPS), 2 holdings valued at cost and 1 Other holding without an amount invested.",
     );
-  });
-  it("rank label and relative bar", () => {
-    expect(rankLabel(0)).toBe("#1");
-    expect(rankLabel(4)).toBe("#5");
-    expect(relativeBarWidth(10, 20)).toBe(50);
-    expect(relativeBarWidth(-30, -30)).toBe(100);
-    expect(relativeBarWidth(5, 0)).toBe(0);
-    expect(relativeBarWidth(40, 20)).toBe(100);
   });
   it("rates", () => {
     expect(ratesText([])).toBeNull();

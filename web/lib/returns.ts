@@ -162,18 +162,6 @@ export function excludedText(e: ReturnsExcluded): string | null {
   return `Not in returns: ${body}.`;
 }
 
-/** "#1", "#2" … for a zero-based position. */
-export function rankLabel(index: number): string {
-  return `#${index + 1}`;
-}
-
-/** Bar width (0–100) of a return relative to the reference (first tile) return, by size. */
-export function relativeBarWidth(value: number, reference: number): number {
-  const ref = Math.abs(reference);
-  if (ref === 0) return 0;
-  return Math.max(0, Math.min(100, (Math.abs(value) / ref) * 100));
-}
-
 /** "EPF 8.25% · PPF 7.1% · NPS (Scheme) 11.2% a year"; null rates omitted. */
 export function ratesText(rates: ReferenceRate[]): string | null {
   const parts = rates

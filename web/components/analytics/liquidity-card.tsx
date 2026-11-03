@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { formatINR, formatPct } from "@/lib/format";
 import type { AnalyticsLiquidity } from "@/lib/types";
 
@@ -37,9 +38,15 @@ export function LiquidityCard({ liquidity }: { liquidity: AnalyticsLiquidity }) 
 
   return (
     <Card size="sm" className="min-w-0 gap-3 px-4">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        Liquidity
-      </p>
+      <div className="flex items-center gap-1.5">
+        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          Liquidity
+        </p>
+        <CardInfo>
+          How quickly you could turn your holdings into cash: instantly, within days, by breaking
+          a deposit early, or only after a lock-in ends.
+        </CardInfo>
+      </div>
       <div className="mt-3">
         <p className="num text-xl font-semibold">{formatINR(quick.amount)}</p>
         <p className="text-[13.2px] text-muted-foreground">

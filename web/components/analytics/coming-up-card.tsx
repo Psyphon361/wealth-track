@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
 import { Card } from "@/components/ui/card";
+import { CardInfo } from "@/components/analytics/card-info";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import type { AnalyticsComingUp } from "@/lib/types";
@@ -61,9 +62,15 @@ export function ComingUpCard({ comingUp }: { comingUp: AnalyticsComingUp }) {
   return (
     <Card size="sm" className="h-full min-w-0 gap-3 px-4">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-          Coming up
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Coming up
+          </p>
+          <CardInfo>
+            Deposits and bonds maturing soon and the amount you&apos;ll receive, plus any that
+            have already matured.
+          </CardInfo>
+        </div>
         <Select
           items={PERIODS}
           value={period}
