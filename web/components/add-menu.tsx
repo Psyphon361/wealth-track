@@ -90,12 +90,18 @@ export function AddMenu() {
         <TooltipTrigger
           render={
             <DropdownMenuTrigger
-              render={<Button aria-label="Add asset" />}
+              render={<Button aria-label="Add asset" aria-keyshortcuts="n" />}
             />
           }
         >
           <Plus aria-hidden />
-          <span className="hidden sm:inline">Add asset</span>
+          <span className="hidden sm:inline">Add Asset</span>
+          <kbd
+            aria-hidden
+            className="hidden shrink-0 rounded border border-primary-foreground/30 bg-primary-foreground/15 px-1 font-sans text-[11px] leading-4 sm:inline"
+          >
+            N
+          </kbd>
         </TooltipTrigger>
         <TooltipContent side="bottom">Add asset (N)</TooltipContent>
       </Tooltip>
