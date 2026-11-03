@@ -534,3 +534,13 @@ Splits the change in net worth into new money and growth. Pure maths in `service
 - Coming up: themed Select for the window (Next 30 / 90 / 180 days, Next 1 year; default 90 days), total, rows with a date block, type, rate, "~ approximate" and amount (links), and an expandable "N already matured" list.
 - Hover is linked: hovering a donut slice, bar segment or legend row dims the others. No native controls.
 - States: skeleton while loading, API-sourced error with Retry, and an empty state ("No holdings yet" with an "Add a holding" button) when there are no active holdings. The page reloads after holding changes (`holdings-cache`).
+
+### Returns (`GET /api/analytics/returns`)
+
+`routers/analytics_returns.py`; maths in `services/analytics_returns.py`, shapes in `schemas/analytics_returns.py`. Same active holdings and asset classes as the Overview. Returns `as_of`, `overall`, `by_class`, `by_type` (groups: `invested`, `current`, `gain` = current − invested, `return_pct`, `annualised`, `basis`, `since` = earliest cash flow, `holdings`), `best` and `worst`, `rates` and `excluded`. Money and percents are 2 dp.
+
+- Cash flows per holding: MF, the stored CAS transactions when their net units match the holding (basis `transactions`), else the invested amount on the purchase date (`purchase_date`); FD, bond, stock and gold, −invested on the start/purchase date and +current value today (`purchase_date`); RD, −instalment on each paid instalment date up to today and +current value today (`instalments`); Other, only with both an invested amount and an acquired date. A group's basis is `mixed` when its holdings differ. A group's XIRR runs over the concatenated flows of its holdings.
+- Under one year: when the earliest flow is less than 365 days old, `return_pct` is the absolute return gain / invested × 100 and `annualised` is false; otherwise it is the XIRR % (null when the solver can't converge).
+- `best` / `worst`: up to 5 annualised holdings each (`type`, `id`, `name`, `return_pct`, `gain`), highest first / lowest first; a holding never appears in both.
+- `excluded` (counts): `at_cost` (stock, MF or gold with no price, NAV or rate), `no_flows` (cash, EPF/VPF/PPF, NPS; also a holding with no usable start date), `other_without_invested`.
+- `rates`: PF rows show their interest rate (`basis` `interest_rate`); NPS rows show the scheme NAV CAGR since the start date (`nav_cagr`), null when the NAV history has no NAV within 7 days on or before the start date or the holding is under a year old.
