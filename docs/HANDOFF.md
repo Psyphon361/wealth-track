@@ -1,5 +1,31 @@
 # HANDOFF — session resume notes (2026-11-02)
 
+## Paused: analytics speed-up (2026-11-03) — uncommitted in the working tree
+
+Status: done and verified by the builder, NOT yet reviewed in full or committed. Resume by reviewing `git diff api/` and committing (one commit, "API: faster analytics and portfolio reads").
+
+Profile (owner's ~20 holdings, local → Neon dev): Python compute is negligible (build_history 0.05 s); mfapi was never called. The time was round trips: every short-lived read session cost 3 round trips (BEGIN, query, ROLLBACK, ~0.95 s per query locally), connections opened above the pool size cost ~2.5 s each (TLS to Neon), and growth/history fetched the holdings twice.
+
+Timings before → after: load_groups 3.4 → 0.65 s, dashboard 3.2 → 0.65 s, overview 5.2 → 1.8 s, growth 7.0 → 1.9 s, returns 7.7 → 1.9 s, networth history 1y 5.7 → 1.9 s.
+
+Changes (all in api/):
+- app/db.py: new `read_bind(db)` returns the engine with AUTOCOMMIT for read-only queries on their own sessions (Postgres only; SQLite tests keep the plain engine). Local pool_size 10 → 24 (Vercel stays 5 + 3 overflow).
+- app/routers/portfolio.py: `load_records_and_groups` (load_groups wraps it); read_bind at the call sites. (This split was made with a script, not Edit; result verified.)
+- app/routers/analytics.py, analytics_returns.py, networth.py, search.py: read_bind.
+- app/routers/networth.py: load_history reuses the loaded records; `_fetch_records` removed.
+- app/routers/analytics_returns.py + app/services/analytics_returns.py: benchmark NAV loader does one sync-row freshness check, then reads NAV rows concurrently from the earliest flow date only.
+- tests/test_analytics_returns.py: loader lambdas updated, one assertion added.
+
+Verified: JSON output of overview, growth, returns, dashboard and networth history (1m, 1y, all) byte-identical before/after; audit_a / audit_b real-data scripts all PASS; full API suite 1,755 passed (5 runs).
+Not verified / open: no unit test for read_bind; Vercel pool size untouched (check prod latency after deploy); the stale-benchmark path (mfapi fetch when the sync row is older than 24 h) not exercised; growth "value only selected dates" not done (profile didn't justify it).
+Review points for the orchestrator: AUTOCOMMIT reads mean the queries of one request don't share one snapshot (acceptable for read-only views); make sure read_bind is never used for writes.
+
+Data checks (read-only): Gold & silver 0.0% return is genuine (bought 2026-10-30 and 2026-11-01; rates exist for 10-30 and 11-02; silver 925 uses the 999 rate dated 10-30). Nifty benchmark: scheme 120716 has 2,464 NAV rows 2016-11-03 → 2026-11-02, no gap over 5 days; first equity flow 2025-10-20 has a NAV that day, so −3.2% a year is real data.
+
+Queued after this: Top performers ranking by yearly return for holdings held ≥ 6 months (API `_ranked` in app/services/analytics_returns.py + card text in web/components/analytics/returns-best-worst-card.tsx, which currently says "over a year"); the user's DB work (to be specified); docs (AGENTS.md file list for slice 2, STATUS).
+
+Scratch files (session scratchpad, not in repo): prof.py, snap.py, before_*.json / after_*.json, dq.py, dq2.py, comp.py, lat.py, lat2.py, audit_a.py, audit_b.py, c2.py.
+
 ## Resume here — 2026-11-02 night (handover to a new session)
 
 **Start by reading:** CLAUDE.md, AGENTS.md, `docs/STATUS.md`, then this section. The older sections below are history.
