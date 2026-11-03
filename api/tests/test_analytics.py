@@ -278,10 +278,46 @@ def test_bond_fd_rd_pf_cash_gold_other_classes():
 
 @pytest.mark.parametrize(
     ("asset_class", "expected"),
-    [("E", "equity"), ("C", "debt"), ("G", "debt"), ("A", "debt"), ("other", "other"), (None, "other")],
+    [("E", "equity"), ("C", "debt"), ("G", "debt"), ("A", "debt"), ("e", "equity"), ("other", "hybrid"), (None, "hybrid")],
 )
 def test_nps_asset_class(asset_class, expected):
     assert analytics.classify_holding("nps", {"asset_class": asset_class}) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("NPS TRUST A/C - HDFC PF NPS EQUITY ADVANTAGE FUND", "equity"),
+        ("NPS TRUST A/C - SBI PENSION FUNDS CENTRAL GOVT SCHEME", "hybrid"),
+        ("NPS TRUST A/C - LIC PENSION LIFECYCLE FUND LC 50", "hybrid"),
+        ("NPS TRUST A/C - UTI RETIREMENT SOLUTIONS COMPOSITE SCHEME", "hybrid"),
+        ("NPS TRUST A/C - KOTAK TAX SAVER SCHEME TIER II", "hybrid"),
+        ("NPS TRUST A/C - ICICI PRU GOVERNMENT BOND FUND", "debt"),
+        ("NPS TRUST A/C - SOME GOLD THEMED FUND", "hybrid"),
+        (None, "hybrid"),
+        ("", "hybrid"),
+    ],
+)
+def test_nps_themed_scheme_uses_name_when_asset_class_unknown(name, expected):
+    item = {"asset_class": "other", "scheme_name": name}
+    assert analytics.classify_holding("nps", item) == expected
+    assert analytics.classify_holding("nps", {"scheme_name": name}) == expected
+
+
+def test_nps_asset_class_wins_over_name():
+    item = {"asset_class": "G", "scheme_name": "NPS EQUITY ADVANTAGE FUND"}
+    assert analytics.classify_holding("nps", item) == "debt"
+
+
+def test_allocation_themed_nps_equity_lands_in_equity():
+    alloc = analytics.allocation(
+        groups_of(
+            h("nps", 1, 100, tier="I", asset_class="E", scheme_name="SCHEME E - TIER I"),
+            h("nps", 2, 50, tier="I", asset_class="other", scheme_name="HDFC PF NPS EQUITY ADVANTAGE FUND"),
+        )
+    )
+    classes = alloc["including_retirement"]["classes"]
+    assert [(c["class"], c["value"]) for c in classes] == [("equity", D("150"))]
 
 
 def test_retirement_money():

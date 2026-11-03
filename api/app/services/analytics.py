@@ -227,7 +227,14 @@ def classify_holding(
             return "gold"
         return "debt"
     if asset_type == "nps":
-        return _NPS_CLASS.get(str(item.get("asset_class") or "").upper(), "other")
+        by_class = _NPS_CLASS.get(str(item.get("asset_class") or "").upper())
+        if by_class:
+            return by_class
+        # Themed, lifecycle, composite, tax saver, government and similar schemes: name rules.
+        name = item.get("scheme_name")
+        if "EQUITY" in _TOKEN.findall((name or "").upper()):
+            return "equity"
+        return "debt" if classify_by_name(name) == "debt" else "hybrid"
     if asset_type in ("fd", "rd", "pf"):
         return "debt"
     if asset_type == "gold":
