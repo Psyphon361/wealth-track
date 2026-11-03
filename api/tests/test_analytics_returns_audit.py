@@ -512,10 +512,17 @@ def test_365_day_boundary(days, annualised):
         assert float(row["return_pct"]) == pytest.approx(gain_pct, abs=0.011)
 
 
-def test_best_worst_not_annualised_holdings_never_listed():
-    groups = groups_of({"fd": [fd_row(1, start=TODAY - timedelta(days=364), years=5)]})
+def test_best_worst_holdings_under_six_months_never_listed():
+    groups = groups_of({"fd": [fd_row(1, start=TODAY - timedelta(days=150), years=5)]})
     out = ar.returns(groups, TODAY)
     assert out["best"] == [] and out["worst"] == []
+
+
+def test_best_worst_lists_holdings_between_six_and_twelve_months():
+    groups = groups_of({"fd": [fd_row(1, start=TODAY - timedelta(days=364), years=5)]})
+    out = ar.returns(groups, TODAY)
+    assert [r["id"] for r in out["best"]] == [1] and out["worst"] == []
+    assert out["overall"]["annualised"] is False
 
 
 def _stocks_with_prices(prices):

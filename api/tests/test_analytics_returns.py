@@ -251,6 +251,43 @@ def test_young_holdings_are_not_ranked():
     assert [h["id"] for h in out["best"]] == [1]
 
 
+def test_exactly_six_months_old_is_ranked_one_day_younger_is_not():
+    on_edge = _fd(1, 1000, 1100, start=date(2026, 5, 2))
+    one_day_short = _fd(2, 1000, 1100, start=date(2026, 5, 3))
+    out = ar.returns([_group("fd", on_edge, one_day_short)], TODAY)
+    assert [h["id"] for h in out["best"] + out["worst"]] == [1]
+
+
+def test_six_to_twelve_month_holding_ranks_by_xirr_but_group_stays_absolute():
+    # 184 days at +10 %: yearly return (actual/365) = 1.1 ** (365 / 184) - 1
+    out = ar.returns([_group("fd", _fd(1, 1000, 1100, start=date(2026, 5, 2)))], TODAY)
+    expected = (1.1 ** (365 / 184) - 1) * 100
+    assert float(out["best"][0]["return_pct"]) == pytest.approx(expected, abs=0.01)
+    assert out["best"][0]["gain"] == D("100.00")
+    fd = out["by_type"][0]
+    assert (fd["return_pct"], fd["annualised"]) == (D("10.00"), False)
+    assert out["overall"]["return_pct"] == D("10.00")
+
+
+def test_best_worst_mix_of_seven_month_and_two_year_holdings():
+    two_years = date(2024, 11, 2)
+    seven_months = date(2026, 4, 2)
+    items = [
+        _fd(1, 1000, 1210, start=two_years),  # 10 % a year
+        _fd(2, 1000, 1100, start=seven_months),  # 214 days: about 17 % a year
+        _fd(3, 1000, 1050, start=seven_months),  # about 8.6 % a year
+        _fd(4, 1000, 1440, start=two_years),  # 20 % a year
+    ]
+    out = ar.returns([_group("fd", *items)], TODAY)
+    ids = [h["id"] for h in out["best"]]
+    assert ids == [4, 2, 1, 3]
+    assert float(out["best"][0]["return_pct"]) == pytest.approx(20, abs=0.01)
+    assert float(out["best"][1]["return_pct"]) == pytest.approx(
+        (1.1 ** (365 / 214) - 1) * 100, abs=0.01
+    )
+    assert out["worst"] == []
+
+
 # --- Reference rates ---------------------------------------------------------------------------
 
 

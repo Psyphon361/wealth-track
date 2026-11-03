@@ -22,6 +22,8 @@ CENT = Decimal("0.01")
 HUNDRED = Decimal(100)
 BEST_WORST = 5
 MIN_ANNUALISED_DAYS = 365
+# Best / worst only rank holdings whose earliest flow is at least this many calendar months old.
+MIN_RANKED_MONTHS = 6
 NO_FLOW_TYPES = frozenset({"cash", "pf", "nps"})
 EXCLUSION_REASONS = ("at_cost", "no_flows", "other_without_invested")
 # Item fields that are None when the holding is valued at cost (same rule as data health).
@@ -189,16 +191,26 @@ def _group(
     }
 
 
+def yearly_return(flows: Flows, today: date) -> Decimal | None:
+    """XIRR % of one holding for ranking, or None when its earliest flow is under
+    MIN_RANKED_MONTHS old or the solver can't converge."""
+    earliest = min(d for d, _ in flows)
+    if earliest > today - relativedelta(months=MIN_RANKED_MONTHS):
+        return None
+    rate = xirr(flows)
+    return _q(rate * HUNDRED) if rate is not None else None
+
+
 def _ranked(holdings: Iterable[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    annualised = [h for h in holdings if h["annualised"] and h["return_pct"] is not None]
-    ordered = sorted(annualised, key=lambda h: (-h["return_pct"], h["type"], h["id"]))
+    ranked = [h for h in holdings if h.get("yearly") is not None]
+    ordered = sorted(ranked, key=lambda h: (-h["yearly"], h["type"], h["id"]))
 
     def row(h: dict[str, Any]) -> dict[str, Any]:
         return {
             "type": h["type"],
             "id": h["id"],
             "name": h["name"],
-            "return_pct": h["return_pct"],
+            "return_pct": h["yearly"],
             "gain": _q(h["gain"]),
         }
 
@@ -301,6 +313,7 @@ def returns(
                 "name": h.name, "flows": built.flows, "basis": built.basis,
                 "invested": invested, "current": current, "gain": gain,
                 "return_pct": pct, "annualised": annualised,
+                "yearly": yearly_return(built.flows, today),
             }
         )  # fmt: skip
 
