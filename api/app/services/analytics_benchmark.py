@@ -3,17 +3,28 @@ fund (public-market equivalent), the user's FD rate and CPI inflation. Pure math
 history is passed in. See SPEC §9 "Returns"."""
 
 import csv
+import logging
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from app.services.nav_history import NavRow, pick_on_or_before
+from sqlalchemy.orm import Session
+
+from app.models.mf_master import MFNavHistorySync
+from app.services.nav_history import (
+    BENCHMARK_SCHEME_CODE,
+    REFRESH_AFTER,
+    NavRow,
+    fetch_mfapi,
+    pick_on_or_before,
+    store_history,
+)
 from app.services.valuation import xirr
 
-# UTI Nifty 50 Index Fund, direct plan, growth option (mf_master scheme_code).
-BENCHMARK_SCHEME_CODE = 120716
+logger = logging.getLogger(__name__)
+
 BENCHMARK_LABEL = "Nifty 50 index fund"
 CPI_FILE = Path(__file__).resolve().parents[2] / "data" / "cpi_india.csv"
 MIN_ANNUALISED_DAYS = 365
@@ -28,6 +39,23 @@ Flows = list[tuple[date, Decimal]]
 class BenchmarkNavs:
     scheme_name: str
     rows: list[NavRow]  # (nav_date, nav); latest NAV is the last by date
+
+
+def refresh_benchmark_history(session: Session) -> bool:
+    """Daily-import hook: refetch the benchmark's history (mfapi.in) when it was never synced or
+    the sync is older than 24 h. Failures are logged, never raised. True when refetched."""
+    sync = session.get(MFNavHistorySync, BENCHMARK_SCHEME_CODE)
+    now = datetime.now(timezone.utc)
+    if sync is not None and now - sync.fetched_at <= REFRESH_AFTER:
+        return False
+    try:
+        rows = fetch_mfapi(BENCHMARK_SCHEME_CODE)
+        store_history(session, BENCHMARK_SCHEME_CODE, rows, now.date(), now)
+    except Exception:  # noqa: BLE001 - best effort, never fail the import
+        session.rollback()
+        logger.warning("Benchmark NAV sync failed", exc_info=True)
+        return False
+    return True
 
 
 def load_cpi(path: Path = CPI_FILE) -> dict[int, Decimal]:

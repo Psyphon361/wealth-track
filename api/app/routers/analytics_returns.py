@@ -1,6 +1,6 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -24,7 +24,7 @@ from app.routers.portfolio import load_groups
 from app.schemas.analytics_returns import AnalyticsReturns
 from app.services import analytics_returns
 from app.services.analytics_benchmark import BENCHMARK_SCHEME_CODE, BenchmarkNavs
-from app.services.nav_history import REFRESH_AFTER, NavSourceError, resolve_nav
+from app.services.nav_history import NavSourceError, resolve_nav
 
 logger = logging.getLogger(__name__)
 
@@ -57,42 +57,48 @@ def _fetch_mf_transactions(bind: Any, user_id: int) -> dict[int, list[Any]]:
 
 
 def _fetch_nps_start_navs(bind: Any, groups: list[dict[str, Any]]) -> dict[int, Decimal]:
-    """NAV on or just before the start date, per NPS holding id; absent when history lacks it."""
-    out: dict[int, Decimal] = {}
+    """NAV on or just before the start date, per NPS holding id; absent when history lacks it.
+    One query for all active NPS holdings."""
+    wanted = [
+        (item["id"], item["scheme_id"], date.fromisoformat(str(item["start_date"])[:10]))
+        for group in groups
+        if group["type"] == "nps"
+        for item in group["items"]
+        if item.get("status") == "active"
+    ]
+    if not wanted:
+        return {}
+    window = timedelta(days=NPS_START_NAV_WINDOW_DAYS)
+    stmt = select(NpsNavHistory.scheme_id, NpsNavHistory.nav_date, NpsNavHistory.nav).where(
+        NpsNavHistory.scheme_id.in_({w[1] for w in wanted}),
+        NpsNavHistory.nav_date >= min(w[2] for w in wanted) - window,
+        NpsNavHistory.nav_date <= max(w[2] for w in wanted),
+    )
+    by_scheme: dict[Any, list[tuple[date, Decimal]]] = {}
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
-        for group in groups:
-            if group["type"] != "nps":
-                continue
-            for item in group["items"]:
-                if item.get("status") != "active":
-                    continue
-                start = date.fromisoformat(str(item["start_date"])[:10])
-                row = session.execute(
-                    select(NpsNavHistory.nav)
-                    .where(
-                        NpsNavHistory.scheme_id == item["scheme_id"],
-                        NpsNavHistory.nav_date <= start,
-                        NpsNavHistory.nav_date >= start - timedelta(days=NPS_START_NAV_WINDOW_DAYS),
-                    )
-                    .order_by(NpsNavHistory.nav_date.desc())
-                    .limit(1)
-                ).first()
-                if row is not None:
-                    out[item["id"]] = row.nav
+        for row in session.execute(stmt):
+            by_scheme.setdefault(row.scheme_id, []).append((row.nav_date, row.nav))
+    out: dict[int, Decimal] = {}
+    for hid, scheme_id, start in wanted:
+        in_window = [
+            r for r in by_scheme.get(scheme_id, []) if start - window <= r[0] <= start
+        ]
+        if in_window:
+            out[hid] = max(in_window, key=lambda r: r[0])[1]
     return out
 
 
 def _refresh_benchmark_history(bind: Any, read: Any) -> None:
-    """Fetch the index fund's history from mfapi.in (the existing on-demand store) when it was
-    never synced or the sync is older than 24 h. A fresh sync costs one cheap read."""
+    """Fetch the index fund's history from mfapi.in only on first ever use (no sync row). A stale
+    history is served as stored; the daily AMFI import keeps it current (SPEC §9)."""
     code = BENCHMARK_SCHEME_CODE
     with Session(read, autoflush=False, expire_on_commit=False) as session:
         sync = session.get(MFNavHistorySync, code)
-    if sync is not None and datetime.now(timezone.utc) - sync.fetched_at <= REFRESH_AFTER:
+    if sync is not None:
         return
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         try:
-            # date.min is never served from cache, so a stale sync refetches.
+            # date.min is never served from cache, so this fetches.
             resolve_nav(session, code, date.min)
         except NavSourceError:
             logger.warning("Benchmark NAV fetch failed for scheme %s", code, exc_info=True)

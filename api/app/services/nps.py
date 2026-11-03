@@ -461,23 +461,20 @@ def previous_navs(session: Session, scheme_ids) -> dict[str, tuple[date, Decimal
     ids = [i for i in scheme_ids if i is not None]
     if not ids:
         return {}
-    ranked = (
-        sa.select(
-            NpsNavHistory.scheme_id.label("scheme_id"),
-            NpsNavHistory.nav_date.label("nav_date"),
-            NpsNavHistory.nav.label("nav"),
-            sa.func.row_number()
-            .over(
-                partition_by=NpsNavHistory.scheme_id,
-                order_by=NpsNavHistory.nav_date.desc(),
-            )
-            .label("rn"),
-        )
-        .join(NpsNavLatest, NpsNavLatest.scheme_id == NpsNavHistory.scheme_id)
-        .where(NpsNavHistory.scheme_id.in_(ids), NpsNavHistory.nav_date < NpsNavLatest.nav_date)
-        .subquery()
+    # Latest date before the scheme's latest NAV date (index seek per scheme), then that row.
+    older = sa.orm.aliased(NpsNavHistory)
+    prev_date = (
+        sa.select(sa.func.max(older.nav_date))
+        .where(older.scheme_id == NpsNavLatest.scheme_id, older.nav_date < NpsNavLatest.nav_date)
+        .scalar_subquery()
     )
     rows = session.execute(
-        sa.select(ranked.c.scheme_id, ranked.c.nav_date, ranked.c.nav).where(ranked.c.rn == 1)
+        sa.select(NpsNavLatest.scheme_id, NpsNavHistory.nav_date, NpsNavHistory.nav)
+        .select_from(NpsNavLatest)
+        .join(
+            NpsNavHistory,
+            sa.and_(NpsNavHistory.scheme_id == NpsNavLatest.scheme_id, NpsNavHistory.nav_date == prev_date),
+        )
+        .where(NpsNavLatest.scheme_id.in_(ids))
     ).all()
     return {r[0]: (r[1], r[2]) for r in rows}

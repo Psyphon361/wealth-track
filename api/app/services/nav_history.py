@@ -136,27 +136,21 @@ def previous_navs(session: Session, scheme_codes) -> dict[int, NavRow]:
     codes = [c for c in scheme_codes if c is not None]
     if not codes:
         return {}
-    ranked = (
-        sa.select(
-            MFNavHistory.scheme_code.label("scheme_code"),
-            MFNavHistory.nav_date.label("nav_date"),
-            MFNavHistory.nav.label("nav"),
-            sa.func.row_number()
-            .over(
-                partition_by=MFNavHistory.scheme_code,
-                order_by=MFNavHistory.nav_date.desc(),
-            )
-            .label("rn"),
-        )
-        .join(MFNavLatest, MFNavLatest.scheme_code == MFNavHistory.scheme_code)
-        .where(
-            MFNavHistory.scheme_code.in_(codes),
-            MFNavHistory.nav_date < MFNavLatest.nav_date,
-        )
-        .subquery()
+    # Latest date before the scheme's latest NAV date (index seek per scheme), then that row.
+    older = sa.orm.aliased(MFNavHistory)
+    prev_date = (
+        sa.select(sa.func.max(older.nav_date))
+        .where(older.scheme_code == MFNavLatest.scheme_code, older.nav_date < MFNavLatest.nav_date)
+        .scalar_subquery()
     )
     rows = session.execute(
-        sa.select(ranked.c.scheme_code, ranked.c.nav_date, ranked.c.nav).where(ranked.c.rn == 1)
+        sa.select(MFNavLatest.scheme_code, MFNavHistory.nav_date, MFNavHistory.nav)
+        .select_from(MFNavLatest)
+        .join(
+            MFNavHistory,
+            sa.and_(MFNavHistory.scheme_code == MFNavLatest.scheme_code, MFNavHistory.nav_date == prev_date),
+        )
+        .where(MFNavLatest.scheme_code.in_(codes))
     ).all()
     return {r[0]: (r[1], r[2]) for r in rows}
 
@@ -263,6 +257,11 @@ def resolve_nav(session: Session, scheme_code: int, on_date: date) -> dict | Non
     return from_history()
 
 
+# UTI Nifty 50 Index Fund, direct plan, growth option: the Returns benchmark. Counts as held for
+# the daily append so its history stays fresh without a fetch on the user's request.
+BENCHMARK_SCHEME_CODE = 120716
+
+
 def append_today_for_holdings(session: Session, navs: list[tuple[int, date, Decimal]]) -> int:
     """Daily import hook: store the latest NAV in history for schemes held in mutual_funds.
 
@@ -277,6 +276,7 @@ def append_today_for_holdings(session: Session, navs: list[tuple[int, date, Deci
             )
         )
     )
+    held.add(BENCHMARK_SCHEME_CODE)
     values = [
         {"scheme_code": code, "nav_date": d, "nav": n} for code, d, n in navs if code in held
     ]
