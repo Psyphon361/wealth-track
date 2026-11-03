@@ -687,3 +687,183 @@ export interface NetWorthHistory {
   points: NetWorthPoint[];
   stocks_at_cost_before: string | null;
 }
+
+export interface AnalyticsAllocationHolding {
+  id: number;
+  name: string;
+  value: number;
+  percent: number;
+}
+
+export interface AnalyticsAllocationType {
+  type: AssetType;
+  label: string;
+  value: number;
+  percent: number;
+  holdings: AnalyticsAllocationHolding[];
+}
+
+export interface AnalyticsAllocationClass {
+  class: string;
+  label: string;
+  value: number;
+  percent: number;
+  types: AnalyticsAllocationType[];
+}
+
+export interface AnalyticsAllocationView {
+  total: number;
+  classes: AnalyticsAllocationClass[];
+}
+
+export interface AnalyticsAllocation {
+  including_retirement: AnalyticsAllocationView;
+  excluding_retirement: AnalyticsAllocationView;
+  retirement_value: number;
+  retirement_percent: number;
+}
+
+export interface AnalyticsMaturityRow {
+  type: AssetType;
+  id: number;
+  name: string;
+  maturity_date: string;
+  amount: number;
+  rate: number;
+  days_left: number;
+  approximate: boolean;
+}
+
+export interface AnalyticsMaturityWindow {
+  until: string;
+  total: number;
+  rows: AnalyticsMaturityRow[];
+}
+
+export interface AnalyticsMaturedHolding {
+  type: AssetType;
+  id: number;
+  name: string;
+  maturity_date: string | null;
+}
+
+export interface AnalyticsComingUp {
+  next_30_days: AnalyticsMaturityWindow;
+  next_90_days: AnalyticsMaturityWindow;
+  next_180_days: AnalyticsMaturityWindow;
+  next_12_months: AnalyticsMaturityWindow;
+  already_matured: { count: number; rows: AnalyticsMaturedHolding[] };
+}
+
+export interface AnalyticsHealthItem {
+  type: AssetType;
+  id: number;
+  name: string;
+}
+
+export interface AnalyticsDataHealth {
+  at_cost: { count: number; items: AnalyticsHealthItem[] };
+  stale_balances: { count: number; items: (AnalyticsHealthItem & { as_of: string })[] };
+  matured_open: { count: number; items: (AnalyticsHealthItem & { maturity_date: string | null })[] };
+  latest: {
+    stock_price: string | null;
+    mf_nav: string | null;
+    nps_nav: string | null;
+    gold_rate: string | null;
+  };
+}
+
+export interface AnalyticsTopHolding {
+  type: AssetType;
+  id: number;
+  name: string;
+  value: number;
+  percent: number;
+}
+
+export interface AnalyticsRollupBar {
+  key: string;
+  label: string;
+  value: number;
+  percent: number;
+  passive: boolean;
+}
+
+export interface AnalyticsRollup {
+  key: string;
+  label: string;
+  total: number;
+  bars: AnalyticsRollupBar[];
+}
+
+export interface AnalyticsConcentrationFlag {
+  kind: "single_stock" | "amc";
+  key: string;
+  label: string;
+  value: number;
+  percent: number;
+  threshold: number;
+}
+
+export interface AnalyticsConcentration {
+  total: number;
+  top_holdings: AnalyticsTopHolding[];
+  rollups: AnalyticsRollup[];
+  flags: AnalyticsConcentrationFlag[];
+}
+
+export interface AnalyticsLiquidityBucket {
+  key: string;
+  label: string;
+  amount: number;
+  percent: number;
+}
+
+export interface AnalyticsLiquidity {
+  total: number;
+  buckets: AnalyticsLiquidityBucket[];
+}
+
+export interface AnalyticsBankHolding {
+  type: AssetType;
+  id: number;
+  name: string;
+  label: string | null;
+  rate: number | null;
+  maturity_date: string | null;
+  payout: boolean;
+  amount: number;
+}
+
+export interface AnalyticsBankRow {
+  key: string;
+  name: string;
+  issuer_id: number | null;
+  category: string | null;
+  status: "insured" | "not_insured" | "sovereign" | "unknown";
+  badges: string[];
+  total: number;
+  insured: number | null;
+  excess: number | null;
+  holdings: AnalyticsBankHolding[];
+}
+
+export interface AnalyticsBankSafety {
+  limit: number;
+  total_deposits: number;
+  insured: number;
+  uninsured_excess: number;
+  unknown_amount: number;
+  sovereign_amount: number;
+  banks: AnalyticsBankRow[];
+}
+
+export interface AnalyticsOverview {
+  as_of: string;
+  allocation: AnalyticsAllocation;
+  concentration: AnalyticsConcentration;
+  liquidity: AnalyticsLiquidity;
+  coming_up: AnalyticsComingUp;
+  bank_safety: AnalyticsBankSafety;
+  data_health: AnalyticsDataHealth;
+}

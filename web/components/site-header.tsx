@@ -24,6 +24,7 @@ type Crumb = { label: string; href?: string; pending?: boolean };
 
 function getCrumbs(pathname: string, detailLabel: string | null): Crumb[] {
   if (pathname === "/dashboard") return [{ label: "Dashboard" }];
+  if (pathname === "/analytics") return [{ label: "Analytics" }];
   if (pathname === "/portfolio") return [{ label: "Portfolio" }];
   if (pathname.startsWith("/portfolio/")) {
     const [slug, id] = pathname.slice("/portfolio/".length).split("/");

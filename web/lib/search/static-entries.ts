@@ -25,6 +25,13 @@ export const STATIC_ENTRIES: StaticEntry[] = [
     href: "/dashboard",
     aliases: ["home", "net worth", "overview"],
   },
+  {
+    id: "goto-analytics",
+    kind: "goto",
+    title: "Analytics",
+    href: "/analytics",
+    aliases: ["allocation", "maturity", "bank safety", "liquidity", "concentration"],
+  },
   ...ASSET_CATALOG.map(
     (a): StaticEntry => ({
       id: `goto-${a.type}`,
