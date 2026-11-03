@@ -20,7 +20,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/auth.py  argon2id passwords, HS256 access JWTs, rotating refresh tokens, login rate limit
   app/services/google_auth.py  Sign in with Google: code exchange (PKCE verifier), ID token verification (Google JWKS), sign-in / link / create (SPEC §7)
   app/jobs/users.py     CLI: `python -m app.jobs.users create|set-password|deactivate|list --email …`
-  app/db.py             lazy SQLAlchemy engine (psycopg3, prepare_threshold=None, pool tuned for Vercel)
+  app/db.py             lazy SQLAlchemy engine (psycopg3, prepare_threshold=None, pool tuned for Vercel); `read_bind(db)` gives read-only sessions an AUTOCOMMIT bind on Postgres (never for writes)
   app/models/           one table per asset type (+ base.py mixin: id, notes, created_at, updated_at)
   app/models/mf_transaction.py  mf_transactions (one row per CAS-imported MF purchase or redemption; FK mutual_funds, ON DELETE CASCADE; SPEC §8)
   app/models/gold.py    gold_holdings (metal, form, purity, weight_grams, purchase_date, invested_amount; no master link; migrations 0019, 0022)
@@ -39,9 +39,16 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
   app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
-  app/routers/analytics.py  GET /api/analytics/overview: allocation, concentration, liquidity, coming up, bank safety and data health in one response (SPEC §9)
+  app/routers/analytics.py  GET /api/analytics/overview: allocation, concentration, liquidity, coming up, bank safety and data health in one response (SPEC §9); GET /api/analytics/growth (SPEC §9)
   app/services/analytics.py  pure analytics maths (classification, liquidity buckets, maturities, DICGC cover, concentration flags, data health); tests in api/tests/test_analytics.py and test_analytics_api.py
   app/schemas/analytics.py  response models for the analytics overview
+  app/services/analytics_growth.py  pure growth maths: net worth change split into new money and growth, by period and for the last 12 months (SPEC §9)
+  app/schemas/analytics_growth.py  response models for GET /api/analytics/growth
+  app/routers/analytics_returns.py  GET /api/analytics/returns: XIRR overall, per class and per type, best and worst, rates, benchmark, excluded (SPEC §9)
+  app/services/analytics_returns.py  pure returns maths: cash flows per holding, group XIRR, top and bottom performers (SPEC §9)
+  app/schemas/analytics_returns.py  response models for GET /api/analytics/returns
+  app/services/analytics_benchmark.py  benchmark block: Nifty 50 index fund replay (UTI, scheme 120716), FD rate and CPI inflation; refresh_benchmark_history runs in the nightly AMFI import
+  api/data/cpi_india.csv  India annual CPI-Combined inflation by calendar year, hand-maintained seed read by analytics_benchmark.py
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/nps, /nps/{scheme_id}: NPS scheme search (scheme or PFM name, with latest NAV) and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?metal&purity&date: IBJA gold or silver rate on or up to 7 days before a date (gold form auto-fill); /api/master/other/categories: the user's Other categories, most used first (category field suggestions)
@@ -109,8 +116,17 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/dashboard-groups.ts  groups dashboard rows into Deposits, Market-linked, Other with subtotals; hides types with no holdings (dashboard-groups.test.ts)
   app/(app)/analytics/  /analytics page (sidebar "Analytics"); renders components/analytics/analytics.tsx
   components/analytics/ analytics cards: analytics.tsx (container, states, "Prices as of" footer), allocation-card, liquidity-card (style reference), bank-safety-card, coming-up-card, concentration-card, data-health-strip
+  app/(app)/analytics/layout.tsx  analytics layout with the Overview · Performance tabs (components/analytics/analytics-tabs.tsx)
+  app/(app)/analytics/performance/page.tsx  /analytics/performance: renders components/analytics/performance.tsx (two columns: growth, then returns)
+  components/analytics/performance.tsx  Performance tab: growth and returns cards together
+  components/analytics/growth-change-card.tsx, growth-months-card.tsx  growth cards: change in net worth split into new money and growth, and the last 12 months
+  components/analytics/returns-groups-card.tsx, returns-compare-card.tsx, returns-best-worst-card.tsx, returns-excluded.tsx  returns cards: groups by class and type, comparison with the benchmark, best and worst holdings, excluded counts
+  components/analytics/card-info.tsx  info icon after a card label, opens a popover
+  components/analytics/use-analytics-section.ts  hook that loads one analytics section (loading, error and data states)
   components/charts/donut.tsx  shared donut (analytics allocation card and the dashboard allocation card)
   lib/analytics.ts      analytics endpoint path, class colours, percent text
+  lib/growth.ts         growth card maths and formatting: split colours, month labels (growth.test.ts)
+  lib/returns.ts        returns bar geometry: track percent and zero line (returns.test.ts)
   lib/networth-range.ts  chart maths: growth over the range (change in current − invested) and the Y axis domain (networth-range.test.ts)
   lib/asset-catalog.ts  asset-type registry (title, hint, icon, group) for the /add gallery; its order drives the portfolio tabs, the Add menu, the /add gallery and the /portfolio redirect — add new asset classes here
   lib/notify.ts         toast helpers — render API message/description only
@@ -161,6 +177,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 
 9. **Numerical code needs passing unit tests before commit**: the analytics, portfolio and dashboard APIs (valuation, aggregation, classification, windows, thresholds). Keep the tests up to date whenever a calculation changes.
 10. **Analytics UI uses the modern minimal card style**, with `web/components/analytics/liquidity-card.tsx` as the reference: small uppercase label, headline figure and subline, one compact visual, legend rows, linked hover across visual and rows, and a themed Select (not chips) for any view switch.
+11. **Dropdown and menu option labels use Title Case** ("By Asset Class", "This Month"); form options go through `titleCase` in `components/forms/fields.tsx`.
 
 ## Gotchas
 

@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-11-02)
+# STATUS — handoff notes (last updated 2026-11-03)
 
 ## Done (all committed on `main`)
 
@@ -52,6 +52,8 @@
 - 2026-11-02: Other asset, committed on `main` and live on prod: `other_holdings` (name, free-text category, current value, value as of, optional amount invested and purchase date; migration `0026`), `/api/assets/other`, `/api/holdings/other` with a case-insensitive Category facet, and `/api/master/other/categories` (the user's categories, most used first), in dashboard, portfolio, net worth, soft delete and purge (`7c63cfb`); web form with a category combobox (the user's categories, then Crypto, Real estate, P2P lending, Art & collectibles, Unlisted shares; free text allowed), grid, details page, and its own "Other" group in the Add gallery and tabs. Every asset form (add page and Edit dialog) now locks its fields while saving and shows "Saving…" with a spinner (`b429eae`). Gain shows only when an amount invested is set. Ten asset types now. SPEC §1–§5.
 - 2026-11-02: Dashboard redesign, pushed (`d4f1f5d`, `0ee3b1c`): hero card with net worth, Invested, Gain / loss, 1-day change and the range chart (growth over the range, tinted gap to invested); allocation donut beside it (top 5 plus More, fixed colour per type); holdings table with Deposits, Market-linked and Other groups, subtotals, Gain and 1-day columns and whole-row links; types with no holdings hidden. `GET /api/dashboard` by_type rows gain `gain`, `gain_pct`, `day_change`. SPEC §4, §5.
 - 2026-11-03: Analytics slice 1 (Overview) done: `GET /api/analytics/overview` and the `/analytics` page (sidebar link). Sections: allocation by class (drill-down to type and holding, retirement toggle; SGB is gold, NPS by scheme class or name), concentration (top 10 and rollups by company, AMC, bank, bond issuer, PFM; flags above 10% single stock and 30% AMC), liquidity ladder (ELSS split per lot by the 3-year lock), coming up (30, 90, 180 days and 1 year, already-matured list, approximate amounts), bank safety (₹5L DICGC cover per bank, FD and RD only), data-health strip and a "Prices as of" footer. Also: leap-year-safe year fraction and `gain_base` for the gain % in valuation. API unit tests cover the analytics maths. SPEC §3, §9. Slice 2 (net worth change, returns, benchmark) is next, from `docs/ANALYTICS.md`.
+- 2026-11-03: Analytics slice 2 done: `GET /api/analytics/growth` (net worth change split into new money and growth: this month, last month, FY to date, this year, 1 year, and the last 12 months) and `GET /api/analytics/returns` (XIRR overall, per class and per type; best and worst holdings held 6 months or more, ranked by yearly return; rates; excluded counts; benchmark vs Nifty 50 index fund, FD rate and CPI). Web: Overview · Performance tabs, `/analytics/performance` in two columns. SPEC §9.
+- 2026-11-03: Analytics speed-up and index migration `0027` (drops redundant holding `user_id` indexes; trigram GIN indexes for stock, bond and MF master search), pushed in `af6122d`. `read_bind` for read-only sessions, fewer round trips, one query for NPS start NAVs and previous NAVs. The benchmark is no longer fetched on requests: fetched on first use, then refreshed by the nightly AMFI import. Local timings: overview 5.2 → 1.8 s, growth 7.0 → 1.9 s, returns 7.7 → 1.9 s.
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -86,6 +88,12 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - The grid range filter number input stays 13.5px on phones, so iOS zooms in on focus. Fix it in the mobile audit.
 - The search mobile sheet (iOS keyboard, Back button and visual viewport behaviour) has not been confirmed on a real device.
 - `docs/PLAN.md` describes the original plan; `docs/SPEC.md` is current.
+
+## Open (analytics)
+
+- Production latency check of the analytics endpoints (Vercel pool is 5 + 3 overflow; local timings don't show prod).
+- Tax tab (analytics slice 3: interest income and TDS by bank, then capital gains), before Jan 2027 (tax season).
+- Verify `api/data/cpi_india.csv` against MOSPI.
 
 ## Next (planned assets)
 
