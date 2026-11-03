@@ -75,6 +75,14 @@ def test_lookup_uses_point_on_or_before_date():
     assert lookup.at(date(2025, 11, 2)) == (Decimal(0), Decimal(0))  # before the first
 
 
+def test_lookup_accepts_iso_string_dates():
+    points = [{**p, "date": p["date"].isoformat()} for p in POINTS]
+    lookup = g._Lookup(points)
+    assert lookup.at(date(2026, 4, 15)) == (Decimal(260), Decimal(200))
+    assert lookup.at(date(2025, 11, 2)) == (Decimal(0), Decimal(0))
+    assert g.build_growth(points, TODAY) == g.build_growth(POINTS, TODAY)
+
+
 def test_lookup_sorts_unordered_points():
     lookup = g._Lookup(list(reversed(POINTS)))
     assert lookup.at(date(2026, 10, 1)) == (Decimal(400), Decimal(300))
@@ -202,7 +210,9 @@ def test_growth_endpoint_serialises_history(client, users, monkeypatch):  # noqa
 
     def fake_history(db, user_id, range_key, today=None):
         seen.update(user_id=user_id, range_key=range_key, today=today)
-        return {"range": range_key, "points": POINTS, "stocks_at_cost_before": "2026-01-01"}
+        # The shape routers.networth.load_history really returns: ISO string dates.
+        points = [{**p, "date": p["date"].isoformat()} for p in POINTS]
+        return {"range": range_key, "points": points, "stocks_at_cost_before": "2026-01-01"}
 
     monkeypatch.setattr(analytics_router, "date", _FixedDate)
     monkeypatch.setattr(analytics_router, "load_history", fake_history)

@@ -44,12 +44,19 @@ def period_bounds(today: date) -> list[tuple[str, str, date, date]]:
     ]
 
 
+def _as_date(value: Any) -> date:
+    """A point date as a date; accepts date objects and ISO YYYY-MM-DD strings."""
+    if isinstance(value, str):
+        return date.fromisoformat(value)
+    return value
+
+
 class _Lookup:
     """Value and invested on or before a date, from points sorted by date."""
 
     def __init__(self, points: Iterable[Any]):
         rows = sorted(
-            ((p["date"], Decimal(p["current"]), Decimal(p["invested"])) for p in points),
+            ((_as_date(p["date"]), Decimal(p["current"]), Decimal(p["invested"])) for p in points),
             key=lambda r: r[0],
         )
         self._dates = [r[0] for r in rows]
