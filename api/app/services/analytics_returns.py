@@ -267,11 +267,13 @@ def returns(
     mf_masters: Mapping[Any, Any] | None = None,
     mf_transactions: Mapping[Any, Sequence[Any]] | None = None,
     nps_start_navs: Mapping[Any, Decimal] | None = None,
-    benchmark_loader: Callable[[], analytics_benchmark.BenchmarkNavs | None] | None = None,
+    benchmark_loader: Callable[[date | None], analytics_benchmark.BenchmarkNavs | None]
+    | None = None,
     cpi: Mapping[int, Decimal] | None = None,
 ) -> dict[str, Any]:
     """Overall, per-class and per-type returns, best/worst holdings, exclusions and rates.
-    `benchmark_loader` fetches the index fund NAVs and is only called when some holding has flows;
+    `benchmark_loader(earliest_flow_date)` fetches the index fund NAVs (it may skip those before
+    the NAV on or before that date) and is only called when some holding has flows;
     `benchmark` is null without a loader, without flows, or when it returns None."""
     mf_transactions = mf_transactions or {}
     included: list[dict[str, Any]] = []
@@ -314,7 +316,10 @@ def returns(
             by_class.append(_group(cls, analytics.CLASS_LABELS[cls], members, today))
     overall = _group("overall", "Portfolio", included, today) if included else None
     bench = None
-    navs = benchmark_loader() if benchmark_loader is not None and included else None
+    navs = None
+    if benchmark_loader is not None and included:
+        earliest = min((d for m in included for d, _ in m["flows"]), default=None)
+        navs = benchmark_loader(earliest)
     if navs is not None and overall is not None:
         class_returns = {g["key"]: (g["return_pct"], g["annualised"]) for g in by_class}
         bench = analytics_benchmark.benchmark(

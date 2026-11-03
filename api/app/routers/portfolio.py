@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, read_bind
 from app.deps import current_user
 from app.models.user import User
 from app.models.gold import Gold
@@ -212,7 +212,14 @@ def build_groups(
 
 
 def load_groups(db: Session, user_id: int, today: date | None = None) -> list[dict[str, Any]]:
-    bind = db.get_bind()
+    return load_records_and_groups(db, user_id, today)[1]
+
+
+def load_records_and_groups(
+    db: Session, user_id: int, today: date | None = None
+) -> tuple[dict[str, list[Any]], list[dict[str, Any]]]:
+    """The user's holding records per type plus the valued groups built from them."""
+    bind = read_bind(db)
 
     def fetch(model: Any) -> list[Any]:
         # Own session per table so the 5 queries share one network round trip.
@@ -239,9 +246,10 @@ def load_groups(db: Session, user_id: int, today: date | None = None) -> list[di
         rates = rates_future.result()
         nps_navs = nps_future.result()
         nps_prev = nps_prev_future.result()
-    return build_groups(
+    groups = build_groups(
         records, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
+    return records, groups
 
 
 def load_group(
@@ -252,8 +260,8 @@ def load_group(
     stmt = select(model).where(model.user_id == user_id).order_by(model.id)
     if slug == "mf":
         with ThreadPoolExecutor(max_workers=2) as pool:
-            nav_future = pool.submit(_fetch_navs, db.get_bind(), user_id)
-            prev_future = pool.submit(_fetch_prev_navs, db.get_bind(), user_id)
+            nav_future = pool.submit(_fetch_navs, read_bind(db), user_id)
+            prev_future = pool.submit(_fetch_prev_navs, read_bind(db), user_id)
             records = list(db.scalars(stmt).all())
             navs = nav_future.result()
             prev_navs = prev_future.result()
@@ -265,8 +273,8 @@ def load_group(
     nps_prev: dict[str, tuple[date, Decimal]] = {}
     if slug == "nps":
         with ThreadPoolExecutor(max_workers=2) as pool:
-            nav_future = pool.submit(_fetch_nps_navs, db.get_bind(), user_id)
-            prev_future = pool.submit(_fetch_nps_prev_navs, db.get_bind(), user_id)
+            nav_future = pool.submit(_fetch_nps_navs, read_bind(db), user_id)
+            prev_future = pool.submit(_fetch_nps_prev_navs, read_bind(db), user_id)
             nps_navs = nav_future.result()
             nps_prev = prev_future.result()
     prices = _prices_for(db, records) if slug == "stock" else {}
@@ -384,7 +392,7 @@ def add_day_change(
 def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
     # The previous gold rates run alongside load_groups' own concurrent queries.
     with ThreadPoolExecutor(max_workers=1) as pool:
-        prev_future = pool.submit(_fetch_gold_prev_rates, db.get_bind(), user.id)
+        prev_future = pool.submit(_fetch_gold_prev_rates, read_bind(db), user.id)
         groups = load_groups(db, user.id)
         prev_rates = prev_future.result()
     return add_day_change(build_dashboard(groups), groups, prev_rates)

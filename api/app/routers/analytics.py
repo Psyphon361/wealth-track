@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, read_bind
 from app.deps import current_user
 from app.models.bond import Bond
 from app.models.bond_master import BondMaster
@@ -94,7 +94,7 @@ def _fetch_issuer_masters(bind: Any) -> dict[int, Any]:
 def get_overview(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """Allocation, concentration, liquidity, maturities, bank safety and data health of the user."""
     today = date.today()
-    bind = db.get_bind()
+    bind = read_bind(db)
     # Master rows load concurrently with the valued holdings, each on its own session.
     with ThreadPoolExecutor(max_workers=4) as pool:
         stocks = pool.submit(_fetch_stock_masters, bind, user.id)

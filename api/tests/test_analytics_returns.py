@@ -298,7 +298,7 @@ def fixed_today(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_benchmark_fetch(monkeypatch):
     """Endpoint tests never reach mfapi.in or the NAV tables; the benchmark is null by default."""
-    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda bind: None)
+    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda *args: None)
 
 
 def _get(client, headers) -> dict:
@@ -466,9 +466,14 @@ def test_benchmark_block_in_returns():
         _group("fd", {**_fd(1, 1000, 1100, date(2025, 1, 1)), "principal": D(1000), "rate": D(7)}),
         _group("stock", _stock(2, date(2024, 1, 1))),
     ]
-    result = ar.returns(
-        groups, TODAY, benchmark_loader=lambda: ab.BenchmarkNavs("Test Fund", NAVS), cpi=CPI
-    )
+    asked = []
+
+    def loader(since):
+        asked.append(since)
+        return ab.BenchmarkNavs("Test Fund", NAVS)
+
+    result = ar.returns(groups, TODAY, benchmark_loader=loader, cpi=CPI)
+    assert asked == [result["overall"]["since"]]
     bench = result["benchmark"]
     assert bench["label"] == "Nifty 50 index fund" and bench["scheme_name"] == "Test Fund"
     assert bench["nav_date"] == TODAY
@@ -484,16 +489,16 @@ def test_benchmark_block_in_returns():
 def test_benchmark_is_null_without_loader_flows_or_navs():
     groups = [_group("stock", _stock(2, date(2024, 1, 1)))]
     assert ar.returns(groups, TODAY)["benchmark"] is None
-    assert ar.returns(groups, TODAY, benchmark_loader=lambda: None)["benchmark"] is None
+    assert ar.returns(groups, TODAY, benchmark_loader=lambda since: None)["benchmark"] is None
     calls = []
-    result = ar.returns([], TODAY, benchmark_loader=lambda: calls.append(1))
+    result = ar.returns([], TODAY, benchmark_loader=lambda since: calls.append(1))
     assert result["benchmark"] is None and not calls
 
 
 def test_endpoint_returns_benchmark(client, seeded, monkeypatch):  # noqa: F811
     headers, _ = seeded
     navs = ab.BenchmarkNavs("UTI Nifty 50 Index Fund", [(date(2000, 1, 1), D(100)), (TODAY, D(300))])
-    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda bind: navs)
+    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda *args: navs)
     bench = _get(client, headers)["benchmark"]
     assert bench["label"] == "Nifty 50 index fund"
     assert bench["scheme_name"] == "UTI Nifty 50 Index Fund"

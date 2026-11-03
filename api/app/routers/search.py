@@ -3,7 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, read_bind
 from app.deps import current_user
 from app.models.user import User
 from app.routers.portfolio import load_groups
@@ -19,7 +19,7 @@ def get_search_index(
 ):
     """Every holding of the user as a flat item; the browser searches and ranks locally."""
     response.headers["Cache-Control"] = "private, no-store"
-    bind = db.get_bind()
+    bind = read_bind(db)
     # Master rows load concurrently with the valued holdings, each on its own session.
     with ThreadPoolExecutor(max_workers=len(search_index.MASTER_FETCHERS)) as pool:
         futures = {

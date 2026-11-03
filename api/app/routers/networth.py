@@ -6,30 +6,17 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db import get_db
+from app.db import get_db, read_bind
 from app.deps import current_user
 from app.models.mf_master import MFNavHistory
 from app.models.mf_transaction import MFTransaction
 from app.models.nps_master import NpsNavHistory
 from app.models.user import User
-from app.routers.assets import REGISTRY
-from app.routers.portfolio import build_dashboard, load_groups
+from app.routers.portfolio import build_dashboard, load_records_and_groups
 from app.schemas.networth import NetWorthHistoryResponse
 from app.services import gold_rates, networth, stock_history
 
 router = APIRouter(tags=["networth"])
-
-
-def _fetch_records(bind: Any, user_id: int) -> dict[str, list[Any]]:
-    def fetch(model: Any) -> list[Any]:
-        # Own session per table so the queries share one network round trip.
-        with Session(bind, autoflush=False, expire_on_commit=False) as session:
-            stmt = select(model).where(model.user_id == user_id).order_by(model.id)
-            return list(session.scalars(stmt).all())
-
-    with ThreadPoolExecutor(max_workers=len(REGISTRY)) as pool:
-        futures = {slug: pool.submit(fetch, model) for slug, (model, _c, _r) in REGISTRY.items()}
-        return {slug: f.result() for slug, f in futures.items()}
 
 
 def _fetch_navs(
@@ -101,14 +88,15 @@ def load_history(
     db: Session, user_id: int, range_key: str, today: date | None = None
 ) -> dict[str, Any]:
     today = today or date.today()
-    bind = db.get_bind()
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        groups_future = pool.submit(load_groups, db, user_id, today)
-        records = _fetch_records(bind, user_id)
-        mfs = records["mf"]
-        stocks = records["stock"]
+    bind = read_bind(db)
+    # The holdings are fetched once: the valued groups and the raw records come from one load.
+    records, groups = load_records_and_groups(db, user_id, today)
+    mfs = records["mf"]
+    stocks = records["stock"]
+    codes = {m.scheme_code for m in mfs if m.scheme_code is not None}
+    with ThreadPoolExecutor(max_workers=5) as pool:
         txn_future = pool.submit(_fetch_txns, bind, [m.id for m in mfs])
-        codes = {m.scheme_code for m in mfs if m.scheme_code is not None}
+        golds = records["gold"]
         txns = txn_future.result()
         start = networth.earliest_start(records, txns)
         if start is None:
@@ -126,16 +114,21 @@ def load_history(
             first - timedelta(days=14),
             today,
         )
-        groups = groups_future.result()
+        rates_future = (
+            pool.submit(
+                _fetch_gold_rates,
+                bind,
+                {(g.metal, g.purity) for g in golds},
+                first - timedelta(days=14),
+                today,
+            )
+            if golds
+            else None
+        )
         navs = nav_future.result()
         closes = closes_future.result()
         nps_navs = nps_future.result()
-        golds = records["gold"]
-        rates = (
-            _fetch_gold_rates(bind, {(g.metal, g.purity) for g in golds}, first - timedelta(days=14), today)
-            if golds
-            else {}
-        )
+        rates = rates_future.result() if rates_future else {}
     totals = build_dashboard(groups)
     return networth.build_history(
         range_key,
