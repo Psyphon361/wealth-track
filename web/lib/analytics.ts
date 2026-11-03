@@ -1,4 +1,6 @@
 export const ANALYTICS_PATH = "/analytics/overview";
+export const ANALYTICS_GROWTH_PATH = "/analytics/growth";
+export const ANALYTICS_RETURNS_PATH = "/analytics/returns";
 
 /** One fixed colour per allocation class (API class key). Colour follows the class, never its rank. */
 export const CLASS_COLORS: Record<string, string> = {

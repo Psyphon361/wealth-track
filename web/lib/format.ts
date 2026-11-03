@@ -9,6 +9,18 @@ export function formatINR(n: number): string {
   return inr.format(n);
 }
 
+const inrWhole = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+
+/** Whole rupees with Indian grouping, no paise: ₹2,60,970. */
+export function formatINRWhole(n: number): string {
+  return inrWhole.format(n);
+}
+
 export function formatPct(n: number): string {
   return `${n.toFixed(2)}%`;
 }

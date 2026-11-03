@@ -5,10 +5,12 @@ import Link from "next/link";
 import { TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MORE_COLOR } from "@/lib/asset-colors";
 import { formatINR, formatPct } from "@/lib/format";
 import { ASSET_TYPE_LABELS, type AnalyticsConcentration } from "@/lib/types";
 
 const TOP = "top10";
+const OTHERS = "others";
 
 const LABELS: Record<string, string> = {
   stock: "Stocks",
@@ -70,8 +72,24 @@ export function ConcentrationCard({ concentration }: { concentration: AnalyticsC
         href: `/portfolio/${h.type}/${h.id}`,
       }));
 
-  const largest = rows.reduce<Row | null>((m, r) => (m === null || r.percent > m.percent ? r : m), null);
-  const maxPct = largest ? Math.max(largest.percent, 0.0001) : 1;
+  const shadedCount = rows.length;
+  if (!rollup && concentration.others && concentration.others.count > 0) {
+    const n = concentration.others.count;
+    rows.push({
+      key: OTHERS,
+      name: "Everything else",
+      hint: `${n} more ${n === 1 ? "holding" : "holdings"}`,
+      value: concentration.others.value,
+      percent: concentration.others.percent,
+      href: null,
+    });
+  }
+  const colorFor = (r: Row, i: number) => (r.key === OTHERS ? MORE_COLOR : shade(i, shadedCount));
+
+  const largest = rows
+    .filter((r) => r.key !== OTHERS)
+    .reduce<Row | null>((m, r) => (m === null || r.percent > m.percent ? r : m), null);
+  const maxPct = Math.max(...rows.map((r) => r.percent), 0.0001);
   const dim = (key: string) => (active !== null && active !== key ? "opacity-40" : "opacity-100");
 
   return (
@@ -141,7 +159,7 @@ export function ConcentrationCard({ concentration }: { concentration: AnalyticsC
                 style={{
                   width: `${Math.min(100, Math.max(0, r.percent))}%`,
                   minWidth: 2,
-                  backgroundColor: shade(i, rows.length),
+                  backgroundColor: colorFor(r, i),
                 }}
                 aria-hidden="true"
               />
@@ -152,7 +170,7 @@ export function ConcentrationCard({ concentration }: { concentration: AnalyticsC
             onMouseLeave={() => setActive(null)}
           >
             {rows.map((r, i) => {
-              const color = shade(i, rows.length);
+              const color = colorFor(r, i);
               const body = (
                 <>
                   <span

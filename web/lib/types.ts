@@ -805,9 +805,16 @@ export interface AnalyticsConcentrationFlag {
   threshold: number;
 }
 
+export interface AnalyticsConcentrationOthers {
+  count: number;
+  value: number;
+  percent: number;
+}
+
 export interface AnalyticsConcentration {
   total: number;
   top_holdings: AnalyticsTopHolding[];
+  others: AnalyticsConcentrationOthers;
   rollups: AnalyticsRollup[];
   flags: AnalyticsConcentrationFlag[];
 }
@@ -866,4 +873,99 @@ export interface AnalyticsOverview {
   coming_up: AnalyticsComingUp;
   bank_safety: AnalyticsBankSafety;
   data_health: AnalyticsDataHealth;
+}
+
+export interface AnalyticsGrowthPeriod {
+  key: string;
+  label: string;
+  start_date: string;
+  end_date: string;
+  start_value: number;
+  end_value: number;
+  new_money: number;
+  growth: number;
+  change: number;
+  growth_pct: number | null;
+}
+
+export interface AnalyticsGrowthMonth {
+  month: string;
+  start_value: number;
+  end_value: number;
+  new_money: number;
+  growth: number;
+  change: number;
+}
+
+export interface AnalyticsGrowth {
+  as_of: string;
+  stocks_at_cost_before: string | null;
+  periods: AnalyticsGrowthPeriod[];
+  months: AnalyticsGrowthMonth[];
+}
+
+export type ReturnBasis = "transactions" | "purchase_date" | "instalments" | "mixed";
+
+export interface ReturnGroup {
+  key: string;
+  label: string;
+  holdings: number;
+  invested: number;
+  current: number;
+  gain: number;
+  return_pct: number | null;
+  annualised: boolean;
+  basis: ReturnBasis | null;
+  since: string;
+}
+
+export interface RankedHolding {
+  type: AssetType;
+  id: number;
+  name: string;
+  return_pct: number;
+  gain: number;
+}
+
+export interface ReferenceRate {
+  type: "pf" | "nps";
+  id: number;
+  name: string;
+  basis: "interest_rate" | "nav_cagr";
+  rate_pct: number | null;
+}
+
+export interface ReturnsExcluded {
+  at_cost: number;
+  no_flows: number;
+  other_without_invested: number;
+}
+
+export interface BenchmarkPair {
+  your_pct: number | null;
+  benchmark_pct: number | null;
+  annualised: boolean;
+}
+
+export interface ReturnsBenchmark {
+  label: string;
+  scheme_name: string;
+  nav_date: string | null;
+  equity: BenchmarkPair | null;
+  overall: BenchmarkPair | null;
+  fd_rate: number | null;
+  inflation_pct: number | null;
+  inflation_period: string | null;
+}
+
+export interface AnalyticsReturns {
+  as_of: string;
+  overall: ReturnGroup | null;
+  by_class: ReturnGroup[];
+  by_type: ReturnGroup[];
+  best: RankedHolding[];
+  worst: RankedHolding[];
+  rates: ReferenceRate[];
+  excluded: ReturnsExcluded;
+  benchmark?: ReturnsBenchmark | null;
 }
