@@ -1000,7 +1000,9 @@ def _row_summary(rows):
 def test_coming_up_empty_portfolio():
     for groups in ([], [{"type": "fd", "label": "Fixed Deposits", "items": []}]):
         result = analytics.coming_up(groups, TODAY)
+        assert result["next_30_days"] == {"until": date(2026, 12, 2), "total": D("0.00"), "rows": []}
         assert result["next_90_days"] == {"until": date(2027, 1, 31), "total": D("0.00"), "rows": []}
+        assert result["next_180_days"] == {"until": date(2027, 5, 1), "total": D("0.00"), "rows": []}
         assert result["next_12_months"] == {"until": date(2027, 11, 2), "total": D("0.00"), "rows": []}
         assert result["already_matured"] == {"count": 0, "rows": []}
 
@@ -1114,6 +1116,29 @@ def test_coming_up_window_boundaries():
     ]
     assert result["next_12_months"]["total"] == D("14000.00")
     assert result["already_matured"]["count"] == 0
+
+
+def test_coming_up_30_and_180_day_boundaries_and_totals():
+    groups = groups_of(
+        fd_item(1, "2026-12-02", principal=1000.0),  # day 30: in
+        fd_item(2, "2026-12-03", principal=2000.0),  # day 31: out of 30
+        fd_item(3, "2027-05-01", principal=3000.0),  # day 180: in
+        fd_item(4, "2027-05-02", principal=4000.0),  # day 181: out of 180
+        fd_item(5, "2027-11-02", principal=5000.0),  # one year
+    )
+    result = analytics.coming_up(groups, TODAY)
+    assert result["next_30_days"]["until"] == date(2026, 12, 2)
+    assert [(r["id"], r["days_left"]) for r in result["next_30_days"]["rows"]] == [(1, 30)]
+    assert result["next_30_days"]["total"] == D("1000.00")
+    assert [r["id"] for r in result["next_90_days"]["rows"]] == [1, 2]
+    assert result["next_90_days"]["total"] == D("3000.00")
+    assert result["next_180_days"]["until"] == date(2027, 5, 1)
+    assert [(r["id"], r["days_left"]) for r in result["next_180_days"]["rows"]] == [
+        (1, 30), (2, 31), (3, 180)
+    ]
+    assert result["next_180_days"]["total"] == D("6000.00")
+    assert [r["id"] for r in result["next_12_months"]["rows"]] == [1, 2, 3, 4, 5]
+    assert result["next_12_months"]["total"] == D("15000.00")
 
 
 def test_coming_up_sorts_by_date_then_type_then_id():

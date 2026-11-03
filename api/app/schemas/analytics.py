@@ -140,7 +140,9 @@ class AlreadyMatured(BaseModel):
 
 
 class ComingUpSection(BaseModel):
+    next_30_days: MaturityWindow
     next_90_days: MaturityWindow
+    next_180_days: MaturityWindow
     next_12_months: MaturityWindow
     already_matured: AlreadyMatured
 

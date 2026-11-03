@@ -776,11 +776,11 @@ def coming_up(
 ) -> dict[str, Any]:
     """Maturities of active FDs, RDs, bonds and PPFs falling strictly after `today`.
 
-    Returns {"next_90_days": window, "next_12_months": window, "already_matured": {"count",
+    Returns {"next_30_days", "next_90_days", "next_180_days", "next_12_months": windows, "already_matured": {"count",
     "rows": [{type, id, name, maturity_date}]}}; a window is {"until", "total", "rows"} and its
     rows are {type, id, name, maturity_date, amount, rate, days_left, approximate}, sorted by
-    date, type, id. next_90_days runs to today + 90 days and next_12_months to today + 1 calendar
-    year, both inclusive; the 12-month list includes the 90-day rows.
+    date, type, id. The windows run to today + 30, 90 and 180 days and today + 1 calendar year,
+    all inclusive; each longer window includes the rows of the shorter ones.
 
     Amount: cumulative FD, its value on maturity; payout FD, its principal; RD, its value on
     maturity with every instalment paid (approximate); bond, face value x quantity (an SGB, its
@@ -831,7 +831,9 @@ def coming_up(
     rows.sort(key=lambda r: (r["maturity_date"], r["type"], str(r["id"])))
     matured.sort(key=lambda r: (r["maturity_date"] or date.max, r["type"], str(r["id"])))
     return {
+        "next_30_days": _window(rows, today + timedelta(days=30)),
         "next_90_days": _window(rows, today + timedelta(days=COMING_UP_DAYS)),
+        "next_180_days": _window(rows, today + timedelta(days=180)),
         "next_12_months": _window(rows, today + relativedelta(years=1)),
         "already_matured": {"count": len(matured), "rows": matured},
     }

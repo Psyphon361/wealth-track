@@ -344,7 +344,9 @@ def test_empty_portfolio_returns_zeros_and_empty_lists(client, users, tables):  
         ("locked", 0, 0), ("not_classified", 0, 0),
     ]  # fmt: skip
     coming = body["coming_up"]
+    assert coming["next_30_days"] == {"until": "2026-12-02", "total": 0, "rows": []}
     assert coming["next_90_days"] == {"until": "2027-01-31", "total": 0, "rows": []}
+    assert coming["next_180_days"] == {"until": "2027-05-01", "total": 0, "rows": []}
     assert coming["next_12_months"] == {"until": "2027-11-02", "total": 0, "rows": []}
     assert coming["already_matured"] == {"count": 0, "rows": []}
     assert body["bank_safety"] == {
