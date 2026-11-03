@@ -11,7 +11,7 @@ from app.models.base import TimestampedMixin, str_enum
 class Pf(TimestampedMixin, Base):
     __tablename__ = "pf_holdings"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     kind: Mapped[str] = mapped_column(str_enum("epf", "vpf", "ppf", name="pf_kind"))
     balance: Mapped[Decimal] = mapped_column(Numeric(14, 2))

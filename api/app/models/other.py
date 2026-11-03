@@ -11,7 +11,7 @@ from app.models.base import TimestampedMixin
 class Other(TimestampedMixin, Base):
     __tablename__ = "other_holdings"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     category: Mapped[str] = mapped_column(String(40))
     current_value: Mapped[Decimal] = mapped_column(Numeric(14, 2))

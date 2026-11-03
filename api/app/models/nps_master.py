@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -10,8 +10,7 @@ from app.db import Base
 class NpsMaster(Base):
     """NPS Trust scheme master, refreshed daily from the NAV report.
 
-    The trigram index on lower(scheme_name) is created in migration 0023 (expression index
-    with operator class, so it is not declared here).
+    The trigram index on lower(scheme_name) (migration 0023) is declared below the class.
     """
 
     __tablename__ = "nps_master"
@@ -26,6 +25,14 @@ class NpsMaster(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+Index(
+    "ix_nps_master_scheme_name_trgm",
+    func.lower(NpsMaster.scheme_name).label("scheme_name_lower"),
+    postgresql_using="gin",
+    postgresql_ops={"scheme_name_lower": "gin_trgm_ops"},
+)
 
 
 class NpsNavLatest(Base):

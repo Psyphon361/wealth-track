@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -11,11 +11,21 @@ from app.models.base import str_enum
 class StockMaster(Base):
     """Listed stocks and ETFs (NSE + BSE), refreshed from exchange files.
 
-    The trigram index on lower(name) is created in migration 0006 (expression index with
-    operator class, so it is not declared here).
+    The trigram index covers exactly the columns search_stocks ORs together (ILIKE), so the
+    planner can use a BitmapOr over it (migration 0027).
     """
 
     __tablename__ = "stock_master"
+    __table_args__ = (
+        Index(
+            "ix_stock_master_search_trgm",
+            "name", "nse_symbol", "bse_symbol", "bse_code", "isin",
+            postgresql_using="gin",
+            postgresql_ops={
+                c: "gin_trgm_ops" for c in ("name", "nse_symbol", "bse_symbol", "bse_code", "isin")
+            },
+        ),
+    )  # fmt: skip
 
     id: Mapped[int] = mapped_column(primary_key=True)
     isin: Mapped[str] = mapped_column(String(12), unique=True)

@@ -1,7 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Text, event, func
-from sqlalchemy.orm import Mapped, ORMExecuteState, Session, mapped_column, with_loader_criteria
+from sqlalchemy import DateTime, Enum, Index, Text, event, func
+from sqlalchemy.orm import (
+    Mapped,
+    ORMExecuteState,
+    Session,
+    declared_attr,
+    mapped_column,
+    with_loader_criteria,
+)
 
 COMPOUNDING_VALUES = ("monthly", "quarterly", "half_yearly", "yearly", "simple")
 
@@ -22,6 +29,11 @@ class TimestampedMixin:
     )
     # Soft delete: set when the holding is deleted; rows are purged after 30 days.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    @declared_attr.directive
+    def __table_args__(cls) -> tuple:
+        # Every holding query filters by user and (via the soft-delete criteria) deleted_at.
+        return (Index(f"ix_{cls.__tablename__}_user_id_deleted_at", "user_id", "deleted_at"),)
 
 
 @event.listens_for(Session, "do_orm_execute")

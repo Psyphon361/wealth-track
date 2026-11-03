@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -10,11 +10,19 @@ from app.db import Base
 class MFMaster(Base):
     """AMFI mutual fund scheme master, refreshed daily from NAVAll.txt.
 
-    The trigram index on lower(name) is created in migration 0004 (expression index with
-    operator class, so it is not declared here).
+    The trigram index covers exactly the columns amfi.search_schemes ORs together (ILIKE), so
+    the planner can use a BitmapOr over it (migration 0027).
     """
 
     __tablename__ = "mf_master"
+    __table_args__ = (
+        Index(
+            "ix_mf_master_search_trgm",
+            "name", "amc", "plan", "option",
+            postgresql_using="gin",
+            postgresql_ops={c: "gin_trgm_ops" for c in ("name", "amc", "plan", "option")},
+        ),
+    )  # fmt: skip
 
     scheme_code: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     name: Mapped[str] = mapped_column(String(300))

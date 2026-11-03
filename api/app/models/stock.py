@@ -11,7 +11,7 @@ from app.models.base import TimestampedMixin, str_enum
 class Stock(TimestampedMixin, Base):
     __tablename__ = "stocks"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     symbol: Mapped[str | None] = mapped_column(String(50))
     exchange: Mapped[str] = mapped_column(

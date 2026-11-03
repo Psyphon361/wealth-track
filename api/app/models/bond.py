@@ -11,7 +11,7 @@ from app.models.base import TimestampedMixin, str_enum
 class Bond(TimestampedMixin, Base):
     __tablename__ = "bonds"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     isin: Mapped[str | None] = mapped_column(String(20))
     issuer: Mapped[str] = mapped_column(String(200))

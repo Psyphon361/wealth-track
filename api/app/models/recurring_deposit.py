@@ -11,7 +11,7 @@ from app.models.base import COMPOUNDING_VALUES, TimestampedMixin, str_enum
 class RecurringDeposit(TimestampedMixin, Base):
     __tablename__ = "recurring_deposits"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     bank: Mapped[str] = mapped_column(String(200))
     issuer_id: Mapped[int | None] = mapped_column(
         ForeignKey("fd_issuer_master.id", ondelete="SET NULL"), index=True

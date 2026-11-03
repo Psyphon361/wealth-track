@@ -13,7 +13,7 @@ class Gold(TimestampedMixin, Base):
 
     __tablename__ = "gold_holdings"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     form: Mapped[str] = mapped_column(
         str_enum("jewellery", "coin", "bar", "digital", name="gold_form")

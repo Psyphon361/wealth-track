@@ -11,7 +11,7 @@ from app.models.base import TimestampedMixin, str_enum
 class Cash(TimestampedMixin, Base):
     __tablename__ = "cash_holdings"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))
     kind: Mapped[str] = mapped_column(
         str_enum("savings", "current", "cash", "other", name="cash_kind")

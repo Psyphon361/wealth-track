@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import JSON, ARRAY, Boolean, DateTime, ForeignKey, String, func, text
+from sqlalchemy import JSON, ARRAY, Boolean, DateTime, ForeignKey, Index, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -16,8 +16,7 @@ CATEGORIES = (
 class FdIssuerMaster(Base):
     """Banks, NBFCs, HFCs and India Post that take FDs/RDs, refreshed from RBI/DICGC-derived lists.
 
-    The trigram index on lower(name) is created in migration 0011 (expression index with
-    operator class, so it is not declared here).
+    The trigram index on lower(name) (migration 0011) is declared below the class.
     """
 
     __tablename__ = "fd_issuer_master"
@@ -51,3 +50,11 @@ class FdIssuerMaster(Base):
     merged_into: Mapped["FdIssuerMaster | None"] = relationship(
         remote_side=[id], lazy="joined"
     )
+
+
+Index(
+    "ix_fd_issuer_master_name_trgm",
+    func.lower(FdIssuerMaster.name).label("name_lower"),
+    postgresql_using="gin",
+    postgresql_ops={"name_lower": "gin_trgm_ops"},
+)

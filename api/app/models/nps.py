@@ -12,7 +12,7 @@ from app.models.nps_master import NpsMaster
 class Nps(TimestampedMixin, Base):
     __tablename__ = "nps_holdings"
 
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     scheme_id: Mapped[str] = mapped_column(String(20), ForeignKey("nps_master.scheme_id"))
     units: Mapped[Decimal] = mapped_column(Numeric(14, 4))
     contributed: Mapped[Decimal] = mapped_column(Numeric(14, 2))
