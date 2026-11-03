@@ -519,6 +519,34 @@ def test_top_holdings_cut_off_at_ten_with_percent_of_total():
     assert top[-1]["percent"] == D("3.85")  # 300 of 7800
 
 
+def test_others_is_the_remainder_after_the_top_ten():
+    groups = groups_of(*[h("stock", i, i * 100.0) for i in range(1, 13)])  # 100 .. 1200, total 7800
+    conc = analytics.concentration(groups)
+    assert conc["others"] == {"count": 2, "value": D("300.00"), "percent": D("3.85")}  # 100 + 200
+    assert sum(t["value"] for t in conc["top_holdings"]) + conc["others"]["value"] == conc["total"]
+
+
+def test_others_is_zero_with_exactly_ten_holdings():
+    groups = groups_of(*[h("stock", i, i * 100.0) for i in range(1, 11)])
+    assert analytics.concentration(groups)["others"] == {
+        "count": 0, "value": D("0.00"), "percent": D("0.00")
+    }  # fmt: skip
+
+
+def test_others_is_zero_with_no_holdings():
+    assert analytics.concentration([])["others"] == {
+        "count": 0, "value": D("0.00"), "percent": D("0.00")
+    }  # fmt: skip
+
+
+def test_others_percent_comes_from_raw_values_not_rounded_top_values():
+    # Ten holdings of 1.004 (each shown as 1.00) plus one of 0.50: total 10.54, raw remainder 0.50.
+    # From the rounded top values the remainder would be 0.54 (5.12%); the raw one is 4.74%.
+    groups = groups_of(*[h("stock", i, 1.004) for i in range(1, 11)], h("stock", 11, 0.5))
+    others = analytics.concentration(groups)["others"]
+    assert others == {"count": 1, "value": D("0.50"), "percent": D("4.74")}
+
+
 def test_top_holdings_tie_break_is_type_then_id():
     groups = groups_of(
         h("stock", 2, 500.0),

@@ -469,7 +469,7 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
 ### Sections
 
 - **allocation**: `including_retirement` and `excluding_retirement` views (`total`, `classes` → `types` → `holdings`, each with `value` and `percent`; classes with no value are left out), plus `retirement_value` and `retirement_percent`. Retirement = EPF, VPF, PPF and NPS Tier I (a missing tier counts as Tier I).
-- **concentration**: `top_holdings` (10, by value), `rollups` (stock company, MF AMC, FD/RD bank, bond issuer, NPS PFM; bar percent is of that group's total; ETF bars are `passive`) and `flags`.
+- **concentration**: `top_holdings` (10, by value), `others` (`{count, value, percent}`: the holdings after the top 10, computed from unrounded values; zeros when there are 10 or fewer), `rollups` (stock company, MF AMC, FD/RD bank, bond issuer, NPS PFM; bar percent is of that group's total; ETF bars are `passive`) and `flags`.
 - **liquidity**: six buckets, always listed, adding up to the active total.
 - **coming_up**: `next_30_days`, `next_90_days`, `next_180_days`, `next_12_months` windows and `already_matured`.
 - **bank_safety**: DICGC cover per bank.
@@ -506,7 +506,7 @@ FD and RD only (cash isn't linked to a bank). Exposure per deposit is its curren
 
 ### Concentration
 
-The web shows Top 10 (holdings by value, % of total) or one rollup chosen in a Select. Flags (strictly over): a non-ETF stock company above 10% of the equity class total (retirement money included), and an AMC above 30% of the MF total. ETFs and passive funds never get the single-stock flag. Each flag carries its `threshold`.
+The web shows Top 10 (holdings by value, % of total; the remainder appears as an "Everything else" segment and row when `others.count` > 0) or one rollup chosen in a Select. Flags (strictly over): a non-ETF stock company above 10% of the equity class total (retirement money included), and an AMC above 30% of the MF total. ETFs and passive funds never get the single-stock flag. Each flag carries its `threshold`.
 
 ### Data health
 

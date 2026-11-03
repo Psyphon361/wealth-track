@@ -482,7 +482,8 @@ def concentration(
     """Top holdings, issuer-group rollups and concentration flags.
 
     Returns {"total", "top_holdings": [{type, id, name, value, percent}] (10, by value then type
-    then id), "rollups": [{key, label, total, bars: [{key, label, value, percent, passive}]}]
+    then id), "others": {count, value, percent} (the holdings after the top 10: their number, their
+    unrounded total and its percent of the total; zeros when there are 10 or fewer), "rollups": [{key, label, total, bars: [{key, label, value, percent, passive}]}]
     for stock company, MF AMC, FD/RD bank, bond issuer and NPS PFM (percent of that group's own
     total; ETF bars are passive), "flags": [{kind, key, label, value, percent, threshold}]}.
     Flags: a non-ETF stock company strictly over 10% of the equity class total (retirement money
@@ -555,7 +556,19 @@ def concentration(
     for rollup in rollups:
         for bar in rollup["bars"]:
             del bar["_raw"]
-    return {"total": _q(total), "top_holdings": top, "rollups": rollups, "flags": flags}
+    rest = total - sum((h.value for h in ranked), _ZERO)
+    others = {
+        "count": len(holdings) - len(ranked),
+        "value": _q(rest),
+        "percent": _pct(rest, total),
+    }
+    return {
+        "total": _q(total),
+        "top_holdings": top,
+        "others": others,
+        "rollups": rollups,
+        "flags": flags,
+    }
 
 
 def _flag(kind: str, bar: dict[str, Any], denominator: Decimal, threshold: Decimal) -> dict[str, Any]:

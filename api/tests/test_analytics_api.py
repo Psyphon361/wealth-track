@@ -513,6 +513,12 @@ def test_concentration_top_holdings_rollups_and_flags(client, seeded):
         ("cash", 1, "Salary account", 25000, 1.67),
     ]  # fmt: skip
 
+    others = conc["others"]
+    assert set(others) == {"count", "value", "percent"}
+    assert others["count"] > 0
+    assert others["value"] == conc["total"] - sum(h["value"] for h in conc["top_holdings"])
+    assert others["percent"] == round(others["value"] * 100 / conc["total"], 2)
+
     rollups = {r["key"]: r for r in conc["rollups"]}
 
     def bars(key):

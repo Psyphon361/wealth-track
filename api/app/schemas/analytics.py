@@ -85,9 +85,16 @@ class ConcentrationFlag(BaseModel):
     threshold: Amount
 
 
+class ConcentrationOthers(BaseModel):
+    count: int
+    value: Amount
+    percent: Amount
+
+
 class ConcentrationSection(BaseModel):
     total: Amount
     top_holdings: list[TopHolding]
+    others: ConcentrationOthers
     rollups: list[Rollup]
     flags: list[ConcentrationFlag]
 
