@@ -47,9 +47,27 @@ class ReturnsExcluded(BaseModel):
     other_without_invested: int
 
 
+class BenchmarkComparison(BaseModel):
+    your_pct: Amount | None
+    benchmark_pct: Amount | None
+    annualised: bool  # false: both are absolute returns (earliest flow under a year old)
+
+
+class Benchmark(BaseModel):
+    label: str
+    scheme_name: str
+    nav_date: date | None
+    equity: BenchmarkComparison | None
+    overall: BenchmarkComparison | None
+    fd_rate: Amount | None  # principal-weighted rate of the active FDs
+    inflation_pct: Amount | None  # compounded annual average CPI inflation
+    inflation_period: str | None
+
+
 class AnalyticsReturns(BaseModel):
     as_of: date
     overall: ReturnGroup | None
+    benchmark: Benchmark | None
     by_class: list[ReturnGroup]
     by_type: list[ReturnGroup]
     best: list[RankedHolding]

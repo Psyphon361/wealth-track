@@ -9,11 +9,11 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from dateutil.relativedelta import relativedelta
 
-from app.services import analytics
+from app.services import analytics, analytics_benchmark
 from app.services.valuation import xirr
 
 ZERO = Decimal("0")
@@ -242,8 +242,12 @@ def returns(
     mf_masters: Mapping[Any, Any] | None = None,
     mf_transactions: Mapping[Any, Sequence[Any]] | None = None,
     nps_start_navs: Mapping[Any, Decimal] | None = None,
+    benchmark_loader: Callable[[], analytics_benchmark.BenchmarkNavs | None] | None = None,
+    cpi: Mapping[int, Decimal] | None = None,
 ) -> dict[str, Any]:
-    """Overall, per-class and per-type returns, best/worst holdings, exclusions and rates."""
+    """Overall, per-class and per-type returns, best/worst holdings, exclusions and rates.
+    `benchmark_loader` fetches the index fund NAVs and is only called when some holding has flows;
+    `benchmark` is null without a loader, without flows, or when it returns None."""
     mf_transactions = mf_transactions or {}
     included: list[dict[str, Any]] = []
     excluded: Counter[str] = Counter()
@@ -281,9 +285,28 @@ def returns(
         members = [m for m in included if m["cls"] == cls]
         if members:
             by_class.append(_group(cls, analytics.CLASS_LABELS[cls], members, today))
+    overall = _group("overall", "Portfolio", included, today) if included else None
+    bench = None
+    navs = benchmark_loader() if benchmark_loader is not None and included else None
+    if navs is not None and overall is not None:
+        class_returns = {g["key"]: (g["return_pct"], g["annualised"]) for g in by_class}
+        bench = analytics_benchmark.benchmark(
+            {
+                "equity": [f for m in included if m["cls"] == "equity" for f in m["flows"]]
+            },
+            [f for m in included for f in m["flows"]],
+            class_returns,
+            (overall["return_pct"], overall["annualised"]),
+            overall["since"],
+            navs,
+            groups,
+            today,
+            cpi if cpi is not None else analytics_benchmark.load_cpi(),
+        )
     return {
         "as_of": today,
-        "overall": _group("overall", "Portfolio", included, today) if included else None,
+        "overall": overall,
+        "benchmark": bench,
         "by_class": by_class,
         "by_type": by_type,
         **_ranked(included),

@@ -1,0 +1,15 @@
+# India annual average CPI-Combined inflation, calendar years (percent). Source: MOSPI CPI (base 2012=100, earlier years linked) as published via RBI Handbook / MOSPI press releases. Hand-maintained approximations to 1 dp; verify against MOSPI before relying on them. Append the new year each January.
+year,cpi_inflation_pct
+2013,10.0
+2014,6.7
+2015,4.9
+2016,4.5
+2017,3.6
+2018,3.4
+2019,4.8
+2020,6.2
+2021,5.1
+2022,6.7
+2023,5.7
+2024,4.9
+2025,2.2

@@ -11,8 +11,9 @@ from sqlalchemy.orm import sessionmaker
 from app.db import Base
 from app.models import NpsNavHistory
 from app.routers import analytics_returns as returns_router
+from app.services import analytics_benchmark as ab
 from app.services import analytics_returns as ar
-from app.services.valuation import mf_xirr
+from app.services.valuation import mf_xirr, xirr
 from tests.test_analytics_api import TODAY, seeded, tables  # noqa: F401  (fixtures)
 from tests.test_scoping import client, users  # noqa: F401  (fixtures)
 
@@ -294,6 +295,12 @@ def fixed_today(monkeypatch):
     monkeypatch.setattr(returns_router, "date", _FixedDate)
 
 
+@pytest.fixture(autouse=True)
+def no_benchmark_fetch(monkeypatch):
+    """Endpoint tests never reach mfapi.in or the NAV tables; the benchmark is null by default."""
+    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda bind: None)
+
+
 def _get(client, headers) -> dict:
     response = client.get("/api/analytics/returns", headers=headers)
     assert response.status_code == 200, response.text
@@ -307,7 +314,8 @@ def test_requires_bearer(client):
 def test_empty_portfolio(client, users, tables):  # noqa: F811
     body = _get(client, users[0])
     assert body == {
-        "as_of": "2026-11-02", "overall": None, "by_class": [], "by_type": [], "best": [],
+        "as_of": "2026-11-02", "overall": None, "benchmark": None, "by_class": [],
+        "by_type": [], "best": [],
         "worst": [], "rates": [],
         "excluded": {"at_cost": 0, "no_flows": 0, "other_without_invested": 0},
     }  # fmt: skip
@@ -355,3 +363,141 @@ def test_seeded_portfolio(client, seeded, auth_engine):  # noqa: F811
     assert [r["basis"] for r in nps] == ["nav_cagr", "nav_cagr"]
     assert nps[0]["rate_pct"] == pytest.approx((1.5 ** (365 / 1036) - 1) * 100, abs=0.01)
     assert nps[1]["rate_pct"] is None
+
+
+# --- Benchmark ---------------------------------------------------------------------------------
+
+NAVS = [
+    (date(2024, 1, 1), D(100)),
+    (date(2025, 1, 1), D(110)),
+    (date(2025, 7, 1), D(120)),
+    (date(2026, 5, 30), D(120)),
+    (TODAY, D(150)),
+]
+
+
+def test_replay_single_buy_is_xirr_of_units_at_latest_nav():
+    # 1,000 buys 10 units at 100; 10 units x 150 = 1,500 today (the holding's own value is ignored).
+    pct, annualised = ab.replay([(date(2024, 1, 1), D(-1000)), (TODAY, D(1800))], NAVS, TODAY)
+    days = (TODAY - date(2024, 1, 1)).days
+    assert annualised is True
+    assert float(pct) == pytest.approx((1.5 ** (365 / days) - 1) * 100, abs=0.01)
+
+
+def test_replay_redemption_sells_units_at_that_dates_nav():
+    flows = [
+        (date(2024, 1, 1), D(-1000)),  # 10 units
+        (date(2025, 1, 1), D(-1100)),  # 10 units
+        (date(2025, 7, 1), D(1200)),  # sells 10 units at 120
+        (TODAY, D(999)),
+    ]
+    pct, annualised = ab.replay(flows, NAVS, TODAY)
+    # 10 units left x 150 = 1,500 terminal.
+    expected = xirr(
+        [(date(2024, 1, 1), D(-1000)), (date(2025, 1, 1), D(-1100)),
+         (date(2025, 7, 1), D(1200)), (TODAY, D(1500))]
+    )  # fmt: skip
+    assert annualised is True
+    assert pct == (expected * 100).quantize(D("0.01"))
+
+
+def test_replay_under_a_year_is_absolute():
+    # Bought 2026-06-01 at the 2026-05-30 NAV 120: 1,000 -> 8.333 units x 150 = 1,250.
+    pct, annualised = ab.replay([(date(2026, 6, 1), D(-1000)), (TODAY, D(1100))], NAVS, TODAY)
+    assert (pct, annualised) == (D("25.00"), False)
+
+
+def test_replay_absolute_counts_redemptions():
+    flows = [(date(2026, 6, 1), D(-1000)), (date(2026, 8, 1), D(600)), (TODAY, D(1))]
+    # Buys 8.3333 units at 120, sells 5 at 120 (but the flow is 600 = 5 units), 3.3333 x 150 = 500.
+    pct, _ = ab.replay(flows, NAVS, TODAY)
+    assert pct == D("10.00")  # (500 + 600 - 1000) / 1000
+
+
+def test_replay_flow_before_first_nav_is_null():
+    pct, annualised = ab.replay([(date(2023, 6, 1), D(-1000)), (TODAY, D(1800))], NAVS, TODAY)
+    assert (pct, annualised) == (None, True)
+
+
+def test_fd_rate_is_principal_weighted_over_active_fds():
+    fds = _group(
+        "fd",
+        {"status": "active", "principal": D(100000), "rate": D("7")},
+        {"status": "active", "principal": D(300000), "rate": D("8")},
+        {"status": "matured", "principal": D(900000), "rate": D("3")},
+    )
+    assert ab.fd_rate([fds]) == D("7.75")
+    assert ab.fd_rate([_group("fd"), _group("bond", {"status": "active"})]) is None
+
+
+CPI = {2022: D(6), 2023: D(5), 2024: D(4), 2025: D(2)}
+
+
+def test_inflation_compounds_from_the_since_year_to_the_latest_year():
+    pct, period = ab.inflation(date(2023, 3, 1), CPI)
+    assert period == "2023–2025"
+    assert float(pct) == pytest.approx(((1.05 * 1.04 * 1.02) ** (1 / 3) - 1) * 100, abs=0.01)
+    assert ab.inflation(date(2025, 12, 1), CPI) == (D("2.00"), "2025")
+
+
+def test_inflation_clips_to_the_data_and_is_null_without_overlap():
+    pct, period = ab.inflation(date(2001, 1, 1), CPI)
+    assert period == "2022–2025"
+    assert float(pct) == pytest.approx(((1.06 * 1.05 * 1.04 * 1.02) ** 0.25 - 1) * 100, abs=0.01)
+    assert ab.inflation(date(2030, 1, 1), CPI) == (None, None)
+    assert ab.inflation(None, CPI) == (None, None)
+
+
+def test_cpi_seed_file_loads():
+    cpi = ab.load_cpi()
+    assert min(cpi) == 2013 and max(cpi) >= 2025
+    assert all(D(0) < v < D(15) for v in cpi.values())
+
+
+def _stock(id_, start):
+    return {
+        "id": id_, "name": f"S{id_}", "status": "active", "invested": D(1000),
+        "current_value": D(1800), "buy_date": start, "price": D(1), "symbol": f"S{id_}",
+    }  # fmt: skip
+
+
+def test_benchmark_block_in_returns():
+    groups = [
+        _group("fd", {**_fd(1, 1000, 1100, date(2025, 1, 1)), "principal": D(1000), "rate": D(7)}),
+        _group("stock", _stock(2, date(2024, 1, 1))),
+    ]
+    result = ar.returns(
+        groups, TODAY, benchmark_loader=lambda: ab.BenchmarkNavs("Test Fund", NAVS), cpi=CPI
+    )
+    bench = result["benchmark"]
+    assert bench["label"] == "Nifty 50 index fund" and bench["scheme_name"] == "Test Fund"
+    assert bench["nav_date"] == TODAY
+    assert bench["fd_rate"] == D("7.00")
+    assert (bench["inflation_pct"] is not None, bench["inflation_period"]) == (True, "2024–2025")
+    assert bench["overall"]["your_pct"] == result["overall"]["return_pct"]
+    assert bench["overall"]["annualised"] is True
+    equity = next(g for g in result["by_class"] if g["key"] == "equity")
+    assert bench["equity"]["your_pct"] == equity["return_pct"]
+    assert bench["equity"]["benchmark_pct"] == D("15.36")
+
+
+def test_benchmark_is_null_without_loader_flows_or_navs():
+    groups = [_group("stock", _stock(2, date(2024, 1, 1)))]
+    assert ar.returns(groups, TODAY)["benchmark"] is None
+    assert ar.returns(groups, TODAY, benchmark_loader=lambda: None)["benchmark"] is None
+    calls = []
+    result = ar.returns([], TODAY, benchmark_loader=lambda: calls.append(1))
+    assert result["benchmark"] is None and not calls
+
+
+def test_endpoint_returns_benchmark(client, seeded, monkeypatch):  # noqa: F811
+    headers, _ = seeded
+    navs = ab.BenchmarkNavs("UTI Nifty 50 Index Fund", [(date(2000, 1, 1), D(100)), (TODAY, D(300))])
+    monkeypatch.setattr(returns_router, "_fetch_benchmark_navs", lambda bind: navs)
+    bench = _get(client, headers)["benchmark"]
+    assert bench["label"] == "Nifty 50 index fund"
+    assert bench["scheme_name"] == "UTI Nifty 50 Index Fund"
+    assert bench["nav_date"] == "2026-11-02"
+    assert bench["fd_rate"] == 8.0
+    assert bench["overall"]["benchmark_pct"] is not None
+    assert bench["inflation_period"].endswith("–2025")

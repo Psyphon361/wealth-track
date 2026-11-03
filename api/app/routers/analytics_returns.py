@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from decimal import Decimal
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import current_user
 from app.models.mf_transaction import MFTransaction
+from app.models.mf_master import MFMaster, MFNavHistory, MFNavLatest
 from app.models.mutual_fund import MutualFund
 from app.models.nps_master import NpsNavHistory
 from app.models.user import User
@@ -21,6 +23,10 @@ from app.routers.analytics import (
 from app.routers.portfolio import load_groups
 from app.schemas.analytics_returns import AnalyticsReturns
 from app.services import analytics_returns
+from app.services.analytics_benchmark import BENCHMARK_SCHEME_CODE, BenchmarkNavs
+from app.services.nav_history import NavSourceError, resolve_nav
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["analytics"])
 
@@ -76,6 +82,37 @@ def _fetch_nps_start_navs(bind: Any, groups: list[dict[str, Any]]) -> dict[int, 
     return out
 
 
+def _fetch_benchmark_navs(bind: Any) -> BenchmarkNavs | None:
+    """The index fund's NAV history, fetched from mfapi.in when missing or older than 24 h (the
+    existing on-demand store). None when no NAV is available."""
+    code = BENCHMARK_SCHEME_CODE
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        try:
+            # date.min is never served from cache, so a stale sync refetches.
+            resolve_nav(session, code, date.min)
+        except NavSourceError:
+            logger.warning("Benchmark NAV fetch failed for scheme %s", code, exc_info=True)
+            session.rollback()
+        rows = {
+            r.nav_date: r.nav
+            for r in session.execute(
+                select(MFNavHistory.nav_date, MFNavHistory.nav).where(
+                    MFNavHistory.scheme_code == code
+                )
+            )
+        }
+        latest = session.get(MFNavLatest, code)
+        if latest is not None:
+            rows[latest.nav_date] = latest.nav
+        if not rows:
+            return None
+        master = session.get(MFMaster, code)
+        return BenchmarkNavs(
+            scheme_name=master.name if master else "UTI Nifty 50 Index Fund",
+            rows=sorted(rows.items()),
+        )
+
+
 @router.get("/analytics/returns", response_model=AnalyticsReturns)
 def get_returns(db: Session = Depends(get_db), user: User = Depends(current_user)):
     """XIRR overall, per class and per type, best/worst holdings, exclusions and reference rates."""
@@ -97,4 +134,5 @@ def get_returns(db: Session = Depends(get_db), user: User = Depends(current_user
         mf_masters=mf_masters,
         mf_transactions=mf_transactions,
         nps_start_navs=_fetch_nps_start_navs(bind, groups),
+        benchmark_loader=lambda: _fetch_benchmark_navs(bind),
     )
