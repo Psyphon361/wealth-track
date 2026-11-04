@@ -149,22 +149,30 @@ def _value_payout_fd(fd: Any, today: date, maturity: date) -> dict[str, Any]:
     return out
 
 
-def value_rd(rd: Any, today: date | None = None) -> dict[str, Any]:
-    today = today or date.today()
+def rd_position(rd: Any, at: date) -> tuple[int, float]:
+    """(instalments paid, their grown value) of an RD as of `at`: each instalment on or before
+    `at` (and before maturity) grown to min(at, maturity)."""
     maturity = _maturity(rd)
-    end = min(today, maturity)
+    end = min(at, maturity)
     count = 0
     current = 0.0
     k = 0
     while True:
         d = rd.start_date + relativedelta(months=k)
-        if d >= maturity or d > today:
+        if d >= maturity or d > at:
             break
         count += 1
         current += _grow(
             rd.monthly_instalment, rd.rate, rd.compounding, _year_fraction(d, end)
         )
         k += 1
+    return count, current
+
+
+def value_rd(rd: Any, today: date | None = None) -> dict[str, Any]:
+    today = today or date.today()
+    maturity = _maturity(rd)
+    count, current = rd_position(rd, today)
     invested = count * Decimal(rd.monthly_instalment)
     return _result(invested, current, maturity, _status(today, maturity))
 
