@@ -17,7 +17,7 @@ class TaxFy(BaseModel):
 
 class TaxHolding(BaseModel):
     id: int
-    type: Literal["fd", "rd"]
+    type: Literal["fd", "rd", "bond"]
     name: str
     interest_to_date: Amount
     interest_projected: Amount
@@ -26,8 +26,8 @@ class TaxHolding(BaseModel):
 class TaxPayer(BaseModel):
     key: str
     name: str
-    kind: Literal["bank", "company"]
-    threshold: Amount
+    kind: Literal["bank", "company", "bond"]
+    threshold: Amount | None
     interest_to_date: Amount
     interest_projected: Amount
     crosses: bool
@@ -46,6 +46,25 @@ class TaxSavings(BaseModel):
     accounts: int
 
 
+class TaxTaxable(BaseModel):
+    interest_to_date: Amount
+    interest_projected: Amount
+
+
+class TaxFreeItem(BaseModel):
+    kind: Literal["ppf", "epf", "vpf", "tax_free_bond"]
+    id: int
+    name: str
+    interest_to_date: Amount
+    interest_projected: Amount
+
+
+class TaxFree(BaseModel):
+    interest_to_date: Amount
+    interest_projected: Amount
+    items: list[TaxFreeItem]
+
+
 class TaxExcluded(BaseModel):
     bonds: int
 
@@ -60,4 +79,6 @@ class AnalyticsTax(BaseModel):
     payers: list[TaxPayer]
     totals: TaxTotals
     savings: TaxSavings | None
+    taxable: TaxTaxable
+    tax_free: TaxFree
     excluded: TaxExcluded
