@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/analytics", label: "Overview" },
   { href: "/analytics/performance", label: "Performance" },
+  { href: "/analytics/interest", label: "Interest & TDS" },
 ];
 
 /** Pill bar linking the analytics sub-pages. */

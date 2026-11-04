@@ -969,3 +969,42 @@ export interface AnalyticsReturns {
   excluded: ReturnsExcluded;
   benchmark?: ReturnsBenchmark | null;
 }
+
+export interface TaxFyOption {
+  start_year: number;
+  label: string;
+  is_current: boolean;
+}
+
+export interface TaxHolding {
+  id: number;
+  type: "fd" | "rd";
+  name: string;
+  interest_to_date: number;
+  interest_projected: number;
+}
+
+export interface TaxPayer {
+  key: string;
+  name: string;
+  kind: "bank" | "company";
+  threshold: number;
+  interest_to_date: number;
+  interest_projected: number;
+  crosses: boolean;
+  tds_estimate: number;
+  holdings: TaxHolding[];
+}
+
+export interface AnalyticsTax {
+  fy: string;
+  fy_start: string;
+  fy_end: string;
+  as_of: string;
+  is_current: boolean;
+  available_fys: TaxFyOption[];
+  payers: TaxPayer[];
+  totals: { interest_to_date: number; interest_projected: number; tds_estimate: number };
+  savings: { interest_estimate: number; accounts: number } | null;
+  excluded: { bonds: number };
+}
