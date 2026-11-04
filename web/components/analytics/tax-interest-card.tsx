@@ -35,9 +35,9 @@ export function TaxInterestCard({
             Interest this year
           </p>
           <CardInfo>
-            Interest your FDs and RDs earn in the financial year (1 April to 31 March), grouped by
-            bank or company. Banks deduct TDS once one bank&apos;s interest passes its limit. The
-            figures assume you add no new deposits.
+            Interest your FDs, RDs and bonds pay in the financial year (1 April to 31 March),
+            grouped by bank or issuer. TDS is deducted once one payer&apos;s interest passes its
+            limit. The figures assume you add no new deposits.
           </CardInfo>
         </div>
         {items.length > 0 && (
@@ -70,13 +70,13 @@ export function TaxInterestCard({
 
       {tax.payers.length === 0 ? (
         <p className="py-4 text-center text-xs text-muted-foreground">
-          No FD or RD interest in this year.
+          No FD, RD or bond interest in this year.
         </p>
       ) : (
         <ul className="flex flex-col gap-0.5">
           {tax.payers.map((p) => {
             const isOpen = open === p.key;
-            const share = barShare(p.interest_projected, p.threshold);
+            const share = p.threshold === null ? 0 : barShare(p.interest_projected, p.threshold);
             return (
               <li key={p.key} className="min-w-0">
                 <button
@@ -98,18 +98,20 @@ export function TaxInterestCard({
                     >
                       {payerHint(p)}
                     </span>
-                    <span
-                      className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"
-                      aria-hidden="true"
-                    >
+                    {p.threshold !== null && (
                       <span
-                        className={`block h-full rounded-full ${p.crosses ? "bg-loss" : ""}`}
-                        style={{
-                          width: `${share}%`,
-                          ...(p.crosses ? {} : { backgroundColor: MONEY_COLOR }),
-                        }}
-                      />
-                    </span>
+                        className="mt-1 block h-1 overflow-hidden rounded-full bg-muted"
+                        aria-hidden="true"
+                      >
+                        <span
+                          className={`block h-full rounded-full ${p.crosses ? "bg-loss" : ""}`}
+                          style={{
+                            width: `${share}%`,
+                            ...(p.crosses ? {} : { backgroundColor: MONEY_COLOR }),
+                          }}
+                        />
+                      </span>
+                    )}
                   </span>
                   <span className="num shrink-0 text-right">
                     {formatINRWhole(p.interest_projected)}

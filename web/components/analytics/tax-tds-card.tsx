@@ -15,8 +15,9 @@ export function TaxTdsCard({ tax }: { tax: AnalyticsTax }) {
         </p>
         <CardInfo>
           A bank deducts 10% TDS on a whole year&apos;s interest once it passes ₹50,000 (₹10,000
-          for finance companies). This assumes you have given your PAN. TDS is not an extra tax:
-          you can claim it back in your tax return.
+          for finance companies and listed bond issuers). Government bonds and SGBs have no TDS.
+          This assumes you have given your PAN. TDS is not an extra tax: you can claim it back in
+          your tax return.
         </CardInfo>
       </div>
 

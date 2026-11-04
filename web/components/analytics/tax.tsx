@@ -4,9 +4,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ANALYTICS_TAX_PATH } from "@/lib/analytics";
-import { BONDS_NOTE, SAVINGS_80TTA_NOTE, savingsSentence } from "@/lib/tax";
+import { bondsNote, savingsSentence } from "@/lib/tax";
 import type { AnalyticsTax } from "@/lib/types";
 import { TaxInterestCard } from "./tax-interest-card";
+import { TaxSlabCard } from "./tax-slab-card";
+import { TaxSplitCard } from "./tax-split-card";
 import { TaxTdsCard } from "./tax-tds-card";
 import { useAnalyticsSection } from "./use-analytics-section";
 
@@ -50,19 +52,23 @@ export function Tax() {
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <div className="flex min-w-0 flex-col gap-3">
           <TaxInterestCard tax={tax} switching={switching} onFyChange={setFy} />
+          <TaxSplitCard tax={tax} />
         </div>
         <div className="flex min-w-0 flex-col gap-3">
           <TaxTdsCard tax={tax} />
+          <TaxSlabCard tax={tax} switching={switching} />
         </div>
       </div>
 
       <div className="space-y-0.5">
         {tax.savings && (
           <p className="text-xs text-muted-foreground">
-            {savingsSentence(tax.savings)} {SAVINGS_80TTA_NOTE}
+            {savingsSentence(tax.savings)}
           </p>
         )}
-        {tax.excluded.bonds > 0 && <p className="text-xs text-muted-foreground">{BONDS_NOTE}</p>}
+        {tax.excluded.bonds > 0 && (
+          <p className="text-xs text-muted-foreground">{bondsNote(tax.excluded.bonds)}</p>
+        )}
       </div>
     </div>
   );

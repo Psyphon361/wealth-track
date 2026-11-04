@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   barShare,
+  bondsNote,
   fyDisplay,
+  parseSlab,
+  slabSentence,
+  taxableShare,
+  taxOnInterest,
   fyOptionLabel,
   interestSubline,
   joinNames,
@@ -34,6 +39,8 @@ const tax = (over: Partial<AnalyticsTax> = {}): AnalyticsTax => ({
   payers: [],
   totals: { interest_to_date: 31000, interest_projected: 52000, tds_estimate: 0 },
   savings: null,
+  taxable: { interest_to_date: 31000, interest_projected: 52000 },
+  tax_free: { interest_to_date: 0, interest_projected: 0, items: [] },
   excluded: { bonds: 0 },
   ...over,
 });
@@ -98,13 +105,73 @@ describe("tdsSentence", () => {
   });
 });
 
+describe("slab maths", () => {
+  it("adds 4% cess and rounds to whole rupees", () => {
+    expect(taxOnInterest(100000, 30)).toBe(31200);
+    expect(taxOnInterest(12345, 10)).toBe(1284);
+    expect(taxOnInterest(100000, 0)).toBe(0);
+    expect(taxOnInterest(0, 30)).toBe(0);
+  });
+  it("parses only valid stored slabs", () => {
+    expect(parseSlab("30")).toBe(30);
+    expect(parseSlab("0")).toBe(0);
+    expect(parseSlab("12")).toBeNull();
+    expect(parseSlab("")).toBeNull();
+    expect(parseSlab("abc")).toBeNull();
+    expect(parseSlab(null)).toBeNull();
+  });
+  it("splits the bar by taxable share", () => {
+    expect(taxableShare(75, 25)).toBe(75);
+    expect(taxableShare(0, 0)).toBe(0);
+  });
+  it("says you pay more when tax exceeds TDS", () => {
+    expect(slabSentence(100000, 10000, 30, true)).toBe(
+      "At 30%, tax on ₹1,00,000 of taxable interest is about ₹31,200. Banks and issuers deduct ₹10,000, so you'd pay about ₹21,200 more when you file.",
+    );
+  });
+  it("says you get money back when TDS exceeds tax", () => {
+    expect(slabSentence(100000, 10000, 5, true)).toBe(
+      "At 5%, tax on ₹1,00,000 of taxable interest is about ₹5,200. Banks and issuers deduct ₹10,000, so you'd get about ₹4,800 back.",
+    );
+  });
+  it("handles the 0% slab", () => {
+    expect(slabSentence(100000, 0, 0, true)).toBe("No tax on this interest at 0%.");
+    expect(slabSentence(100000, 6000, 0, true)).toContain("₹6,000 in TDS, which you can claim back");
+  });
+  it("handles no TDS", () => {
+    expect(slabSentence(100000, 0, 10, true)).toContain("No TDS is taken, so you'd pay about ₹10,400 more");
+  });
+  it("uses past tense for a past year", () => {
+    expect(slabSentence(100000, 10000, 30, false)).toContain("Banks and issuers deducted ₹10,000");
+  });
+});
+
+describe("bondsNote", () => {
+  it("pluralises", () => {
+    expect(bondsNote(1)).toBe("1 bond without coupon details isn't included.");
+    expect(bondsNote(2)).toBe("2 bonds without coupon details aren't included.");
+  });
+});
+
 describe("payerHint and savingsSentence", () => {
   it("describes the limit", () => {
     expect(payerHint(payer())).toBe("Over the ₹50,000 limit");
     expect(payerHint(payer({ crosses: false, threshold: 10000 }))).toBe("Limit ₹10,000");
   });
+  it("says no TDS for payers without a limit", () => {
+    expect(payerHint(payer({ threshold: null, crosses: false }))).toBe("No TDS");
+  });
+  it("mentions issuers when a bond payer is present", () => {
+    const payers = [payer({ crosses: false }), payer({ kind: "bond", crosses: false })];
+    expect(tdsSentence(payers, true)).toBe("No bank or issuer crosses its TDS limit this year.");
+  });
   it("pluralises accounts", () => {
-    expect(savingsSentence({ interest_estimate: 1200, accounts: 1 })).toContain("1 account.");
-    expect(savingsSentence({ interest_estimate: 1200, accounts: 2 })).toContain("2 accounts.");
+    expect(savingsSentence({ interest_estimate: 1200, accounts: 1 })).toContain("across 1 account.");
+    expect(savingsSentence({ interest_estimate: 1200, accounts: 2 })).toContain("across 2 accounts.");
+  });
+  it("gives the savings footnote in full", () => {
+    expect(savingsSentence({ interest_estimate: 1200, accounts: 1 })).toBe(
+      "Savings interest is about ₹1,200 across 1 account. It's taxable, with no TDS. Under the old regime up to ₹10,000 of it is deductible (80TTA); the new regime has no such deduction.",
+    );
   });
 });

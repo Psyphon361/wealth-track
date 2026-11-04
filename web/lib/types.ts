@@ -978,7 +978,15 @@ export interface TaxFyOption {
 
 export interface TaxHolding {
   id: number;
-  type: "fd" | "rd";
+  type: "fd" | "rd" | "bond";
+  name: string;
+  interest_to_date: number;
+  interest_projected: number;
+}
+
+export interface TaxFreeItem {
+  kind: "ppf" | "epf" | "vpf" | "tax_free_bond";
+  id: number;
   name: string;
   interest_to_date: number;
   interest_projected: number;
@@ -987,8 +995,8 @@ export interface TaxHolding {
 export interface TaxPayer {
   key: string;
   name: string;
-  kind: "bank" | "company";
-  threshold: number;
+  kind: "bank" | "company" | "bond";
+  threshold: number | null;
   interest_to_date: number;
   interest_projected: number;
   crosses: boolean;
@@ -1006,5 +1014,11 @@ export interface AnalyticsTax {
   payers: TaxPayer[];
   totals: { interest_to_date: number; interest_projected: number; tds_estimate: number };
   savings: { interest_estimate: number; accounts: number } | null;
+  taxable: { interest_to_date: number; interest_projected: number };
+  tax_free: {
+    interest_to_date: number;
+    interest_projected: number;
+    items: TaxFreeItem[];
+  };
   excluded: { bonds: number };
 }
