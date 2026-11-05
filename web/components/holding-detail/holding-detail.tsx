@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { BondSchedule } from "@/components/analytics/bond-schedule";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { useBreadcrumbLabel } from "@/components/breadcrumb-label";
 import { DeleteDialog, type DeleteTarget } from "@/components/portfolio/delete-dialog";
@@ -173,6 +174,7 @@ function TypedDetail<TRow extends HoldingRow>({
       {master ? (
         <Section title="Instrument" fields={detail.instrument(master, item)} />
       ) : null}
+      {config.type === "bond" ? <BondSchedule id={item.id} /> : null}
       {item.notes ? <NotesSection notes={item.notes} /> : null}
 
       <EditDialog

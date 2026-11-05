@@ -13,6 +13,7 @@ import { AllocationCard } from "./allocation-card";
 import { BankSafetyCard } from "./bank-safety-card";
 import { ComingUpCard } from "./coming-up-card";
 import { ConcentrationCard } from "./concentration-card";
+import { InflowsCard } from "./inflows-card";
 import { LiquidityCard } from "./liquidity-card";
 import { DataHealthStrip, newestPriceDate } from "./data-health-strip";
 import { formatDate } from "@/lib/format";
@@ -129,6 +130,7 @@ export function Analytics() {
           <ComingUpCard comingUp={data.coming_up} />
         </div>
       </div>
+      <InflowsCard />
       <ConcentrationCard concentration={data.concentration} />
       {newest && (
         <p className="text-right text-xs text-muted-foreground">

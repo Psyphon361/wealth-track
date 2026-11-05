@@ -976,12 +976,23 @@ export interface TaxFyOption {
   is_current: boolean;
 }
 
+export interface TaxPayment {
+  date: string;
+  gross: number;
+  tds: number;
+  net: number;
+  paid: boolean;
+}
+
 export interface TaxHolding {
   id: number;
   type: "fd" | "rd" | "bond";
   name: string;
+  subtitle?: string | null;
   interest_to_date: number;
   interest_projected: number;
+  tds_estimate: number;
+  payments?: TaxPayment[] | null;
 }
 
 export interface TaxFreeItem {
@@ -992,10 +1003,22 @@ export interface TaxFreeItem {
   interest_projected: number;
 }
 
+export type TaxTdsRule = "threshold" | "every_payment" | "none";
+
+export interface TaxClassRow {
+  type: "fd" | "rd" | "bond" | "savings";
+  label: string;
+  interest_to_date: number;
+  interest_projected: number;
+  tds_estimate: number;
+  holdings_count: number;
+}
+
 export interface TaxPayer {
   key: string;
   name: string;
   kind: "bank" | "company" | "bond";
+  tds_rule: TaxTdsRule;
   threshold: number | null;
   interest_to_date: number;
   interest_projected: number;
@@ -1012,6 +1035,7 @@ export interface AnalyticsTax {
   is_current: boolean;
   available_fys: TaxFyOption[];
   payers: TaxPayer[];
+  by_class: TaxClassRow[];
   totals: { interest_to_date: number; interest_projected: number; tds_estimate: number };
   savings: { interest_estimate: number; accounts: number } | null;
   taxable: { interest_to_date: number; interest_projected: number };
@@ -1021,4 +1045,47 @@ export interface AnalyticsTax {
     items: TaxFreeItem[];
   };
   excluded: { bonds: number };
+}
+
+export interface BondPayment {
+  date: string;
+  kind: "coupon" | "redemption";
+  gross: number;
+  tds: number;
+  net: number;
+  fy: string;
+  paid: boolean;
+  estimated_value?: boolean;
+}
+
+export interface BondFyRow {
+  fy: string;
+  coupons: number;
+  gross: number;
+  tds: number;
+  net: number;
+}
+
+export interface BondScheduleBond {
+  id: number;
+  name: string;
+  issuer: string | null;
+  bond_type: BondType;
+  coupon_rate: number | null;
+  frequency: string | null;
+  face_value: number | null;
+  quantity: number;
+  purchase_date: string;
+  maturity_date: string;
+  tds_rate: number;
+  estimated: boolean;
+  payments: BondPayment[];
+  next_payment: BondPayment | null;
+  by_fy: BondFyRow[];
+}
+
+export interface BondSchedule {
+  as_of: string;
+  bonds: BondScheduleBond[];
+  excluded: number;
 }
