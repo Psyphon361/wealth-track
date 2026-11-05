@@ -13,6 +13,7 @@ import { MONEY_COLOR, columnLabel, monthLabel } from "@/lib/growth";
 import {
   defaultMonth,
   filterInflows,
+  inflowAmountText,
   inflowColumns,
   inflowHref,
   inflowKindLabel,
@@ -307,8 +308,9 @@ function InflowsBody({
                           </span>
                         </span>
                         <span className="num shrink-0">
-                          {formatINRWhole(
-                            Math.round(interestOnly ? it.interest : itemTotal(it)),
+                          {inflowAmountText(
+                            it.kind,
+                            formatINRWhole(Math.round(interestOnly ? it.interest : itemTotal(it))),
                           )}
                         </span>
                       </Link>

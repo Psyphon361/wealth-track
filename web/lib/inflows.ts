@@ -1,6 +1,6 @@
 import { ANALYTICS_INFLOWS_PATH } from "./analytics";
 
-export type InflowKind = "coupon" | "interest_payout" | "maturity" | "redemption";
+export type InflowKind = "coupon" | "interest_payout" | "maturity" | "redemption" | "sale";
 
 export interface InflowItem {
   date: string;
@@ -47,6 +47,7 @@ const KIND_LABELS: Record<InflowKind, string> = {
   interest_payout: "Interest Payout",
   maturity: "Maturity",
   redemption: "Redemption",
+  sale: "Planned sale (est.)",
 };
 
 export function inflowTypeLabel(slug: string): string {
@@ -55,6 +56,11 @@ export function inflowTypeLabel(slug: string): string {
 
 export function inflowKindLabel(kind: InflowKind): string {
   return KIND_LABELS[kind] ?? kind;
+}
+
+/** An item's amount as shown in the list: a planned sale is an estimate, so it gets "≈ ". */
+export function inflowAmountText(kind: InflowKind, formatted: string): string {
+  return kind === "sale" ? `≈ ${formatted}` : formatted;
 }
 
 export function inflowsPath(months: InflowMonthsCount): string {

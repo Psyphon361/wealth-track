@@ -12,6 +12,7 @@ import { useCountUp } from "@/components/analytics/use-count-up";
 import {
   ALL_BONDS,
   BOND_SCHEDULE_PATH,
+  approxAmount,
   axisLabels,
   axisLayout,
   bucketFy,
@@ -25,16 +26,21 @@ import {
   fyPlacements,
   fyShares,
   fyShort,
+  hasPlannedSale,
   hoverSummary,
   maxColumn,
   mergeFy,
   monthBuckets,
   nextBucketIndex,
   nextSubline,
+  nonCouponLine,
   optionDetail,
   PAYOUT_PAGE,
   payoutPaging,
+  payoutsNote,
   payoutStatusText,
+  plannedSaleLabel,
+  plannedSaleNote,
   redemptionLabel,
   selectBonds,
   showMoreCount,
@@ -82,7 +88,9 @@ function HoverCard({
   return (
     <>
       <p className="sr-only" role="status">
-        {visible && s ? `${s.title}: ${formatINRWhole(s.amount)} ${s.amountLabel}, ${s.status}` : ""}
+        {visible && s
+          ? `${s.title}: ${s.approx ? approxAmount(formatINRWhole(s.amount)) : formatINRWhole(s.amount)} ${s.amountLabel}, ${s.status}`
+          : ""}
       </p>
       <div
         ref={cardRef}
@@ -102,7 +110,7 @@ function HoverCard({
                 <span className="text-xs text-muted-foreground">{s.status}</span>
               </div>
               <p className="num text-[18px] leading-7 font-medium">
-                {formatINRWhole(amount)}
+                {s.approx ? approxAmount(formatINRWhole(amount)) : formatINRWhole(amount)}
                 <span className="ml-1.5 text-xs font-normal text-muted-foreground">
                   {s.amountLabel}
                 </span>
@@ -121,9 +129,9 @@ function HoverCard({
                     <li key={r.key} className="flex items-center justify-between gap-3 text-xs">
                       <span className="min-w-0 truncate text-muted-foreground">{r.label}</span>
                       <span
-                        className={`num shrink-0 ${r.key.startsWith("redemption|") ? "text-gain" : ""}`}
+                        className={`num shrink-0 ${r.key.startsWith("coupon|") ? "" : "text-gain"}`}
                       >
-                        {formatINRWhole(r.amount)}
+                        {r.approx ? approxAmount(formatINRWhole(r.amount)) : formatINRWhole(r.amount)}
                       </span>
                     </li>
                   ))}
@@ -280,6 +288,13 @@ function Chart({
                       title={redemptionLabel(b.redemption)}
                     />
                   )}
+                  {b.sale > 0 && (
+                    <span
+                      className={`size-2.5 rotate-45 rounded-[2px] border border-gain transition-transform duration-500 motion-reduce:transition-none ${grown ? "scale-100" : "scale-0"}`}
+                      style={{ transitionDelay: delay }}
+                      title={plannedSaleLabel(b.sale)}
+                    />
+                  )}
                 </div>
                 <div className="flex h-28 w-full items-end justify-center border-b border-border/60">
                   {total > 0 && (
@@ -322,7 +337,7 @@ function Chart({
                 onMouseEnter={() => onHover(i)}
                 onFocus={() => onHover(i)}
                 onClick={() => onHover(i)}
-                aria-label={`${b.label} ${b.year}: ${formatINRWhole(b.net)} after TDS${b.redemption > 0 ? `, ${redemptionLabel(b.redemption)}` : ""}`}
+                aria-label={`${b.label} ${b.year}: ${formatINRWhole(b.net)} after TDS${b.redemption > 0 ? `, ${redemptionLabel(b.redemption)}` : ""}${b.sale > 0 ? `, ${plannedSaleLabel(b.sale)}` : ""}`}
                 className={`flex outline-none focus-visible:ring-2 focus-visible:ring-ring ${cls}`}
               >
                 {body}
@@ -385,7 +400,7 @@ function DateTile({ iso }: { iso: string }) {
  */
 function FyPayouts({ bonds, fy, multi }: { bonds: BondScheduleBond[]; fy: string; multi: boolean }) {
   const rows = fyPayoutRows(bonds, fy);
-  const hasRepayment = rows.some((r) => r.kind === "redemption");
+  const note = payoutsNote(rows);
   const [shown, setShown] = useState(PAYOUT_PAGE);
   const paging = payoutPaging(rows.length, shown);
 
@@ -393,7 +408,7 @@ function FyPayouts({ bonds, fy, multi }: { bonds: BondScheduleBond[]; fy: string
     <div className={`mt-2 mb-3 ml-6 -mr-[7px] ${EXPAND_IN}`}>
       <ul className="flex flex-col divide-y divide-border/50 overflow-hidden rounded-lg border border-border/60">
         {rows.slice(0, paging.visible).map((r, i) => {
-          const repay = r.kind === "redemption";
+          const repay = r.kind !== "coupon";
           const muted = r.paid ? "text-muted-foreground" : "";
           return (
             <li
@@ -409,8 +424,8 @@ function FyPayouts({ bonds, fy, multi }: { bonds: BondScheduleBond[]; fy: string
                   {repay || multi ? r.name : formatDate(r.date)}
                 </span>
                 <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
-                  {repay ? (
-                    <span className="truncate text-gain">◆ Repayment of principal</span>
+                  {r.kind !== "coupon" ? (
+                    <span className="truncate text-gain">{nonCouponLine(r.kind)}</span>
                   ) : (
                     <>
                       <span
@@ -432,7 +447,9 @@ function FyPayouts({ bonds, fy, multi }: { bonds: BondScheduleBond[]; fy: string
                 {repay ? "—" : r.tds > 0 ? formatINR(r.tds) : "₹0"}
               </span>
               <span className={`num w-20 shrink-0 text-right text-[13.5px] ${muted}`}>
-                {formatINR(repay ? r.gross : r.net)}
+                {r.kind === "sale"
+                  ? approxAmount(formatINR(r.gross))
+                  : formatINR(repay ? r.gross : r.net)}
               </span>
             </li>
           );
@@ -463,11 +480,7 @@ function FyPayouts({ bonds, fy, multi }: { bonds: BondScheduleBond[]; fy: string
           </li>
         )}
       </ul>
-      {hasRepayment && (
-        <p className="pt-1.5 text-xs text-muted-foreground">
-          Repayments aren&apos;t in the year totals.
-        </p>
-      )}
+      {note !== null && <p className="pt-1.5 text-xs text-muted-foreground">{note}</p>}
     </div>
   );
 }
@@ -491,6 +504,8 @@ function Body({ bonds, asOf, multi }: { bonds: BondScheduleBond[]; asOf: string;
   const shares = fyShares(fyRows);
   const net = useCountUp(next?.net ?? 0);
   const activeFy = hover !== null ? bucketFy(buckets[hover]) : hoverFy;
+  const saleNote = bonds.length === 1 ? plannedSaleNote(bonds[0]) : null;
+  const anySale = hasPlannedSale(bonds);
 
   return (
     <>
@@ -499,7 +514,7 @@ function Body({ bonds, asOf, multi }: { bonds: BondScheduleBond[]; asOf: string;
         {next ? (
           <>
             <p className="num text-xl font-semibold">
-              {formatINR(net)}
+              {next.sale > 0 ? approxAmount(formatINR(net)) : formatINR(net)}
               <span className="ml-2 text-[13.5px] font-normal text-muted-foreground">
                 {daysText(next.days)} · {formatDate(next.date)}
               </span>
@@ -510,6 +525,7 @@ function Body({ bonds, asOf, multi }: { bonds: BondScheduleBond[]; asOf: string;
                 <span className="font-sans"> · {next.names.join(", ")}</span>
               )}
             </p>
+            {saleNote !== null && <p className="text-xs text-muted-foreground">{saleNote}</p>}
           </>
         ) : (
           <>
@@ -567,6 +583,14 @@ function Body({ bonds, asOf, multi }: { bonds: BondScheduleBond[]; asOf: string;
           </span>
           Repayment
         </span>
+        {anySale && (
+          <span className="flex items-center gap-1.5">
+            <span className="text-gain" aria-hidden="true">
+              ◇
+            </span>
+            Planned sale
+          </span>
+        )}
       </div>
 
       {fyRows.length > 0 && (
@@ -662,7 +686,8 @@ function Loaded({ data, single }: { data: BondScheduleData; single: boolean }) {
             Estimated dates. Each bond&apos;s coupons are counted back from its maturity date using
             its payment frequency, and only after you bought it. Real dates can differ by a few
             days. Corporate bonds have 10% TDS on every coupon; government bonds, SGBs and tax-free
-            bonds have none.
+            bonds have none. A planned sale before the bond matures is shown at face value; the
+            actual price depends on the market.
           </CardInfo>
         </div>
         {showSelect && (

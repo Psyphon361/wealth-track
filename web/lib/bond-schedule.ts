@@ -1,5 +1,5 @@
 import { formatDate, formatINRWhole } from "./format";
-import type { BondFyRow, BondScheduleBond } from "./types";
+import type { BondFyRow, BondPayment, BondScheduleBond } from "./types";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const DAY_MS = 86_400_000;
@@ -70,12 +70,36 @@ export function couponProgress(bonds: BondScheduleBond[]): Progress {
   return { received, total, pct: total > 0 ? Math.min(100, (received / total) * 100) : 0 };
 }
 
+/** "≈ " in front of an already formatted amount that is an estimate (a planned sale). */
+export function approxAmount(formatted: string): string {
+  return `≈ ${formatted}`;
+}
+
+/** True when any of the bonds has a planned sale in its payments. */
+export function hasPlannedSale(bonds: BondScheduleBond[]): boolean {
+  return bonds.some((b) => b.payments.some((p) => p.kind === "sale"));
+}
+
+/**
+ * Muted line for a bond with a planned sale: "You plan to sell on 7 Jan 2027; the bond matures
+ * 7 Dec 2027." (the second part is left out when the bond's maturity is unknown). Null otherwise.
+ */
+export function plannedSaleNote(b: BondScheduleBond): string | null {
+  if (!b.planned_sale) return null;
+  const sell = `You plan to sell on ${formatDate(b.maturity_date)}`;
+  return b.bond_maturity_date
+    ? `${sell}; the bond matures ${formatDate(b.bond_maturity_date)}.`
+    : `${sell}.`;
+}
+
 export interface CombinedNext {
   date: string;
   days: number;
   names: string[];
   coupon: number;
   redemption: number;
+  /** Estimated principal from a planned sale. */
+  sale: number;
   tds: number;
   net: number;
 }
@@ -94,6 +118,7 @@ export function combinedNext(bonds: BondScheduleBond[], asOf: string): CombinedN
     names: [],
     coupon: 0,
     redemption: 0,
+    sale: 0,
     tds: 0,
     net: 0,
   };
@@ -102,6 +127,7 @@ export function combinedNext(bonds: BondScheduleBond[], asOf: string): CombinedN
     if (!p || p.date !== date) continue;
     out.names.push(b.name);
     if (p.kind === "redemption") out.redemption += p.gross;
+    else if (p.kind === "sale") out.sale += p.gross;
     else out.coupon += p.gross;
     out.tds += p.tds;
     out.net += p.net;
@@ -109,11 +135,12 @@ export function combinedNext(bonds: BondScheduleBond[], asOf: string): CombinedN
   return out;
 }
 
-/** Subline under the headline: coupon less TDS, plus any repayment. */
+/** Subline under the headline: coupon less TDS, plus any repayment or planned sale. */
 export function nextSubline(n: CombinedNext, fmt: (v: number) => string): string {
   const parts: string[] = [];
   if (n.coupon > 0) parts.push(`${fmt(n.coupon)} coupon − ${fmt(n.tds)} TDS`);
   if (n.redemption > 0) parts.push(`${fmt(n.redemption)} repaid at maturity`);
+  if (n.sale > 0) parts.push(`${approxAmount(fmt(n.sale))} planned sale`);
   return parts.join(" + ");
 }
 
@@ -121,7 +148,7 @@ export interface BucketItem {
   bondId: number;
   name: string;
   date: string;
-  kind: "coupon" | "redemption";
+  kind: BondPayment["kind"];
   gross: number;
   tds: number;
   net: number;
@@ -135,11 +162,13 @@ export interface MonthBucket {
   month: number;
   label: string;
   items: BucketItem[];
-  /** Coupons only: redemption is drawn as a marker, not a bar. */
+  /** Coupons only: redemption and planned sale are drawn as markers, not bars. */
   gross: number;
   tds: number;
   net: number;
   redemption: number;
+  /** Estimated principal of a planned sale. */
+  sale: number;
   /** Every payment in the month is paid. */
   paid: boolean;
 }
@@ -177,6 +206,7 @@ export function monthBuckets(bonds: BondScheduleBond[]): MonthBucket[] {
       tds: 0,
       net: 0,
       redemption: 0,
+      sale: 0,
       paid: true,
     });
   }
@@ -194,6 +224,7 @@ export function monthBuckets(bonds: BondScheduleBond[]): MonthBucket[] {
         paid: p.paid,
       });
       if (p.kind === "redemption") bucket.redemption += p.gross;
+      else if (p.kind === "sale") bucket.sale += p.gross;
       else {
         bucket.gross += p.gross;
         bucket.tds += p.tds;
@@ -336,7 +367,7 @@ export interface FyPayoutRow {
   date: string;
   /** Bond name; identical lines of the same bond on the same date are combined. */
   name: string;
-  kind: "coupon" | "redemption";
+  kind: BondPayment["kind"];
   /** How many identical payments were combined (shown as "×N" when above 1). */
   count: number;
   gross: number;
@@ -346,9 +377,11 @@ export interface FyPayoutRow {
   paid: boolean;
 }
 
+const KIND_ORDER: Record<BondPayment["kind"], number> = { coupon: 0, redemption: 1, sale: 2 };
+
 /**
- * The payouts behind one financial year's row, in date order (coupons before a repayment on the
- * same date). Lines of the same bond, kind and date are combined into one row with summed amounts.
+ * The payouts behind one financial year's row, in date order (coupons before a repayment or
+ * planned sale on the same date). Lines of the same bond, kind and date are combined into one row with summed amounts.
  */
 export function fyPayoutRows(bonds: BondScheduleBond[], fy: string): FyPayoutRow[] {
   const groups = new Map<string, FyPayoutRow>();
@@ -378,9 +411,23 @@ export function fyPayoutRows(bonds: BondScheduleBond[], fy: string): FyPayoutRow
   return [...groups.values()].sort(
     (a, b) =>
       a.date.localeCompare(b.date) ||
-      (a.kind === b.kind ? 0 : a.kind === "coupon" ? -1 : 1) ||
+      KIND_ORDER[a.kind] - KIND_ORDER[b.kind] ||
       a.name.localeCompare(b.name),
   );
+}
+
+/** Second line of a repayment or planned sale row in the payout list. */
+export function nonCouponLine(kind: "redemption" | "sale"): string {
+  return kind === "sale" ? "◇ Planned sale · estimated" : "◆ Repayment of principal";
+}
+
+/** Note under a year's payout list, or null when it has no repayment or planned sale. */
+export function payoutsNote(rows: { kind: BondPayment["kind"] }[]): string | null {
+  if (rows.some((r) => r.kind === "sale")) {
+    return "Repayments and planned sales aren't in the year totals.";
+  }
+  if (rows.some((r) => r.kind === "redemption")) return "Repayments aren't in the year totals.";
+  return null;
 }
 
 /** Payout rows shown at first, and added by each "Show more". */
@@ -438,11 +485,22 @@ export function bucketStatus(items: { paid: boolean }[]): "Paid" | "Upcoming" | 
 
 export interface HoverRow {
   key: string;
-  /** Bond name, plus " · Repayment" for a repayment and " ×N" when N payments were combined. */
+  /**
+   * Bond name, plus " · Repayment" for a repayment or " · Planned sale" for a planned sale, and
+   * " ×N" when N payments were combined.
+   */
   label: string;
-  /** Coupons: net of TDS. Repayments: the principal. */
+  /** Coupons: net of TDS. Repayments and planned sales: the principal. */
   amount: number;
+  /** Set (true) on a planned sale: the amount is an estimate, shown with "≈ ". */
+  approx?: boolean;
 }
+
+const KIND_SUFFIX: Record<BondPayment["kind"], string> = {
+  coupon: "",
+  redemption: " · Repayment",
+  sale: " · Planned sale",
+};
 
 /** Items with the same bond name and kind combined into one row, largest amount first. */
 export function groupItems(items: BucketItem[]): HoverRow[] {
@@ -451,24 +509,33 @@ export function groupItems(items: BucketItem[]): HoverRow[] {
     const key = `${it.kind}|${it.name}`;
     const g = groups.get(key) ?? { name: it.name, kind: it.kind, count: 0, amount: 0 };
     g.count += 1;
-    g.amount += it.kind === "redemption" ? it.gross : it.net;
+    g.amount += it.kind === "coupon" ? it.net : it.gross;
     groups.set(key, g);
   }
   return [...groups.entries()]
-    .map(([key, g]) => ({
-      key,
-      label: `${g.name}${g.kind === "redemption" ? " · Repayment" : ""}${g.count > 1 ? ` ×${g.count}` : ""}`,
-      amount: g.amount,
-    }))
+    .map(([key, g]): HoverRow => {
+      const row: HoverRow = {
+        key,
+        label: `${g.name}${KIND_SUFFIX[g.kind]}${g.count > 1 ? ` ×${g.count}` : ""}`,
+        amount: g.amount,
+      };
+      if (g.kind === "sale") row.approx = true;
+      return row;
+    })
     .sort((a, b) => b.amount - a.amount || a.label.localeCompare(b.label));
 }
 
 export interface HoverSummary {
   title: string;
   status: "Paid" | "Upcoming" | "Part paid";
-  /** Headline figure: the month's net coupons, or the repayment when the month has no coupon. */
+  /**
+   * Headline figure: the month's net coupons, or the repayment (or planned sale) when the month
+   * has no coupon.
+   */
   amount: number;
-  amountLabel: "net" | "repaid";
+  amountLabel: "net" | "repaid" | "planned sale";
+  /** The headline is an estimate (a planned sale): show it with "≈ ". */
+  approx: boolean;
   /** Gross coupons, or null when the month has no coupon. */
   coupon: number | null;
   tds: number;
@@ -479,19 +546,21 @@ export interface HoverSummary {
 
 /**
  * Everything the hover card shows for one month. With several bonds it lists the combined rows
- * (top `maxRows` plus a count of the rest); with one bond it lists only the repayment, and only
- * when the month also has coupons (otherwise the headline already is the repayment).
+ * (top `maxRows` plus a count of the rest); with one bond it lists only the repayment or planned
+ * sale, and only when the month also has coupons (otherwise the headline already is that line).
  */
 export function hoverSummary(b: MonthBucket, multi: boolean, maxRows = 3): HoverSummary {
   const hasCoupon = b.items.some((i) => i.kind === "coupon");
   const groups = groupItems(b.items);
   let rows = groups;
-  if (!multi) rows = hasCoupon ? groups.filter((g) => g.key.startsWith("redemption|")) : [];
+  if (!multi) rows = hasCoupon ? groups.filter((g) => !g.key.startsWith("coupon|")) : [];
+  const saleOnly = !hasCoupon && b.sale > 0 && b.redemption === 0;
   return {
     title: `${b.label} ${b.year}`,
     status: bucketStatus(b.items),
-    amount: hasCoupon ? b.net : b.redemption,
-    amountLabel: hasCoupon ? "net" : "repaid",
+    amount: hasCoupon ? b.net : saleOnly ? b.sale : b.redemption,
+    amountLabel: hasCoupon ? "net" : saleOnly ? "planned sale" : "repaid",
+    approx: saleOnly,
     coupon: hasCoupon ? b.gross : null,
     tds: b.tds,
     rows: rows.slice(0, maxRows),
@@ -521,4 +590,9 @@ export function cardLeftBeside(
 /** "₹1,00,000 back" label above the redemption marker. */
 export function redemptionLabel(amount: number): string {
   return `${formatINRWhole(amount)} back`;
+}
+
+/** "≈ ₹50,000 planned sale" label for the planned-sale marker. */
+export function plannedSaleLabel(amount: number): string {
+  return `${approxAmount(formatINRWhole(amount))} planned sale`;
 }

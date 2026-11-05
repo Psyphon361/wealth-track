@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   defaultMonth,
   filterInflows,
+  inflowAmountText,
   inflowColumns,
   inflowHref,
+  inflowKindLabel,
   inflowTotals,
   inflowTypeLabel,
   inflowsPath,
@@ -58,6 +60,41 @@ describe("filterInflows", () => {
 
   it("keeps empty months", () => {
     expect(filterInflows(months, "rd", false)).toHaveLength(3);
+  });
+});
+
+describe("planned sale", () => {
+  const withSale: InflowMonth[] = [
+    {
+      month: "2027-01",
+      interest: 0,
+      principal: 50000,
+      items: [
+        { date: "2027-01-07", type: "bond", id: 9, name: "Bond S", kind: "sale", interest: 0, principal: 50000 },
+      ],
+    },
+  ];
+
+  it("labels the kind as an estimate", () => {
+    expect(inflowKindLabel("sale")).toBe("Planned sale (est.)");
+    expect(inflowKindLabel("redemption")).toBe("Redemption");
+  });
+
+  it("prefixes only a planned sale amount with ≈", () => {
+    expect(inflowAmountText("sale", "₹50,000")).toBe("≈ ₹50,000");
+    expect(inflowAmountText("redemption", "₹50,000")).toBe("₹50,000");
+    expect(inflowAmountText("coupon", "₹500")).toBe("₹500");
+  });
+
+  it("counts a planned sale as principal", () => {
+    expect(inflowTotals(filterInflows(withSale, "all", false))).toEqual({ interest: 0, principal: 50000 });
+    expect(inflowColumns(withSale)[0].principalPct).toBe(100);
+  });
+
+  it("hides a planned sale under interest only", () => {
+    const out = filterInflows(withSale, "all", true);
+    expect(out[0].items).toHaveLength(0);
+    expect(inflowTotals(out)).toEqual({ interest: 0, principal: 0 });
   });
 });
 

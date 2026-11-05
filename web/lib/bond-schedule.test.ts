@@ -30,6 +30,12 @@ import {
   optionLabel,
   redemptionLabel,
   selectBonds,
+  approxAmount,
+  hasPlannedSale,
+  nonCouponLine,
+  payoutsNote,
+  plannedSaleLabel,
+  plannedSaleNote,
 } from "./bond-schedule";
 import type { BondPayment, BondScheduleBond } from "./types";
 
@@ -55,6 +61,8 @@ const bond = (over: Partial<BondScheduleBond> = {}): BondScheduleBond => ({
   quantity: 50,
   purchase_date: "2026-11-05",
   maturity_date: "2027-03-20",
+  planned_sale: false,
+  bond_maturity_date: "2027-03-20",
   tds_rate: 10,
   estimated: true,
   payments: [],
@@ -425,6 +433,99 @@ describe("fyPayoutRows", () => {
       ],
     });
     expect(fyPayoutRows([b], "2027-28").map((r) => r.kind)).toEqual(["coupon", "redemption"]);
+  });
+});
+
+describe("planned sale", () => {
+  const sale = (over: Partial<BondPayment> = {}) =>
+    pay({ kind: "sale", gross: 50000, tds: 0, net: 50000, estimated_value: true, ...over });
+  const saleBond = (over: Partial<BondScheduleBond> = {}) =>
+    bond({
+      planned_sale: true,
+      purchase_date: "2027-04-01",
+      maturity_date: "2027-04-18",
+      bond_maturity_date: "2027-12-07",
+      payments: [pay({ net: 360 }), sale()],
+      ...over,
+    });
+
+  it("words the amounts and labels", () => {
+    expect(approxAmount("₹50,000")).toBe("≈ ₹50,000");
+    expect(plannedSaleLabel(50000)).toBe("≈ ₹50,000 planned sale");
+    expect(nonCouponLine("sale")).toBe("◇ Planned sale · estimated");
+    expect(nonCouponLine("redemption")).toBe("◆ Repayment of principal");
+  });
+
+  it("words the single-bond note, leaving out an unknown maturity", () => {
+    const b = saleBond({ maturity_date: "2027-01-07", bond_maturity_date: "2027-12-07" });
+    expect(plannedSaleNote(b)).toBe("You plan to sell on 7 Jan 2027; the bond matures 7 Dec 2027.");
+    expect(plannedSaleNote({ ...b, bond_maturity_date: null })).toBe("You plan to sell on 7 Jan 2027.");
+    expect(plannedSaleNote(bond())).toBeNull();
+  });
+
+  it("detects a planned sale among the shown bonds", () => {
+    expect(hasPlannedSale([bond(), saleBond()])).toBe(true);
+    expect(hasPlannedSale([bond({ payments: [pay()] })])).toBe(false);
+  });
+
+  it("words the year note by what the year holds", () => {
+    expect(payoutsNote([{ kind: "coupon" }])).toBeNull();
+    expect(payoutsNote([{ kind: "coupon" }, { kind: "redemption" }])).toBe(
+      "Repayments aren't in the year totals.",
+    );
+    expect(payoutsNote([{ kind: "coupon" }, { kind: "sale" }])).toBe(
+      "Repayments and planned sales aren't in the year totals.",
+    );
+  });
+
+  it("keeps the sale out of the bars and in its own marker amount", () => {
+    const m = apr([saleBond()]);
+    expect(m).toMatchObject({ net: 360, sale: 50000, redemption: 0 });
+    expect(maxColumn([m])).toBe(400);
+  });
+
+  it("keeps a sale apart from the coupon and from a repayment", () => {
+    const m = apr([
+      saleBond(),
+      bond({ id: 2, name: "Other", payments: [pay({ kind: "redemption", gross: 1000, tds: 0, net: 1000 })] }),
+    ]);
+    expect(groupItems(m.items)).toEqual([
+      { key: "sale|Ugro 2027", label: "Ugro 2027 · Planned sale", amount: 50000, approx: true },
+      { key: "redemption|Other", label: "Other · Repayment", amount: 1000 },
+      { key: "coupon|Ugro 2027", label: "Ugro 2027", amount: 360 },
+    ]);
+  });
+
+  it("headlines a sale-only month as an estimate", () => {
+    const m = apr([saleBond({ payments: [sale()] })]);
+    const s = hoverSummary(m, false);
+    expect(s).toMatchObject({ amount: 50000, amountLabel: "planned sale", approx: true, coupon: null });
+    expect(s.rows).toEqual([]);
+  });
+
+  it("lists the sale line for one bond that also has a coupon that month", () => {
+    const s = hoverSummary(apr([saleBond()]), false);
+    expect(s).toMatchObject({ amountLabel: "net", approx: false });
+    expect(s.rows).toEqual([
+      { key: "sale|Ugro 2027", label: "Ugro 2027 · Planned sale", amount: 50000, approx: true },
+    ]);
+  });
+
+  it("does not mark a repayment-only month as an estimate", () => {
+    const m = apr([item({ kind: "redemption", gross: 50000, tds: 0, net: 50000 })]);
+    expect(hoverSummary(m, false)).toMatchObject({ amountLabel: "repaid", approx: false });
+  });
+
+  it("combines the soonest sale in the next-payout subline", () => {
+    const fmt = (v: number) => `₹${v}`;
+    const n = combinedNext([saleBond({ next_payment: sale({ date: "2027-04-18" }) })], "2027-04-01")!;
+    expect(n).toMatchObject({ sale: 50000, coupon: 0, redemption: 0, net: 50000 });
+    expect(nextSubline(n, fmt)).toBe("≈ ₹50000 planned sale");
+  });
+
+  it("lists a sale as its own payout row after the coupon of the same date", () => {
+    const b = saleBond({ payments: [sale(), pay()] });
+    expect(fyPayoutRows([b], "2027-28").map((r) => r.kind)).toEqual(["coupon", "sale"]);
   });
 });
 

@@ -1049,7 +1049,8 @@ export interface AnalyticsTax {
 
 export interface BondPayment {
   date: string;
-  kind: "coupon" | "redemption";
+  /** "sale": a planned sale before the bond matures; gross = net = estimated principal. */
+  kind: "coupon" | "redemption" | "sale";
   gross: number;
   tds: number;
   net: number;
@@ -1076,7 +1077,12 @@ export interface BondScheduleBond {
   face_value: number | null;
   quantity: number;
   purchase_date: string;
+  /** The holding's exit date: the planned sale date, else the bond's maturity. */
   maturity_date: string;
+  /** A sale before maturity is planned. */
+  planned_sale: boolean;
+  /** The bond's own maturity date. */
+  bond_maturity_date: string | null;
   tds_rate: number;
   estimated: boolean;
   payments: BondPayment[];
