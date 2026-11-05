@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, func
+from sqlalchemy import DateTime, ForeignKey, Numeric, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -12,6 +12,7 @@ class MFTransaction(Base):
     """A purchase or redemption of a mutual fund holding, stored from a CAS import."""
 
     __tablename__ = "mf_transactions"
+    __table_args__ = (UniqueConstraint("sip_id", "txn_date", name="uq_mf_transactions_sip_date"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     mutual_fund_id: Mapped[int] = mapped_column(
@@ -23,4 +24,6 @@ class MFTransaction(Base):
     )
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     units: Mapped[Decimal] = mapped_column(Numeric(14, 3))
+    # Set on instalments added by a SIP; the pair with txn_date stops one being posted twice.
+    sip_id: Mapped[int | None] = mapped_column(ForeignKey("mf_sips.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

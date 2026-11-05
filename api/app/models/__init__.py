@@ -7,6 +7,7 @@ from app.models.gold import Gold
 from app.models.gold_rate import GoldRateHistory, GoldRateLatest
 from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNavLatest
 from app.models.login_attempt import LoginAttempt
+from app.models.mf_sip import MfSip, MfSipSkip
 from app.models.mf_transaction import MFTransaction
 from app.models.mutual_fund import MutualFund
 from app.models.nps import Nps
@@ -35,6 +36,8 @@ __all__ = [
     "MFNavHistorySync",
     "MFNavLatest",
     "MFTransaction",
+    "MfSip",
+    "MfSipSkip",
     "LoginAttempt",
     "MutualFund",
     "Nps",

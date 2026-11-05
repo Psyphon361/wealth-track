@@ -3,12 +3,13 @@ from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
 from app.models.mf_transaction import MFTransaction
+from app.models.mutual_fund import MutualFund
 from app.models.user import User
 from app.routers.portfolio import _q, load_group, load_holding
 from app.schemas.holdings import HoldingDetailResponse, HoldingsResponse
@@ -19,7 +20,9 @@ from app.schemas.market_master import (
     StockMasterRead,
 )
 from app.schemas.mf_scheme import MFSchemeRead
+from app.schemas.sip import SipTransactionsResponse
 from app.services import amfi, bond_master, fd_issuers, nps, stock_master, valuation
+from app.services import sip as sip_service
 
 router = APIRouter(tags=["holdings"])
 
@@ -175,8 +178,11 @@ def _sort_value(item: dict[str, Any], key: str, text_keys: set[str]) -> Any:
 
 
 def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Items with xirr, xirr_basis and xirr_transactions added (one transactions query)."""
+    """Items with xirr, xirr_basis, xirr_transactions and sip added (one query each)."""
     by_holding: dict[int, list[MFTransaction]] = {}
+    sips = sip_service.summaries_for_holdings(
+        db, [i["id"] for i in items], sip_service.today_ist()
+    )
     if items:
         rows = db.scalars(
             select(MFTransaction)
@@ -197,6 +203,7 @@ def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]
             "xirr": float(pct) + 0.0 if pct is not None else None,
             "xirr_basis": basis,
             "xirr_transactions": used,
+            "sip": sips.get(item["id"]),
         })
     return enriched
 
@@ -545,6 +552,57 @@ def linked_master(db: Session, slug: str, record: Any) -> dict[str, Any] | None:
         found = amfi.get_scheme_with_nav(db, record.scheme_code) if record.scheme_code else None
         schema = MFSchemeRead
     return schema.model_validate(found).model_dump(mode="json") if found is not None else None
+
+
+@router.get("/holdings/mf/{item_id}/transactions", response_model=SipTransactionsResponse)
+def get_mf_transactions(
+    item_id: int,
+    page: Page = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """One mutual fund's transactions, newest first, 10 a page."""
+    owned = db.scalar(
+        select(MutualFund.id).where(MutualFund.id == item_id, MutualFund.user_id == user.id)
+    )
+    if owned is None:
+        raise _not_found()
+    total = db.scalar(
+        select(func.count()).select_from(MFTransaction).where(MFTransaction.mutual_fund_id == item_id)
+    ) or 0
+    page_count = max(1, -(-total // PAGE_SIZE))
+    page = min(page, page_count)
+    rows = db.scalars(
+        select(MFTransaction)
+        .where(MFTransaction.mutual_fund_id == item_id)
+        .order_by(MFTransaction.txn_date.desc(), MFTransaction.id.desc())
+        .limit(PAGE_SIZE)
+        .offset((page - 1) * PAGE_SIZE)
+    ).all()
+    items = []
+    for t in rows:
+        amount, units = Decimal(str(t.amount)), Decimal(str(t.units))
+        nav = None
+        if units > 0:
+            # A SIP instalment's units are after 0.005% stamp duty; undo it to show the NAV used.
+            paid = amount * sip_service.STAMP_DUTY_FACTOR if t.sip_id is not None else amount
+            nav = (paid / units).quantize(sip_service.NAV_DP)
+        items.append({
+            "id": t.id,
+            "date": t.txn_date,
+            "kind": t.kind,
+            "amount": amount,
+            "units": units,
+            "nav": nav,
+            "sip": t.sip_id is not None,
+        })
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": PAGE_SIZE,
+        "page_count": page_count,
+    }
 
 
 @router.get("/holdings/{slug}/{item_id}", response_model=HoldingDetailResponse)

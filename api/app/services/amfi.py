@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.mf_master import MFNavLatest, MFMaster
-from app.services import analytics_benchmark, nav_history
+from app.services import analytics_benchmark, nav_history, sip
 
 NAVALL_URL = "https://portal.amfiindia.com/spages/NAVAll.txt"
 SCHEME_DATA_URL = "https://portal.amfiindia.com/DownloadSchemeData_Po.aspx?mf=0"
@@ -412,6 +412,7 @@ def import_navall(
     session.commit()
     history_synced = nav_history.sync_missing_history(session)
     history_synced += int(analytics_benchmark.refresh_benchmark_history(session))
+    sip.post_due_safely(session)  # add today's SIP instalments; never fails the import
     return ImportResult(
         rows=len(parsed.rows),
         active=active,
