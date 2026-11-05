@@ -1,7 +1,7 @@
 """One-off: copy one user's holdings from a source DB to a target DB.
 
     SOURCE_DATABASE_URL=... TARGET_DATABASE_URL=... \
-        python -m app.jobs.copy_holdings --email you@example.com [--target-email other@example.com] [--apply]
+        python -m app.jobs.copy_holdings --email you@example.com [--target-email other@example.com] [--types fd,rd,stock,bond,mf,nps,gold,cash,pf,other] [--apply]
 
 SOURCE_DATABASE_URL defaults to DATABASE_URL from api/.env; TARGET_DATABASE_URL is required.
 Without --apply nothing is written (dry run). Connection URLs are never printed.
@@ -62,8 +62,38 @@ TABLES = (
     TableSpec(Other, "name", None, None, None),
 )
 
+SLUGS = {
+    "fd": FixedDeposit,
+    "rd": RecurringDeposit,
+    "stock": Stock,
+    "bond": Bond,
+    "mf": MutualFund,
+    "nps": Nps,
+    "gold": Gold,
+    "cash": Cash,
+    "pf": Pf,
+    "other": Other,
+}
+
 
 # ---- pure logic (no DB) ----------------------------------------------------------------
+
+
+def select_tables(types: str | None) -> tuple[TableSpec, ...]:
+    """Pick the TableSpecs for a comma-separated slug list, in TABLES order. None = all.
+
+    Raises ValueError (listing the valid slugs) on an unknown or empty slug.
+    """
+    if types is None:
+        return TABLES
+    wanted = [t.strip().lower() for t in types.split(",")]
+    bad = [t for t in wanted if t not in SLUGS]
+    if bad:
+        raise ValueError(
+            f"Unknown type(s): {', '.join(repr(b) for b in bad)}. Valid: {', '.join(SLUGS)}"
+        )
+    models = {SLUGS[t] for t in wanted}
+    return tuple(spec for spec in TABLES if spec.model in models)
 
 
 def relink_master(
@@ -220,7 +250,12 @@ def main() -> None:
     parser.add_argument("--email", required=True, help="source user email")
     parser.add_argument("--target-email", help="target user email (default: --email)")
     parser.add_argument("--apply", action="store_true", help="write to the target (default: dry run)")
+    parser.add_argument("--types", help="comma-separated types to copy (default: all): " + ", ".join(SLUGS))
     args = parser.parse_args()
+    try:
+        tables = select_tables(args.types)
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     source_url = os.environ.get("SOURCE_DATABASE_URL") or settings.database_url
     target_url = os.environ.get("TARGET_DATABASE_URL")
@@ -238,7 +273,7 @@ def main() -> None:
             tgt_user = _find_user(target, "target", args.target_email or args.email)
             verb = "copied" if args.apply else "would copy"
             plans = []
-            for spec in TABLES:
+            for spec in tables:
                 found, inserts, dups, listing = copy_table(
                     spec, source, target, src_user.id, tgt_user.id
                 )
