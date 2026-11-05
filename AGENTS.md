@@ -49,6 +49,12 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/schemas/analytics_returns.py  response models for GET /api/analytics/returns
   app/services/analytics_benchmark.py  benchmark block: Nifty 50 index fund replay (UTI, scheme 120716), FD rate and CPI inflation; refresh_benchmark_history runs in the nightly AMFI import
   api/data/cpi_india.csv  India annual CPI-Combined inflation by calendar year, hand-maintained seed read by analytics_benchmark.py
+  app/routers/analytics_tax.py  GET /api/analytics/tax?fy=: interest and TDS by payer for a financial year; GET /api/analytics/bond-schedule?id=: estimated bond payouts; GET /api/analytics/inflows?months=: money coming in (SPEC §9)
+  app/services/analytics_tax.py  pure tax maths: FY windows, FD, RD, savings and bond coupon interest, payer thresholds, TDS estimate, TDS by class, tax-free interest (SPEC §9); tests in api/tests/test_analytics_tax.py
+  app/services/bond_schedule.py  estimated payment schedule of one bond: coupons stepped back from maturity, TDS per coupon, redemption (SPEC §9); tests in api/tests/test_bond_schedule.py
+  app/services/cashflows.py  money coming in: dated bond, FD and RD inflow events split into interest and principal, by month (SPEC §9); tests in api/tests/test_cashflows.py
+  app/schemas/analytics_tax.py  response models for GET /api/analytics/tax and bond-schedule
+  app/schemas/analytics_cashflows.py  response models for GET /api/analytics/inflows
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/nps, /nps/{scheme_id}: NPS scheme search (scheme or PFM name, with latest NAV) and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?metal&purity&date: IBJA gold or silver rate on or up to 7 days before a date (gold form auto-fill); /api/master/other/categories: the user's Other categories, most used first (category field suggestions)
@@ -69,7 +75,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/gold_rates.py  IBJA gold and silver rate import: scrapes ibjarates.com (gold AM and PM tables, per 10 g ÷ 10, PM over AM; Silver 999 per kg ÷ 1000; silver 925 derived on read), keyed by the date the page states; latest rates to gold_rate_latest, every date to gold_rate_history; rate on or before a date for valuation, net worth and the gold form
   app/services/nps.py  NPS Trust scheme master and NAV import (latest TSV, per-scheme history with background backfill; tier and asset class from the name; sources in its docstring), scheme search and lookup
   app/services/fd_issuers.py  fd_issuer_master import (Razorpay IFSC banks, DICGC insured flag, seed files; sources in its docstring), issuer search and require_issuer for FD/RD
-  app/jobs/copy_holdings.py  one-off CLI: copies one user's holdings from SOURCE_DATABASE_URL to TARGET_DATABASE_URL, re-linking masters by ISIN/issuer code/scheme_code (dry run unless --apply)
+  app/jobs/copy_holdings.py  one-off CLI: copies one user's holdings from SOURCE_DATABASE_URL to TARGET_DATABASE_URL, re-linking masters by ISIN/issuer code/scheme_code (dry run unless --apply); `--types` limits the copy to chosen asset types (e.g. `--types bond`; slugs fd, rd, stock, bond, mf, nps, gold, cash, pf, other, comma-separated)
   app/jobs/securities_import.py  CLI: `python -m app.jobs.securities_import` runs the stock and bond master imports
   app/jobs/stock_history_backfill.py  CLI: `python -m app.jobs.stock_history_backfill [--months 12]` runs the stock price history backfill for held stocks
   app/jobs/issuers_import.py  CLI: `python -m app.jobs.issuers_import` runs the FD/RD issuer master import
@@ -116,11 +122,23 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/dashboard-groups.ts  groups dashboard rows into Deposits, Market-linked, Other with subtotals; hides types with no holdings (dashboard-groups.test.ts)
   app/(app)/analytics/  /analytics page (sidebar "Analytics"); renders components/analytics/analytics.tsx
   components/analytics/ analytics cards: analytics.tsx (container, states, "Prices as of" footer), allocation-card, liquidity-card (style reference), bank-safety-card, coming-up-card, concentration-card, data-health-strip
-  app/(app)/analytics/layout.tsx  analytics layout with the Overview · Performance tabs (components/analytics/analytics-tabs.tsx)
+  app/(app)/analytics/layout.tsx  analytics layout with the Overview · Performance · Interest & TDS tabs (components/analytics/analytics-tabs.tsx)
   app/(app)/analytics/performance/page.tsx  /analytics/performance: renders components/analytics/performance.tsx (two columns: growth, then returns)
   components/analytics/performance.tsx  Performance tab: growth and returns cards together
   components/analytics/growth-change-card.tsx, growth-months-card.tsx  growth cards: change in net worth split into new money and growth, and the last 12 months
   components/analytics/returns-groups-card.tsx, returns-compare-card.tsx, returns-best-worst-card.tsx, returns-excluded.tsx  returns cards: groups by class and type, comparison with the benchmark, best and worst holdings, excluded counts
+  app/(app)/analytics/interest/page.tsx  /analytics/interest: renders components/analytics/tax.tsx (Interest & TDS tab)
+  components/analytics/tax.tsx  Interest & TDS tab: Bond payouts first, then the toolbar (financial year and slab Selects), the summary strip, the interest-by-type card, footnotes
+  components/analytics/tax-toolbar.tsx  Interest & TDS toolbar: financial year Select and slab Select (kept in the browser)
+  components/analytics/tax-summary.tsx  Interest & TDS summary strip: three figures side by side (taxable interest, TDS deducted, left to pay or refund due)
+  components/analytics/tax-table.tsx  Interest by type: per-type total, received vs still-to-come bar, plain-words TDS pill; expands to payers, holdings and bond payout dates
+  components/analytics/top-progress.tsx  indeterminate bar along the top of a card while its section reloads
+  components/analytics/use-count-up.ts  eases a number to its new value (about 600 ms; instant with reduced motion)
+  lib/tax.ts  tax tab maths and copy: financial year labels, interest-by-type bars and progress text, TDS pill sentences, payers per class, coupons left, footnotes, tax on interest and left to pay or refund due, slab parsing (vitest tests in tax.test.ts)
+  components/analytics/bond-schedule.tsx  Bond payouts card: next payout, monthly stacked columns with ◆ repayment markers, floating hover card beside the hovered month, by-financial-year rows (Coupons / TDS / You get) that expand to their payouts 10 at a time (Interest & TDS tab and bond details page)
+  lib/bond-schedule.ts  bond payouts helpers: monthly buckets, hover summaries and card placement, shared time axis, FY ticks, next payout, per-FY totals and payout paging (vitest tests in bond-schedule.test.ts)
+  components/analytics/inflows-card.tsx  Money coming in (Overview): monthly interest and principal columns, Asset type, Amount shown and Period Selects
+  lib/inflows.ts  money coming in helpers: filters, month columns, totals, item links (vitest tests in inflows.test.ts)
   components/analytics/card-info.tsx  info icon after a card label, opens a popover
   components/analytics/use-analytics-section.ts  hook that loads one analytics section (loading, error and data states)
   components/charts/donut.tsx  shared donut (analytics allocation card and the dashboard allocation card)
