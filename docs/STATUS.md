@@ -57,6 +57,7 @@
 - 2026-11-04: Interest & TDS tab (analytics slice 3, step 1–2) done: `GET /api/analytics/tax?fy=` (interest per bank, NBFC/HFC, corporate bond and government bond payer, TDS estimate against the thresholds, FD/RD, savings estimate, bond coupons, PF and tax-free bonds as tax-free) and `/analytics/interest` with four cards (interest this year, TDS to expect, taxable or tax-free, tax on your interest with the slab kept in the browser). SPEC §9.
 - 2026-11-04: Interest & TDS additions done: bond TDS per coupon (10% on corporate and other bonds, none for government bonds and SGBs; payers have `tds_rule`), TDS by asset class (`by_class`, holding TDS split), Bond payouts timeline (`GET /api/analytics/bond-schedule`, on the tab and the bond details page) and Money coming in (`GET /api/analytics/inflows`, Overview card). SPEC §9.
 - 2026-11-05: Analytics done: Interest & TDS redesign (one column: Bond payouts, toolbar, summary strip with taxable interest, TDS deducted and left to pay or refund due, interest-by-type card with TDS pills and expandable payers, holdings and payout dates, footnotes; the four cards are gone). Bond payouts on the tab and the bond details page: monthly columns with ◆ repayment markers, hover card, per-FY rows that expand 10 at a time. Money coming in (Overview) done. `copy_holdings --types` limits the copy to chosen asset types. SPEC §9.
+- 2026-11-05: Planned sale for bonds held to an earlier exit date (coupons on the bond's own calendar, estimated sale at face value). SPEC §9.
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -97,7 +98,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Production latency check of the analytics endpoints (Vercel pool is 5 + 3 overflow; local timings don't show prod).
 - Capital gains (analytics slice 3, step 3): renames the Interest & TDS tab to Tax, before Jan 2027 (tax season).
 - Verify `api/data/cpi_india.csv` against MOSPI.
-- Bond held to an earlier exit date (e.g. an auto-sell): label the exit as a planned sale with an estimated amount instead of a repayment at face value.
 
 ## Next (planned assets)
 
