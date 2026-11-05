@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.responses import JSONResponse
 from pydantic import create_model
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -8,7 +9,7 @@ from app.db import Base, get_db
 from app.deps import current_user
 from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Nps, Other, Pf, RecurringDeposit, Stock, User
 from app.schemas.messages import Outcome
-from app.services import amfi, bond_master, fd_issuers, nps, stock_master
+from app.services import amfi, bond_master, duplicates, fd_issuers, nps, stock_master
 
 router = APIRouter(prefix="/assets")
 
@@ -104,8 +105,16 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         background: BackgroundTasks,
         db: Session = Depends(get_db),
         user: User = Depends(current_user),
+        confirm_duplicate: bool = False,
     ):
-        obj = model(**_values(db, body), user_id=user.id)
+        values = _values(db, body)
+        if not confirm_duplicate:
+            matches = duplicates.find_duplicates(db, slug, model, user.id, values)
+            if matches:
+                return JSONResponse(
+                    status_code=409, content=duplicates.duplicate_body(slug, matches)
+                )
+        obj = model(**values, user_id=user.id)
         db.add(obj)
         db.commit()
         db.refresh(obj)
