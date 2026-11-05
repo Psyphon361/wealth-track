@@ -106,6 +106,24 @@ def test_bond_coupons_and_redemption_are_interest_and_principal():
     assert body["types"] == ["bond"]
 
 
+def test_bond_sold_before_maturity_gives_coupons_to_the_exit_and_a_sale_inflow():
+    holding = bond(quantity=100, face_value=1000, maturity=date(2027, 1, 7), name="NCD",
+                   purchase=date(2026, 6, 1))  # fmt: skip
+    master = bmaster(rate=12, frequency="monthly", face=1000, maturity=date(2027, 12, 7))
+    body = cashflows.inflows(groups(bonds=[{**holding, "status": "active"}]), {1: master}, TODAY)
+    events = events_of(body, "bond")
+    # Monthly 1,000 on the 7th from 7 Nov 2026 (today is 4 Nov) to the exit on 7 Jan 2027, then the sale.
+    assert [(e["date"], e["kind"], e["interest"], e["principal"]) for e in events] == [
+        (date(2026, 11, 7), "coupon", Decimal("1000.00"), 0),
+        (date(2026, 12, 7), "coupon", Decimal("1000.00"), 0),
+        (date(2027, 1, 7), "coupon", Decimal("1000.00"), 0),
+        (date(2027, 1, 7), "sale", 0, Decimal("100000.00")),
+    ]  # fmt: skip
+    month = next(m for m in body["months"] if m["month"] == "2027-01")
+    assert (month["interest"], month["principal"]) == (Decimal("1000.00"), Decimal("100000.00"))
+    assert not [e for e in events if e["kind"] == "redemption"]
+
+
 def test_bonds_without_a_workable_schedule_and_inactive_holdings_give_nothing():
     holding = {**bond(), "status": "active"}
     assert events_of(cashflows.inflows(groups(bonds=[holding]), {}, TODAY)) == []  # no master

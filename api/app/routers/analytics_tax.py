@@ -32,6 +32,7 @@ def _fetch_bond_masters(bind: Any, user_id: int) -> dict[int, Any]:
         BondMaster.interest_frequency,
         BondMaster.issue_date,
         BondMaster.issue_price,
+        BondMaster.maturity_date,
     ).where(BondMaster.id.in_(held))
     return _rows(bind, stmt, "id")
 

@@ -322,10 +322,12 @@ def bond(id_=1, *, name="Bond", issuer="Acme Capital", bond_type="corporate", ma
 
 
 def bmaster(*, rate=9.5, frequency="monthly", bond_type="corporate", issuer="Acme Capital Ltd",
-            face=10000, coupon_type="simple", issue_date=None, issue_price=None):  # fmt: skip
+            face=10000, coupon_type="simple", issue_date=None, issue_price=None,
+            maturity=None):  # fmt: skip
     return SimpleNamespace(
         coupon_rate=rate, interest_frequency=frequency, bond_type=bond_type, issuer=issuer,
         face_value=face, coupon_type=coupon_type, issue_date=issue_date, issue_price=issue_price,
+        maturity_date=maturity,
     )  # fmt: skip
 
 
@@ -339,6 +341,15 @@ def test_monthly_coupon_is_face_times_quantity_times_rate_over_twelve():
     assert coupons(bond(), bmaster()) == Decimal("4749.96")
     # 30 Apr to 30 Oct 2026 are paid by 4 Nov: 7 coupons.
     assert coupons(bond(), bmaster(), (FY26[0], TODAY)) == 7 * Decimal("395.83")
+
+
+def test_planned_sale_adds_only_coupons_to_the_tax_window():
+    holding = bond(purchase=date(2026, 4, 1), maturity=date(2027, 1, 7))
+    master = bmaster(maturity=date(2027, 12, 7))
+    # Coupons 7 Apr 2026 to 7 Jan 2027: 10 of them; the 50,000 sale on 7 Jan is not interest.
+    assert coupons(holding, master) == 10 * Decimal("395.83")
+    assert coupons(holding, master, (date(2027, 1, 6), date(2027, 1, 7))) == Decimal("395.83")
+    assert coupons(holding, master, (date(2027, 1, 7), date(2027, 3, 31))) == 0
 
 
 def test_coupon_dates_clamp_to_the_end_of_the_month():
@@ -644,6 +655,7 @@ def tax_today(monkeypatch, seeded, auth_engine):  # noqa: F811
         for column, kind in (
             ("face_value", "NUMERIC"), ("coupon_rate", "NUMERIC"), ("coupon_type", "VARCHAR"),
             ("interest_frequency", "VARCHAR"), ("issue_date", "DATE"), ("issue_price", "NUMERIC"),
+            ("maturity_date", "DATE"),
         ):  # fmt: skip
             conn.execute(text(f"ALTER TABLE bond_master ADD COLUMN {column} {kind}"))
 

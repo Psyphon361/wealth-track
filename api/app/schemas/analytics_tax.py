@@ -108,13 +108,13 @@ class AnalyticsTax(BaseModel):
 
 class BondPayment(BaseModel):
     date: date
-    kind: Literal["coupon", "redemption"]
+    kind: Literal["coupon", "redemption", "sale"]
     gross: Amount
     tds: Amount
     net: Amount
     fy: str
     paid: bool
-    # Redemptions only; True for an SGB (redeems at the gold price, so the amount is an estimate).
+    # Redemptions and sales only; True for an SGB (redeems at the gold price) and for every sale.
     estimated_value: bool | None = None
 
 
@@ -137,6 +137,9 @@ class BondSchedule(BaseModel):
     quantity: int
     purchase_date: date
     maturity_date: date
+    # True when maturity_date is an earlier exit date than the bond's own maturity (bond_maturity_date).
+    planned_sale: bool
+    bond_maturity_date: date | None
     tds_rate: Amount
     estimated: Literal[True]
     payments: list[BondPayment]

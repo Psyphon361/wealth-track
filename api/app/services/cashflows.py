@@ -3,7 +3,9 @@ the clock is a parameter.
 
 Events, each split into `interest` and `principal` (gross, before any TDS):
 - Bonds: every coupon (kind coupon, interest) and the redemption at maturity (kind redemption,
-  principal), from bond_schedule. A bond without a workable schedule gives nothing.
+  principal), from bond_schedule; a bond sold before its maturity gives its coupons up to the exit
+  date and then a sale (kind sale, principal) instead of a redemption. A bond without a workable
+  schedule gives nothing.
 - Payout FD: each interest payout (kind interest_payout) and the principal at maturity (kind
   maturity).
 - Cumulative FD: one maturity event, principal plus all the interest.
@@ -100,10 +102,8 @@ def _bond_events(item: Mapping[str, Any], master: Any) -> list[dict[str, Any]]:
     for p in schedule:
         if p["kind"] == "coupon":
             out.append(_event(p["date"], "coupon", "bond", item, name, _q(p["gross"]), _ZERO))
-        else:
-            out.append(
-                _event(p["date"], "redemption", "bond", item, name, _ZERO, _q(p["gross"]))
-            )
+        else:  # redemption or sale: principal only
+            out.append(_event(p["date"], p["kind"], "bond", item, name, _ZERO, _q(p["gross"])))
     return out
 
 

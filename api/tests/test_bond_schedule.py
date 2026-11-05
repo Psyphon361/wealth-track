@@ -171,6 +171,89 @@ def test_window_sums_equal_the_old_bond_coupons_results():
     assert bs.sum_in_window(schedule, *FY26, "tds") == 12 * ONE_TDS
 
 
+def early_exit(**extra):
+    return (
+        bond(purchase=date(2026, 4, 1), maturity=date(2027, 1, 7), **extra),
+        bmaster(maturity=date(2027, 12, 7)),
+    )
+
+
+def test_early_exit_uses_the_master_coupon_calendar_up_to_the_exit_date_then_a_sale():
+    holding, master = early_exit()
+    schedule = bs.payments(holding, master)
+    dates = coupon_dates(schedule)
+    assert dates == [date(2026, m, 7) for m in range(4, 13)] + [date(2027, 1, 7)]
+    assert {p["gross"] for p in schedule if p["kind"] == "coupon"} == {ONE}
+    sale = schedule[-1]
+    assert len(schedule) == 11 and [p["kind"] for p in schedule].count("redemption") == 0
+    assert sale["kind"] == "sale" and sale["date"] == date(2027, 1, 7)
+    assert (sale["gross"], sale["tds"], sale["net"]) == (Decimal(50000), 0, Decimal(50000))
+    assert sale["estimated_value"] is True and sale["fy"] == "2026-27"
+
+
+def test_early_exit_between_coupon_dates_has_no_coupon_on_the_exit_date():
+    holding = bond(purchase=date(2026, 4, 1), maturity=date(2027, 1, 20))
+    schedule = bs.payments(holding, bmaster(maturity=date(2027, 12, 7)))
+    assert coupon_dates(schedule)[-1] == date(2027, 1, 7)
+    assert schedule[-1]["kind"] == "sale" and schedule[-1]["date"] == date(2027, 1, 20)
+    assert date(2027, 1, 20) not in coupon_dates(schedule)
+    assert date(2027, 2, 7) not in coupon_dates(schedule)
+
+
+def test_early_exit_of_an_on_maturity_bond_pays_no_coupon_only_the_sale():
+    holding = bond(quantity=100, face_value=1000, maturity=date(2026, 12, 1))
+    master = bmaster(rate=9, frequency="on_maturity", issue_date=date(2024, 4, 1),
+                     maturity=date(2027, 1, 1))  # fmt: skip
+    schedule = bs.payments(holding, master)
+    assert [p["kind"] for p in schedule] == ["sale"]
+    assert schedule[0]["date"] == date(2026, 12, 1) and schedule[0]["gross"] == Decimal(100000)
+    assert schedule[0]["tds"] == 0
+
+
+def test_master_maturity_missing_or_not_later_leaves_the_schedule_unchanged():
+    holding = bond()
+    base = bs.payments(holding, bmaster())
+    assert bs.payments(holding, bmaster(maturity=None)) == base
+    assert bs.payments(holding, bmaster(maturity=holding["maturity_date"])) == base
+    assert bs.payments(holding, bmaster(maturity=date(2026, 1, 1))) == base
+    assert base[-1]["kind"] == "redemption"
+    assert not bs.is_planned_sale(holding, bmaster()) and not bs.is_planned_sale(holding, None)
+
+
+def test_early_exit_sgb_sells_at_issue_price_times_grams():
+    holding = bond(bond_type="sgb", quantity=10, face_value=None, purchase=date(2025, 1, 1),
+                   maturity=date(2026, 6, 1))  # fmt: skip
+    master = bmaster(bond_type="sgb", rate=2.5, frequency=None, face=None, issue_price=6000,
+                     maturity=date(2030, 6, 1))  # fmt: skip
+    schedule = bs.payments(holding, master)
+    assert coupon_dates(schedule) == [date(2025, 6, 1), date(2025, 12, 1), date(2026, 6, 1)]
+    assert schedule[-1]["kind"] == "sale" and schedule[-1]["gross"] == Decimal(60000)
+
+
+def test_schedule_view_flags_planned_sale_and_the_bond_maturity():
+    holding, master = early_exit()
+    view = bs.schedule_view(holding, master, TODAY)
+    assert view["planned_sale"] is True
+    assert view["bond_maturity_date"] == date(2027, 12, 7)
+    assert view["maturity_date"] == date(2027, 1, 7)
+    assert view["payments"][-1]["kind"] == "sale" and view["payments"][-1]["estimated_value"]
+    assert view["payments"][-1]["paid"] is False
+    assert [r["coupons"] for r in view["by_fy"]] == [10]  # all in FY 2026-27, 10 coupons
+    plain = bs.schedule_view(bond(), bmaster(), TODAY)
+    assert plain["planned_sale"] is False and plain["bond_maturity_date"] is None
+    same = bs.schedule_view(bond(), bmaster(maturity=date(2027, 9, 30)), TODAY)
+    assert same["planned_sale"] is False and same["bond_maturity_date"] == date(2027, 9, 30)
+
+
+def test_a_sale_is_not_counted_in_window_sums_or_fy_totals():
+    holding, master = early_exit()
+    schedule = bs.payments(holding, master)
+    assert bs.sum_in_window(schedule, *FY26) == 10 * ONE
+    assert bs.sum_in_window(schedule, date(2027, 1, 6), date(2027, 1, 7)) == ONE
+    assert bs.sum_in_window(schedule, *FY26, "tds") == 10 * ONE_TDS
+    assert bs.by_fy(schedule)[0]["gross"] == 10 * ONE
+
+
 def test_schedules_that_cannot_be_worked_out_are_none():
     assert bs.payments(bond(), None) is None
     assert bs.payments(bond(), bmaster(rate=None)) is None

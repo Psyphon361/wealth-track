@@ -9,6 +9,14 @@ price). An on-maturity bond pays its whole interest (simple, or compounded yearl
 date. TDS is 10% of every coupon on corporate and other bonds; government securities, SGBs and
 tax-free bonds have none; redemption never has TDS.
 
+Planned sale: when the holding's maturity_date is earlier than the bond's own maturity_date in the
+master (for example a platform that auto-sells the bond), the holding's date is an exit date, not a
+maturity. Coupon dates then step back from the master's maturity date (the bond's real coupon
+calendar) and only those after the purchase date and on or before the exit date count; the closing
+event is a "sale" of face value x quantity (SGB: issue price x grams) on the exit date, estimated,
+with no TDS. An on-maturity bond sold early pays no coupon, only the sale. Without a master
+maturity date, or when it is not later than the holding's, nothing changes.
+
 Amounts are unrounded Decimals; callers round for display.
 """
 
@@ -46,6 +54,13 @@ def tds_applies(bond: Any, master: Any) -> bool:
     )
 
 
+def is_planned_sale(bond: Any, master: Any) -> bool:
+    """Whether the holding's maturity_date is an exit date earlier than the bond's own maturity."""
+    held_until = _to_date(_field(bond, "maturity_date"))
+    bond_maturity = _to_date(_field(master, "maturity_date"))
+    return held_until is not None and bond_maturity is not None and held_until < bond_maturity
+
+
 def _payment(when: date, kind: str, gross: Decimal, tds: Decimal, **extra: Any) -> dict[str, Any]:
     # Rounded to paise here: that is how a real coupon is paid, so every sum is exact.
     gross = _q(gross)
@@ -64,11 +79,16 @@ def _payment(when: date, kind: str, gross: Decimal, tds: Decimal, **extra: Any) 
 def payments(bond: Any, master: Any) -> list[dict[str, Any]] | None:
     """Every estimated payment of one bond, oldest first, or None when its schedule can't be
     worked out (no linked master, no coupon rate, frequency none / irregular / unknown, missing
-    dates or quantity). Each payment: date, kind (coupon | redemption), gross, tds, net, fy; a
-    redemption also carries estimated_value (True for an SGB)."""
+    dates or quantity). Each payment: date, kind (coupon | redemption | sale), gross, tds, net, fy;
+    a redemption also carries estimated_value (True for an SGB) and a sale carries
+    estimated_value True (a planned sale before the bond's own maturity; see the module docstring)."""
     if master is None:
         return None
     maturity = _to_date(_field(bond, "maturity_date"))
+    sale = is_planned_sale(bond, master)
+    final_kind = "sale" if sale else "redemption"
+    # Coupon dates step back from the bond's own maturity; the holding's date is only the exit.
+    anchor = _to_date(_field(master, "maturity_date")) if sale else maturity
     purchase = _to_date(_field(bond, "purchase_date"))
     quantity = _field(bond, "quantity")
     if maturity is None or purchase is None or not quantity:
@@ -93,6 +113,8 @@ def payments(bond: Any, master: Any) -> list[dict[str, Any]] | None:
             return None
         principal = _dec(face) * quantity
         redemption = principal
+        if frequency == "on_maturity" and sale:
+            return [_payment(maturity, "sale", redemption, _ZERO, estimated_value=True)]
         if frequency == "on_maturity":
             issue = _to_date(_field(master, "issue_date"))
             if issue is None or maturity <= issue:
@@ -114,16 +136,18 @@ def payments(bond: Any, master: Any) -> list[dict[str, Any]] | None:
     coupons: list[dict[str, Any]] = []
     k = 0
     while True:
-        when = maturity - relativedelta(months=step * k)
+        when = anchor - relativedelta(months=step * k)
+        k += 1
         if when <= purchase:
             break
+        if when > maturity:
+            continue  # after the exit date of a planned sale
         coupons.append(
             _payment(when, "coupon", per_coupon, per_coupon * TDS_RATE if taxed else _ZERO)
         )
-        k += 1
     coupons.reverse()
     out.extend(coupons)
-    out.append(_payment(maturity, "redemption", redemption, _ZERO, estimated_value=sgb))
+    out.append(_payment(maturity, final_kind, redemption, _ZERO, estimated_value=sgb or sale))
     return out
 
 
@@ -174,7 +198,7 @@ def schedule_view(bond: Any, master: Any, today: date) -> dict[str, Any] | None:
             "fy": p["fy"],
             "paid": p["date"] <= today,
         }
-        if p["kind"] == "redemption":
+        if p["kind"] in ("redemption", "sale"):
             row["estimated_value"] = p["estimated_value"]
         rows.append(row)
     face = _field(bond, "face_value") or _field(master, "face_value")
@@ -191,6 +215,8 @@ def schedule_view(bond: Any, master: Any, today: date) -> dict[str, Any] | None:
         "quantity": _field(bond, "quantity"),
         "purchase_date": _to_date(_field(bond, "purchase_date")),
         "maturity_date": _to_date(_field(bond, "maturity_date")),
+        "planned_sale": is_planned_sale(bond, master),
+        "bond_maturity_date": _to_date(_field(master, "maturity_date")),
         "tds_rate": _dec(10) if tds_applies(bond, master) else _dec(0),
         "estimated": True,
         "payments": rows,

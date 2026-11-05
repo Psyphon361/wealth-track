@@ -14,7 +14,7 @@ class InflowItem(BaseModel):
     type: Literal["fd", "rd", "bond"]
     id: int
     name: str
-    kind: Literal["coupon", "interest_payout", "maturity", "redemption"]
+    kind: Literal["coupon", "interest_payout", "maturity", "redemption", "sale"]
     interest: Amount
     principal: Amount
 
