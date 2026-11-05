@@ -21,9 +21,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 
-from dateutil.relativedelta import relativedelta
-
-from app.services import valuation
+from app.services import bond_schedule, valuation
 from app.services.analytics import (
     _CENT,
     _ZERO,
@@ -41,14 +39,15 @@ from app.services.analytics import (
 
 BANK_THRESHOLD = Decimal(50000)
 COMPANY_THRESHOLD = Decimal(10000)
-BOND_THRESHOLD = Decimal(10000)
 TDS_RATE = Decimal("0.10")
-SGB_RATE = Decimal("2.5")
 _COMPANY_CATEGORIES = frozenset({"nbfc", "hfc"})
-# Coupon payments a year for each master interest_frequency that has a regular schedule.
-_COUPONS_PER_YEAR = {"yearly": 1, "half_yearly": 2, "quarterly": 4, "monthly": 12}
-# Bond types on which no TDS is deducted (government securities, SGBs).
-_NO_TDS_TYPES = frozenset({"government", "sgb"})
+# Asset-class rows of the by-class summary, in display order.
+_CLASS_LABELS = {
+    "fd": "Fixed Deposits",
+    "rd": "Recurring Deposits",
+    "bond": "Bonds",
+    "savings": "Savings",
+}
 
 
 # --- Financial years ---------------------------------------------------------------------------
@@ -109,69 +108,13 @@ def savings_interest(balance: Decimal, rate_pct: Decimal, a: date, b: date) -> D
     return balance * rate_pct / 100 * days / 365
 
 
-def _is_sgb(bond: Any, master: Any) -> bool:
-    return _field(bond, "bond_type") == "sgb" or _field(master, "bond_type") == "sgb"
-
-
 def bond_coupons(bond: Any, master: Any, a: date, b: date) -> Decimal | None:
     """Coupons of one bond paid in (a, b], or None when its coupon schedule can't be worked out
-    (no linked master, no coupon rate, frequency none / irregular / unknown, missing dates).
-
-    A regular coupon is face value x quantity x rate / 100 / payments a year, on dates stepped back
-    from the maturity date every 12 / n months (clamped to the month end), counted when after the
-    purchase date. An SGB pays half-yearly 2.5% on the issue price per gram (quantity is grams).
-    An on-maturity bond pays its whole interest (simple, or compounded yearly) on the maturity
-    date, counted only when that date is in the window.
-    """
-    if master is None:
+    (see bond_schedule.payments for the rules)."""
+    schedule = bond_schedule.payments(bond, master)
+    if schedule is None:
         return None
-    maturity = _to_date(_field(bond, "maturity_date"))
-    purchase = _to_date(_field(bond, "purchase_date"))
-    quantity = _field(bond, "quantity")
-    if maturity is None or purchase is None or not quantity:
-        return None
-    if _is_sgb(bond, master):
-        rate = _field(master, "coupon_rate")
-        rate = _dec(rate) if rate else SGB_RATE
-        issue_price = _field(master, "issue_price")
-        if not issue_price:
-            return None
-        per_coupon = _dec(issue_price) * quantity * rate / 100 / 2
-        step = 6
-    else:
-        rate = _field(master, "coupon_rate")
-        face = _field(bond, "face_value") or _field(master, "face_value")
-        frequency = _field(master, "interest_frequency")
-        if not rate or not face:
-            return None
-        principal = _dec(face) * quantity
-        if frequency == "on_maturity":
-            issue = _to_date(_field(master, "issue_date"))
-            if issue is None or maturity <= issue:
-                return None
-            if not (a < maturity <= b):
-                return _ZERO
-            t = valuation._year_fraction(issue, maturity)
-            if _field(master, "coupon_type") == "compounding":
-                grown = valuation._grow(principal, _dec(rate), "yearly", t)
-            else:
-                grown = valuation._grow(principal, _dec(rate), "simple", t)
-            return Decimal(str(grown)) - principal
-        payments = _COUPONS_PER_YEAR.get(frequency)
-        if payments is None:
-            return None
-        per_coupon = principal * _dec(rate) / 100 / payments
-        step = 12 // payments
-    total = _ZERO
-    k = 0
-    while True:
-        when = maturity - relativedelta(months=step * k)
-        if when <= a or when <= purchase:
-            break
-        if when <= b:
-            total += per_coupon
-        k += 1
-    return total
+    return bond_schedule.sum_in_window(schedule, a, b)
 
 
 # --- Payers ------------------------------------------------------------------------------------
@@ -186,6 +129,18 @@ def _threshold(master: Any) -> tuple[str, Decimal]:
 def _holding_label(item: Mapping[str, Any]) -> str:
     label = " ".join(str(item.get("label") or "").split())
     return label or " ".join(str(item.get("bank") or "").split()) or "Deposit"
+
+
+def _bond_subtitle(item: Mapping[str, Any]) -> str | None:
+    """"<quantity> units · bought <D Mon YYYY>", to tell two holdings of one bond apart."""
+    quantity = item.get("quantity")
+    bought = _to_date(item.get("purchase_date"))
+    parts = []
+    if quantity:
+        parts.append(f"{quantity} units")
+    if bought:
+        parts.append(f"bought {bought.day} {bought:%b} {bought.year}")
+    return " · ".join(parts) or None
 
 
 def _free_item(
@@ -210,7 +165,8 @@ def tax_overview(
     """The tax tab response for the financial year starting in `fy_start_year` (default: the
     current one). FDs and RDs count whether active or matured: a deposit that matured this year
     still earned its interest this year. Bond coupons count on their payment dates; each issuer
-    is a payer (TDS above Rs 10,000 for corporate bonds, none for government securities and SGBs).
+    is a payer (10% TDS on every coupon of a corporate bond, none for government securities and
+    SGBs).
     Tax-free bonds and PPF / EPF / VPF interest go to the tax-free total instead of a payer."""
     issuer_masters = issuer_masters or {}
     bond_masters = bond_masters or {}
@@ -234,14 +190,14 @@ def tax_overview(
         for item in group.get("items", []):
             if kind == "bond":
                 master = bond_masters.get(item.get("master_id"))
-                projected = bond_coupons(item, master, *window_full)
-                if projected is None:
+                schedule = bond_schedule.payments(item, master)
+                if schedule is None:
                     bonds += 1
                     continue
-                projected_q = _q(projected)
+                projected_q = _q(bond_schedule.sum_in_window(schedule, *window_full))
                 if projected_q <= 0:
                     continue
-                to_date = _q(bond_coupons(item, master, *window_to_date) or _ZERO)
+                to_date = _q(bond_schedule.sum_in_window(schedule, *window_to_date))
                 bond_type = item.get("bond_type")
                 master_type = _field(master, "bond_type")
                 if "tax_free" in (bond_type, master_type):
@@ -250,11 +206,12 @@ def tax_overview(
                     )
                     continue
                 issuer = _clean(_field(master, "issuer") or item.get("issuer")) or "Unknown issuer"
-                no_tds = bond_type in _NO_TDS_TYPES or master_type in _NO_TDS_TYPES
                 entry = payers.setdefault(
                     f"bond:{_norm(issuer)}", {"bank": None, "name": issuer, "holdings": []}
                 )
-                entry["no_tds"] = entry.get("no_tds", True) and no_tds
+                entry["no_tds"] = entry.get("no_tds", True) and not bond_schedule.tds_applies(
+                    item, master
+                )
                 entry["holdings"].append(
                     {
                         "id": item["id"],
@@ -262,6 +219,21 @@ def tax_overview(
                         "name": _clean(item.get("name")) or issuer,
                         "interest_to_date": to_date,
                         "interest_projected": projected_q,
+                        "tds_estimate": _q(
+                            bond_schedule.sum_in_window(schedule, *window_full, "tds")
+                        ),
+                        "subtitle": _bond_subtitle(item),
+                        "payments": [
+                            {
+                                "date": p["date"],
+                                "gross": _q(p["gross"]),
+                                "tds": _q(p["tds"]),
+                                "net": _q(p["gross"] - p["tds"]),
+                                "paid": p["date"] <= today,
+                            }
+                            for p in schedule
+                            if p["kind"] == "coupon" and window_full[0] < p["date"] <= end
+                        ],
                     }
                 )
             elif kind == "pf":
@@ -321,28 +293,39 @@ def tax_overview(
     rows = []
     for key, entry in payers.items():
         bank = entry["bank"]
+        threshold = None
         if bank is None:
             payer_kind = "bond"
-            threshold = None if entry["no_tds"] else BOND_THRESHOLD
+            tds_rule = "none" if entry["no_tds"] else "every_payment"
         else:
             master = issuer_masters.get(bank.issuer_id) if bank.issuer_id is not None else None
             payer_kind, threshold = _threshold(master)
+            tds_rule = "threshold"
         holdings = sorted(
             entry["holdings"], key=lambda h: (-h["interest_projected"], h["type"], h["id"])
         )
         to_date = sum((h["interest_to_date"] for h in holdings), _ZERO)
         projected = sum((h["interest_projected"] for h in holdings), _ZERO)
         crosses = threshold is not None and projected > threshold
+        if tds_rule == "threshold":
+            tds = _q(projected * TDS_RATE) if crosses else Decimal("0.00")
+            # Split the payer's TDS by each holding's share of its projected interest.
+            for h in holdings:
+                share = h["interest_projected"] / projected if projected else _ZERO
+                h["tds_estimate"] = _q(tds * share) if crosses else Decimal("0.00")
+        else:
+            tds = sum((h["tds_estimate"] for h in holdings), _ZERO)
         rows.append(
             {
                 "key": key,
                 "name": entry["name"],
                 "kind": payer_kind,
+                "tds_rule": tds_rule,
                 "threshold": None if threshold is None else threshold.quantize(_CENT),
                 "interest_to_date": to_date,
                 "interest_projected": projected,
                 "crosses": crosses,
-                "tds_estimate": _q(projected * TDS_RATE) if crosses else Decimal("0.00"),
+                "tds_estimate": tds,
                 "holdings": holdings,
             }
         )
@@ -363,6 +346,35 @@ def tax_overview(
         "interest_projected": sum((i["interest_projected"] for i in free_items), _ZERO),
         "items": free_items,
     }
+    by_class = []
+    for slug, label in _CLASS_LABELS.items():
+        if slug == "savings":
+            if not savings_accounts:
+                continue
+            by_class.append(
+                {
+                    "type": slug,
+                    "label": label,
+                    "interest_to_date": _q(savings_to_date),
+                    "interest_projected": _q(savings_total),
+                    "tds_estimate": Decimal("0.00"),
+                    "holdings_count": savings_accounts,
+                }
+            )
+            continue
+        held = [h for r in rows for h in r["holdings"] if h["type"] == slug]
+        if not held:
+            continue
+        by_class.append(
+            {
+                "type": slug,
+                "label": label,
+                "interest_to_date": sum((h["interest_to_date"] for h in held), _ZERO),
+                "interest_projected": sum((h["interest_projected"] for h in held), _ZERO),
+                "tds_estimate": sum((h["tds_estimate"] for h in held), _ZERO),
+                "holdings_count": len(held),
+            }
+        )
     return {
         "fy": fy_label(year),
         "fy_start": start,
@@ -371,6 +383,7 @@ def tax_overview(
         "is_current": is_current,
         "available_fys": available_fys(today),
         "payers": rows,
+        "by_class": by_class,
         "totals": {
             "interest_to_date": sum((r["interest_to_date"] for r in rows), _ZERO),
             "interest_projected": sum((r["interest_projected"] for r in rows), _ZERO),

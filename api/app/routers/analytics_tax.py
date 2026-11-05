@@ -12,8 +12,9 @@ from app.models.bond_master import BondMaster
 from app.models.user import User
 from app.routers.analytics import _fetch_issuer_masters, _rows
 from app.routers.portfolio import load_groups
-from app.schemas.analytics_tax import AnalyticsTax
-from app.services import analytics_tax
+from app.schemas.analytics_cashflows import AnalyticsInflows
+from app.schemas.analytics_tax import AnalyticsTax, BondScheduleResponse
+from app.services import analytics_tax, bond_schedule, cashflows
 
 router = APIRouter(tags=["analytics"])
 
@@ -62,3 +63,53 @@ def get_tax(
     has_bonds = any(g["items"] for g in groups if g["type"] == "bond")
     bond_masters = _fetch_bond_masters(bind, user.id) if has_bonds else {}
     return analytics_tax.tax_overview(groups, issuer_masters, today, fy, bond_masters)
+
+
+@router.get("/analytics/bond-schedule", response_model=BondScheduleResponse)
+def get_bond_schedule(
+    id: Annotated[int | None, Query()] = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Estimated coupon and redemption schedule of the user's bonds, or of one bond (SPEC §9)."""
+    today = date.today()
+    groups = load_groups(db, user.id, today)
+    items = [i for g in groups if g["type"] == "bond" for i in g["items"]]
+    if id is not None:
+        items = [i for i in items if i["id"] == id]
+        if not items:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "message": "Bond not found",
+                    "description": "This bond doesn't exist or was deleted.",
+                },
+            )
+    bond_masters = _fetch_bond_masters(read_bind(db), user.id) if items else {}
+    views = [
+        bond_schedule.schedule_view(i, bond_masters.get(i.get("master_id")), today) for i in items
+    ]
+    bonds = [v for v in views if v is not None]
+    return {"as_of": today, "bonds": bonds, "excluded": len(views) - len(bonds)}
+
+
+@router.get("/analytics/inflows", response_model=AnalyticsInflows)
+def get_inflows(
+    months: Annotated[int, Query()] = 12,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    """Money coming in by month from bond coupons, FD payouts and maturities (SPEC §9)."""
+    if months not in (12, 24):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Invalid period",
+                "description": "Choose 12 or 24 months.",
+            },
+        )
+    today = date.today()
+    groups = load_groups(db, user.id, today)
+    has_bonds = any(g["items"] for g in groups if g["type"] == "bond")
+    bond_masters = _fetch_bond_masters(read_bind(db), user.id) if has_bonds else {}
+    return cashflows.inflows(groups, bond_masters, today, months)

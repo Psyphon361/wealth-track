@@ -15,18 +15,39 @@ class TaxFy(BaseModel):
     is_current: bool
 
 
+class TaxPayment(BaseModel):
+    date: date
+    gross: Amount
+    tds: Amount
+    net: Amount
+    paid: bool
+
+
 class TaxHolding(BaseModel):
     id: int
     type: Literal["fd", "rd", "bond"]
     name: str
+    subtitle: str | None = None
     interest_to_date: Amount
     interest_projected: Amount
+    tds_estimate: Amount
+    payments: list[TaxPayment] | None = None
+
+
+class TaxByClass(BaseModel):
+    type: Literal["fd", "rd", "bond", "savings"]
+    label: str
+    interest_to_date: Amount
+    interest_projected: Amount
+    tds_estimate: Amount
+    holdings_count: int
 
 
 class TaxPayer(BaseModel):
     key: str
     name: str
     kind: Literal["bank", "company", "bond"]
+    tds_rule: Literal["threshold", "every_payment", "none"]
     threshold: Amount | None
     interest_to_date: Amount
     interest_projected: Amount
@@ -77,8 +98,53 @@ class AnalyticsTax(BaseModel):
     is_current: bool
     available_fys: list[TaxFy]
     payers: list[TaxPayer]
+    by_class: list[TaxByClass]
     totals: TaxTotals
     savings: TaxSavings | None
     taxable: TaxTaxable
     tax_free: TaxFree
     excluded: TaxExcluded
+
+
+class BondPayment(BaseModel):
+    date: date
+    kind: Literal["coupon", "redemption"]
+    gross: Amount
+    tds: Amount
+    net: Amount
+    fy: str
+    paid: bool
+    # Redemptions only; True for an SGB (redeems at the gold price, so the amount is an estimate).
+    estimated_value: bool | None = None
+
+
+class BondFySummary(BaseModel):
+    fy: str
+    coupons: int
+    gross: Amount
+    tds: Amount
+    net: Amount
+
+
+class BondSchedule(BaseModel):
+    id: int
+    name: str
+    issuer: str | None
+    bond_type: str
+    coupon_rate: Amount | None
+    frequency: str | None
+    face_value: Amount | None
+    quantity: int
+    purchase_date: date
+    maturity_date: date
+    tds_rate: Amount
+    estimated: Literal[True]
+    payments: list[BondPayment]
+    next_payment: BondPayment | None
+    by_fy: list[BondFySummary]
+
+
+class BondScheduleResponse(BaseModel):
+    as_of: date
+    bonds: list[BondSchedule]
+    excluded: int

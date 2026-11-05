@@ -335,17 +335,15 @@ def coupons(holding, master, window=FY26):
 
 def test_monthly_coupon_is_face_times_quantity_times_rate_over_twelve():
     # 5 x 10,000 at 9.5% = 395.8333 a month; 12 payments on the 30th (28 Feb) in FY 2026-27.
-    assert coupons(bond(), bmaster()) == pytest.approx(Decimal(12) * Decimal("395.8333333"))
-    assert round(coupons(bond(), bmaster()), 2) == Decimal("4750.00")
+    # Each coupon is paid in whole paise: 395.83.
+    assert coupons(bond(), bmaster()) == Decimal("4749.96")
     # 30 Apr to 30 Oct 2026 are paid by 4 Nov: 7 coupons.
-    assert coupons(bond(), bmaster(), (FY26[0], TODAY)) == pytest.approx(
-        7 * Decimal("395.8333333")
-    )
+    assert coupons(bond(), bmaster(), (FY26[0], TODAY)) == 7 * Decimal("395.83")
 
 
 def test_coupon_dates_clamp_to_the_end_of_the_month():
     holding = bond(maturity=date(2026, 5, 31), purchase=date(2025, 1, 1))
-    one = Decimal("395.8333333")
+    one = Decimal("395.83")
     # Dates step back from 31 May: 30 Apr, 31 Mar, 28 Feb, 31 Jan ...
     assert coupons(holding, bmaster(), (date(2026, 2, 1), date(2026, 2, 28))) == pytest.approx(one)
     assert coupons(holding, bmaster(), (date(2026, 2, 1), date(2026, 2, 27))) == 0
@@ -373,7 +371,7 @@ def test_quarterly_half_yearly_and_yearly_coupons():
 def test_coupons_before_the_purchase_date_are_not_counted():
     holding = bond(purchase=date(2026, 10, 15))
     # 30 Oct 2026 to 30 Mar 2027 (28 Feb): 6 coupons; the 30 Sep one was before the purchase.
-    assert coupons(holding, bmaster()) == pytest.approx(6 * Decimal("395.8333333"))
+    assert coupons(holding, bmaster()) == 6 * Decimal("395.83")
     assert coupons(bond(purchase=date(2026, 6, 1), maturity=date(2027, 3, 31)),
                    bmaster(frequency="yearly"), FY25) == 0  # fmt: skip
 
@@ -381,7 +379,7 @@ def test_coupons_before_the_purchase_date_are_not_counted():
 def test_coupons_stop_at_maturity():
     holding = bond(maturity=date(2026, 8, 31))
     # 30 Apr, 31 May, 30 Jun, 31 Jul, 31 Aug 2026.
-    assert coupons(holding, bmaster()) == pytest.approx(5 * Decimal("395.8333333"))
+    assert coupons(holding, bmaster()) == 5 * Decimal("395.83")
     assert coupons(holding, bmaster(), (date(2026, 8, 31), date(2027, 3, 31))) == 0
 
 
@@ -427,7 +425,7 @@ def bond_overview(*bonds, masters=None, cash=(), pf=(), fy=None):
     return tax.tax_overview(groups, {}, TODAY, fy, masters or {})
 
 
-def test_bond_payer_is_one_per_issuer_with_the_10000_threshold():
+def test_bond_payer_is_one_per_issuer_with_ten_percent_tds_on_every_coupon():
     masters = {1: bmaster(rate=10, frequency="yearly", face=1000), 2: bmaster(rate=10.001, frequency="yearly", face=1000, issuer="Other Capital")}  # fmt: skip
     first = bond(1, quantity=100, face_value=1000, maturity=date(2027, 3, 31), name="NCD A")
     second = bond(2, quantity=100, face_value=1000, maturity=date(2027, 3, 31), master_id=2, name="NCD B")  # fmt: skip
@@ -436,19 +434,112 @@ def test_bond_payer_is_one_per_issuer_with_the_10000_threshold():
     by_key = {p["key"]: p for p in body["payers"]}
     assert set(by_key) == {"bond:acme capital ltd", "bond:other capital"}
     exact = by_key["bond:acme capital ltd"]
-    assert exact["kind"] == "bond" and exact["threshold"] == 10000
-    # Two NCDs of the issuer: 10,000 each = 20,000, over the threshold.
-    assert exact["interest_projected"] == Decimal("20000.00") and exact["crosses"] is True
+    assert exact["kind"] == "bond" and exact["threshold"] is None
+    assert exact["tds_rule"] == "every_payment" and exact["crosses"] is False
+    # Two NCDs of the issuer: 10,000 each = 20,000; TDS is 10% of every coupon, no threshold.
+    assert exact["interest_projected"] == Decimal("20000.00")
     assert exact["tds_estimate"] == Decimal("2000.00")
-    assert [(h["type"], h["name"]) for h in exact["holdings"]] == [("bond", "NCD A"), ("bond", "NCD C")]
+    assert [(h["type"], h["name"], h["tds_estimate"]) for h in exact["holdings"]] == [
+        ("bond", "NCD A", Decimal("1000.00")), ("bond", "NCD C", Decimal("1000.00"))
+    ]  # fmt: skip
     single = by_key["bond:other capital"]
-    assert single["interest_projected"] == Decimal("10001.00") and single["crosses"] is True
+    assert single["interest_projected"] == Decimal("10001.00")
     assert single["tds_estimate"] == Decimal("1000.10")
     assert body["totals"]["tds_estimate"] == Decimal("3000.10")
-    # Exactly 10,000 does not cross.
-    body = bond_overview(first, masters=masters)
-    assert body["payers"][0]["interest_projected"] == Decimal("10000.00")
-    assert body["payers"][0]["crosses"] is False and body["payers"][0]["tds_estimate"] == 0
+    # Even a small coupon income is taxed: no threshold.
+    small = bond(4, quantity=1, face_value=1000, maturity=date(2027, 3, 31))
+    body = bond_overview(small, masters={1: bmaster(rate=10, frequency="yearly", face=1000)})
+    assert body["payers"][0]["interest_projected"] == Decimal("100.00")
+    assert body["payers"][0]["tds_estimate"] == Decimal("10.00")
+
+
+def test_monthly_bond_tds_sums_each_coupon_not_a_rounded_one():
+    # Ugro-like: 5 x 10,000 at 9.5% monthly = 395.83 a coupon, 39.58 TDS, 356.25 net.
+    body = bond_overview(bond(), masters={1: bmaster()})
+    (payer,) = body["payers"]
+    assert payer["tds_estimate"] == Decimal("474.96")  # 12 x 39.58
+    assert payer["holdings"][0]["tds_estimate"] == Decimal("474.96")
+
+
+def test_bond_holding_lists_the_fy_coupons_with_subtitle():
+    holding = bond(purchase=date(2025, 1, 5))
+    body = bond_overview(holding, masters={1: bmaster()})
+    h = body["payers"][0]["holdings"][0]
+    assert h["subtitle"] == "5 units · bought 5 Jan 2025"
+    pays = h["payments"]
+    assert [p["date"] for p in pays] == [
+        d for d in sorted(p["date"] for p in pays) if date(2026, 4, 1) <= d <= date(2027, 3, 31)
+    ]
+    assert len(pays) == 12
+    assert pays[0]["date"] == date(2026, 4, 30) and pays[-1]["date"] == date(2027, 3, 30)
+    assert pays[0]["gross"] == Decimal("395.83") and pays[0]["tds"] == Decimal("39.58")
+    assert pays[0]["net"] == Decimal("356.25")
+    # Paid when dated on or before today (4 Nov 2026): 30 Apr to 30 Oct.
+    assert [p["paid"] for p in pays] == [True] * 7 + [False] * 5
+    assert sum(p["gross"] for p in pays) == h["interest_projected"]
+    assert sum(p["tds"] for p in pays) == h["tds_estimate"]
+    # The previous year lists its own coupons only.
+    prev = bond_overview(holding, masters={1: bmaster()}, fy=2025)["payers"][0]["holdings"][0]
+    assert all(date(2025, 4, 1) <= p["date"] <= date(2026, 3, 31) for p in prev["payments"])
+    assert all(p["paid"] for p in prev["payments"])
+
+
+def test_deposits_have_no_payments_or_subtitle():
+    deposit = item(1, "Some Bank", 100000, rate=10, start="2026-04-01", years=1,
+                   compounding="simple", payout="cumulative")  # fmt: skip
+    body = tax.tax_overview(groups_of(deposit), {}, TODAY)
+    h = body["payers"][0]["holdings"][0]
+    assert h.get("payments") is None and h.get("subtitle") is None
+
+
+def test_by_class_summarises_deposits_bonds_and_savings():
+    ncd = bond(7, quantity=100, face_value=1000, maturity=date(2027, 3, 31))
+    gsec = bond(8, bond_type="government", quantity=100, face_value=1000, master_id=2,
+                maturity=date(2027, 3, 31), issuer="Govt")  # fmt: skip
+    free = bond(9, bond_type="tax_free", quantity=100, face_value=1000, master_id=3,
+                maturity=date(2027, 3, 31))  # fmt: skip
+    masters = {
+        1: bmaster(rate=7, frequency="yearly", face=1000),
+        2: bmaster(rate=7, frequency="yearly", face=1000, bond_type="government", issuer="GOI"),
+        3: bmaster(rate=7, frequency="yearly", face=1000, bond_type="tax_free"),
+    }
+    cash = [{"id": 1, "kind": "savings", "interest_rate": 3, "balance": 100000}]
+    deposit = item(1, "Some Bank", 100000, rate=10, start="2026-04-01", years=1,
+                   compounding="simple", payout="cumulative")  # fmt: skip
+    groups = groups_of(deposit, cash=cash)
+    groups[2]["items"] = [ncd, gsec, free]
+    body = tax.tax_overview(groups, {}, TODAY, None, masters)
+    by_type = {c["type"]: c for c in body["by_class"]}
+    assert [c["type"] for c in body["by_class"]] == ["fd", "bond", "savings"]
+    assert by_type["fd"]["label"] == "Fixed Deposits" and by_type["fd"]["holdings_count"] == 1
+    # 10% simple for 364 of 365 days to 31 Mar 2027; below the 50,000 bank threshold: no TDS.
+    assert by_type["fd"]["interest_projected"] == Decimal(str(round(100000 * 0.10 * 364 / 365, 2)))
+    assert by_type["fd"]["tds_estimate"] == 0
+    # The NCD (7,000, TDS 700) and the government bond (7,000, no TDS); tax-free is left out.
+    assert by_type["bond"] == {
+        "type": "bond", "label": "Bonds", "interest_to_date": 0,
+        "interest_projected": Decimal("14000.00"), "tds_estimate": Decimal("700.00"),
+        "holdings_count": 2,
+    }  # fmt: skip
+    savings = by_type["savings"]
+    assert savings["interest_projected"] == Decimal("3000.00") and savings["tds_estimate"] == 0
+    assert savings["holdings_count"] == 1
+    assert savings["interest_to_date"] == Decimal(str(round(100000 * 0.03 * 218 / 365, 2)))
+    assert overview(groups_of())["by_class"] == []
+
+
+def test_threshold_payer_tds_is_split_by_each_holdings_share_of_interest():
+    body = overview(groups_of(
+        item(1, "Some Bank", 400000, label="Big"), item(2, "Some Bank", 200000, label="Small")
+    ))  # fmt: skip
+    (payer,) = body["payers"]
+    assert payer["tds_rule"] == "threshold" and payer["threshold"] == 50000
+    assert payer["interest_projected"] == Decimal("60000.00") and payer["tds_estimate"] == Decimal("6000.00")
+    assert {h["name"]: h["tds_estimate"] for h in payer["holdings"]} == {
+        "Big": Decimal("4000.00"), "Small": Decimal("2000.00")
+    }  # fmt: skip
+    below = overview(groups_of(item(1, "Some Bank", 100000)))
+    assert below["payers"][0]["holdings"][0]["tds_estimate"] == 0
 
 
 def test_government_bonds_and_sgbs_have_no_threshold_and_no_tds():
@@ -461,6 +552,7 @@ def test_government_bonds_and_sgbs_have_no_threshold_and_no_tds():
     body = bond_overview(gsec, sgb, masters=masters)
     (payer,) = body["payers"]
     assert payer["key"] == "bond:government of india" and payer["threshold"] is None
+    assert payer["tds_rule"] == "none"
     # 40,000 + 5,000 g x 6,000 x 2.5% / 2 = 375,000 (1 Dec 2026), far over any threshold, no TDS.
     assert payer["interest_projected"] == Decimal("415000.00")
     assert payer["crosses"] is False and payer["tds_estimate"] == 0
