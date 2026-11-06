@@ -22,7 +22,12 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/jobs/users.py     CLI: `python -m app.jobs.users create|set-password|deactivate|list --email …`
   app/db.py             lazy SQLAlchemy engine (psycopg3, prepare_threshold=None, pool tuned for Vercel); `read_bind(db)` gives read-only sessions an AUTOCOMMIT bind on Postgres (never for writes)
   app/models/           one table per asset type (+ base.py mixin: id, notes, created_at, updated_at)
-  app/models/mf_transaction.py  mf_transactions (one row per CAS-imported MF purchase or redemption; FK mutual_funds, ON DELETE CASCADE; SPEC §8)
+  app/models/mf_transaction.py  mf_transactions (one row per CAS-imported MF purchase or redemption, and one per SIP instalment (rows with sip_id set); FK mutual_funds, ON DELETE CASCADE; unique (sip_id, txn_date); SPEC §8, §8a)
+  app/models/mf_sip.py  mf_sips (one monthly SIP: user, mutual_fund_id? (SET NULL), scheme_code, platform, amount, day_of_month 1–28, start_date, post_from, end_date?, status active|paused|stopped, last_posted_on) and mf_sip_skips (sip_id, due_date; unique); migration 0028 (SPEC §8a)
+  app/services/sip.py  SIP maths and posting: due dates, next due, units after 0.005% stamp duty, first NAV on or after the due date (NAV history fetch), post_due (the only writer of SIP instalments; idempotent via last_posted_on and the (sip_id, txn_date) key); post_due_safely runs at the end of amfi.import_navall (SPEC §8a)
+  app/schemas/sip.py  SIP create, update and skip bodies, read and result models, MF transactions page, and the SIP validation messages (shared verbatim with the web form; SPEC §8a)
+  app/routers/sips.py  /api/sips: POST (create; 409 duplicate SIP unless confirm_duplicate=true), GET ?mutual_fund_id=, PUT /{id}, POST /{id}/pause, /resume, /stop, /skip, DELETE /{id}/skip/{due_date}, DELETE /{id} (SPEC §8a)
+  app/services/duplicates.py  duplicate-holding match rules for POST /api/assets/{type}: same user and type, active holdings only; 409 body; ?confirm_duplicate=true adds anyway (SPEC §4 "Duplicate warnings")
   app/models/gold.py    gold_holdings (metal, form, purity, weight_grams, purchase_date, invested_amount; no master link; migrations 0019, 0022)
   app/models/gold_rate.py  gold_rate_latest (one row per metal and purity) and gold_rate_history (metal + purity + rate_date), IBJA rates per gram
   app/models/cash.py    cash_holdings (name, kind savings|current|cash|other, balance, interest_rate?, balance_date; no master link; migration 0020)
@@ -55,14 +60,14 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/cashflows.py  money coming in: dated bond, FD and RD inflow events split into interest and principal, by month (SPEC §9); tests in api/tests/test_cashflows.py
   app/schemas/analytics_tax.py  response models for GET /api/analytics/tax and bond-schedule
   app/schemas/analytics_cashflows.py  response models for GET /api/analytics/inflows
-  app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py)
+  app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py); /api/holdings/mf/{id}/transactions: one fund's transactions, 10 a page, with a sip flag; MF rows carry the running `sip` summary
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/nps, /nps/{scheme_id}: NPS scheme search (scheme or PFM name, with latest NAV) and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?metal&purity&date: IBJA gold or silver rate on or up to 7 days before a date (gold form auto-fill); /api/master/other/categories: the user's Other categories, most used first (category field suggestions)
   app/routers/cron.py   /api/cron/amfi and /api/cron/securities: daily imports; /api/cron/nps: daily NPS NAVs; /api/cron/issuers: weekly FD/RD issuer import; /api/cron/gold: daily IBJA gold rates; bearer CRON_SECRET (no X-API-Key)
   app/services/valuation.py  all money maths (maturity, status, invested, current, gain, interest_received, xirr, mf_xirr)
   app/services/cas_import.py  CAS PDF import: casparser 1.4.1 parse in memory (file and password never stored), merge schemes across folios into MF preview rows, purchase date rule (SPEC §8)
   app/services/mfcentral_cas.py  MF Central Detailed CAS text parser (fallback when casparser can't identify the PDF; FIFO invested, opening-balance rule; SPEC §8)
-  app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest), plus scheme master CSV enrichment of plan/option
+  app/services/amfi.py  AMFI NAVAll.txt parser, category mapping and importer (mf_master + mf_nav_latest), plus scheme master CSV enrichment of plan/option; import_navall posts due SIP instalments at its end (services/sip.py; never fails the import)
   app/services/stock_prices.py  latest stock prices: nightly NSE/BSE bhavcopy close stored in stock_price_latest by the securities import (upsert_closes); latest_prices reads it for /api/holdings/stock, /api/portfolio and /api/dashboard
   app/models/stock_price.py  stock_price_latest (one row per stock_master id: price, prev_close, price_time, source bhavcopy, updated_at)
   app/models/stock_price_history.py  stock_price_history (master_id, trade_date, close; one close per held stock per trading day) and stock_price_history_sync (master_id, backfilled_at; one row once a stock's 12-month backfill has run)
@@ -88,7 +93,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/jobs/nps_import.py  CLI: `python -m app.jobs.nps_import` runs the NPS NAV import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches)
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches), 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -103,6 +108,19 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   app/api/[...path]/route.ts  same-origin proxy to FastAPI; adds X-API-Key server-side; forwards raw request bytes so multipart uploads (CAS PDF) work
   components/forms/     10 asset forms (nps-form.tsx + nps-scheme-picker.tsx: scheme search over /api/master/nps), shared fields (TextField w/ Indian digit grouping, DateField), zod schema.ts, master-picker.tsx (generic securities/scheme search picker), scheme-picker.tsx (MF scheme search, thin wrapper over master-picker), issuer-picker.tsx (FD/RD bank/issuer picker and "Not listed? Enter manually" toggle), use-nav-autofill.ts (MF Average NAV auto-fill from the NAV endpoint), gold-form.tsx + use-gold-rate-autofill.ts (Total invested = weight × IBJA rate), cash-form.tsx (account type, balance as of), pf-form.tsx (account type pre-fills the rate; opening date for PPF only), other-form.tsx + category-field.tsx (Other: category combobox with the user's categories, a fixed list and free entry), form-disabled.tsx (FormDisabledContext locks every field while a form saves; FormBusyContext lets a page or the Edit dialog learn the form is busy)
   components/forms/cas-import/  MF "Import CAS" tab on /add/mf: cas-import.tsx (container), upload-step.tsx (file + password), preview-step.tsx (row checkboxes, New / In portfolio badges, Update existing / Add as new choice, Import N funds)
+  components/forms/sip-form.tsx  "Start a SIP" tab on /add/mf: fund picker, platform, monthly amount, SIP date, start date, "Add to" holding Select, past-instalments Yes/No (SPEC §8a)
+  components/forms/day-of-month-field.tsx  SIP date picker: a trigger ("5th of every month") opens a day grid of 1–28 (SPEC §8a)
+  components/forms/use-fund-holdings.ts  one cached fetch of the user's MF holdings for the SIP form's "Add to" choice, reused until holdings change (SPEC §8a)
+  components/forms/duplicate-dialog.tsx  AlertDialog for a 409 "looks like a holding you already have" (DuplicateDialog, useDuplicateWarning): Cancel keeps the form filled, "Add anyway" retries with confirm_duplicate=true; rendered by form-shell.tsx, used by use-asset-form.ts (SPEC §4)
+  lib/duplicates.ts  readDuplicates (the 409 duplicates list from ApiError), confirmDuplicatePath, duplicateHref (vitest tests in duplicates.test.ts)
+  components/sips/sip-grid.tsx  SIPs view table on /portfolio/mf?view=sips: summary line, search, Status filter, sortable columns, paging of 10, "Start a SIP" button; built on the standard grid parts with client-side search, filter, sort and paging (SPEC §8a)
+  components/sips/sip-grid-config.tsx  SIPs table columns (Fund, Status, Monthly amount, SIP date, Next instalment, Instalments, Invested via SIP, actions) (SPEC §8a)
+  components/sips/sip-badge.tsx  status badge (Active, Paused, Cancelled) and the next-instalment progress line (SPEC §8a)
+  components/sips/sip-actions.tsx  SIP action menu (Update SIP, Skip Next / Undo Skip, Pause SIP / Resume SIP, Cancel SIP, Delete SIP) with confirm dialogs; also used by the MF details page (SPEC §8a)
+  components/sips/sip-edit-dialog.tsx  Update SIP dialog: monthly amount, SIP date, end date (SPEC §8a)
+  components/sips/use-sips.ts  loads GET /api/sips (all, or one holding's) and reloads on demand (SPEC §8a)
+  components/holding-detail/mf-sip-section.tsx, mf-transactions.tsx  MF details page: SIP section (same actions) and the paged Transactions list (SPEC §8a)
+  lib/sip.ts  SIP helpers for the web: status and action labels, action menu rules, filter, sort and summary for the SIPs table, past-instalment count and months for the Start a SIP form (vitest tests; SPEC §8a)
   app/(app)/deleted/    "Recently deleted" page (/deleted, linked at the bottom of the sidebar); components/deleted/recently-deleted.tsx is the list with per-row Restore
   lib/restore-holding.ts  restoreHolding (used by the Recently deleted page)
   lib/search/  global search logic: normalize, rank (tiers and tie-breaks), static-entries (pages and actions), recents (localStorage wt.search.recent), types
@@ -153,7 +171,7 @@ docs/           SPEC.md (behaviour), STATUS.md (progress/open items), HANDOFF.md
 .github/workflows/api-deploy.yml   on push to main touching api/: alembic upgrade head on prod, then Vercel API deploy hook
 .github/workflows/gold-backfill.yml   manual gold and silver rate history backfill, target dev|prod
 .github/workflows/dev-data-refresh.yml   scheduled (and manual) market-data imports (securities, AMFI, NPS, issuers, gold) and the soft-delete purge against the Neon dev branch; secret DEV_DATABASE_URL
-.claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md)
+.claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md). `.claude/hooks/block-orchestrator-writes.py` also refuses subagents' (builders') shell edits of project files (sed -i, redirects or tee into project paths, inline Python/Node writes) and git stash, checkout, restore, reset, clean and switch; it fails open on parse errors or uncertainty
 package.json    root: `npm run dev` runs api + web together (concurrently)
 ```
 
@@ -180,7 +198,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0027`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0028`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)

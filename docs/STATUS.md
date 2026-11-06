@@ -58,6 +58,7 @@
 - 2026-11-04: Interest & TDS additions done: bond TDS per coupon (10% on corporate and other bonds, none for government bonds and SGBs; payers have `tds_rule`), TDS by asset class (`by_class`, holding TDS split), Bond payouts timeline (`GET /api/analytics/bond-schedule`, on the tab and the bond details page) and Money coming in (`GET /api/analytics/inflows`, Overview card). SPEC §9.
 - 2026-11-05: Analytics done: Interest & TDS redesign (one column: Bond payouts, toolbar, summary strip with taxable interest, TDS deducted and left to pay or refund due, interest-by-type card with TDS pills and expandable payers, holdings and payout dates, footnotes; the four cards are gone). Bond payouts on the tab and the bond details page: monthly columns with ◆ repayment markers, hover card, per-FY rows that expand 10 at a time. Money coming in (Overview) done. `copy_holdings --types` limits the copy to chosen asset types. SPEC §9.
 - 2026-11-05: Planned sale for bonds held to an earlier exit date (coupons on the bond's own calendar, estimated sale at face value). SPEC §9.
+- 2026-11-05: MF SIPs and duplicate-holding warnings (uncommitted at time of writing). SIPs: `mf_sips`, `mf_sip_skips` and `mf_transactions.sip_id` (migration `0028`); each instalment is a purchase row, posted at its first NAV on or after the due date, after the 0.005% stamp duty; `post_due` runs at the end of the nightly AMFI import. `/api/sips` (create with a 409 for a duplicate SIP, edit, pause, resume, skip, cancel, delete), `GET /api/holdings/mf/{id}/transactions`, and a `sip` summary on MF holdings. Web: "Start a SIP" tab on `/add/mf`, SIPs view on `/portfolio/mf`, SIP section and transactions on the MF details page (web SIP UI built: SPEC §8a). Duplicate warnings: `POST /api/assets/{type}` returns 409 for a match on the type's key fields; "Add anyway" retries with `confirm_duplicate=true`. SPEC §4 ("Duplicate warnings"), §8a.
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
@@ -72,7 +73,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Data
 
-- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0026 (0026 other_holdings; 0025 soft delete; 0024 nps_holdings; 0023 NPS master; 0022 silver; 0021 pf_holdings; 0020 cash_holdings; 0019 gold_holdings; 0018 gold rates; 0017 stock price history; 0016 mf_transactions; 0015 MF invested_amount; 0014 stock_price_latest; 0013 bond invested_amount; 0012 Google sign-in; 0011 FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
+- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0028 (0028 mf_sips, mf_sip_skips, mf_transactions.sip_id; 0027 index tuning; 0026 other_holdings; 0025 soft delete; 0024 nps_holdings; 0023 NPS master; 0022 silver; 0021 pf_holdings; 0020 cash_holdings; 0019 gold_holdings; 0018 gold rates; 0017 stock price history; 0016 mf_transactions; 0015 MF invested_amount; 0014 stock_price_latest; 0013 bond invested_amount; 0012 Google sign-in; 0011 FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
 - Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
@@ -95,9 +96,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Open (analytics)
 
-- Production latency check of the analytics endpoints (Vercel pool is 5 + 3 overflow; local timings don't show prod).
 - Capital gains (analytics slice 3, step 3): renames the Interest & TDS tab to Tax, before Jan 2027 (tax season).
-- Verify `api/data/cpi_india.csv` against MOSPI.
 
 ## Next (planned assets)
 
@@ -117,8 +116,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 ## Deferred (not started)
 
 - Pruning of unheld schemes' NAV history (see SPEC §1).
-- SIP support for MF; per-transaction entry for manual holdings (each manual holding is one record). CAS imports now store MF transactions (for XIRR; SPEC §8).
+- Per-transaction entry for manual holdings (each manual holding is one record). CAS imports now store MF transactions (for XIRR; SPEC §8).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only).
 - Matured holdings view (pinned for later)
 - Matured bonds list from NSDL (optional source; not built).: matured items are currently listed in grids but excluded from totals.
-- Duplicate-holding warnings.

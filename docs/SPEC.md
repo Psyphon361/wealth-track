@@ -21,7 +21,7 @@ Every table also has `id`, `notes` (optional, ≤ 1000 chars), `created_at`, `up
 
 Column precision: money Numeric(14,2), rate/ytm Numeric(6,3) (input limited to 2 dp), units Numeric(14,3), avg_nav Numeric(14,4), gold weight_grams Numeric(12,3), gold rate_per_gram Numeric(12,2), NPS units and nav Numeric(14,4). Enums are VARCHAR + CHECK (not native PG enums).
 
-Removed by user decision: FD maturity amount & status inputs, stock current price (future API), MF AMC/folio/plan/option, SIP support, bond coupon rate/frequency (YTM used instead).
+Removed by user decision: FD maturity amount & status inputs, stock current price (future API), MF AMC/folio/plan/option, bond coupon rate/frequency (YTM used instead). MF SIPs were removed at first and are back (§8a).
 
 ### Master data (MF)
 
@@ -240,6 +240,30 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET /holdings/{fd|rd|stock|bond|mf|nps|gold|cash|pf|other}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row, plus `xirr`, `xirr_basis` and `xirr_transactions` for MF (§5; MF grid rows carry them too); `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
 - Auth: if `API_KEY` env is set, every route except `/api/health`, `/api/cron/amfi` (bearer `CRON_SECRET` instead) and OPTIONS needs header `X-API-Key` (401 otherwise).
 - Sign-in: every route except `/api/health`, `/api/cron/*`, `/api/auth/*` and OPTIONS needs `Authorization: Bearer <access token>` (401 otherwise). Holdings are per user; see §7.
+
+### Duplicate warnings
+
+- `POST /assets/{type}` (create only; not edits, not CAS import, not SIP instalments) checks the user's active holdings of that type first. "Active" means not soft-deleted. The values compared are the ones the create would store, after master lookups (`scheme_code`, `master_id`, `issuer_id`). Code: `api/app/services/duplicates.py`.
+- A match never blocks. The create returns **409** and the caller repeats it with `?confirm_duplicate=true` to add anyway. Without the flag and with no match, the create runs as usual.
+- Match rules (same user and type; text is compared ignoring case and surrounding spaces):
+
+| Type | Same… |
+|---|---|
+| FD | bank (the stored bank text), principal, start date |
+| RD | bank, monthly instalment, start date |
+| Stock | instrument (`master_id` when both holdings are linked, else name), quantity, buy date |
+| Bond | instrument (`master_id` when both holdings are linked, else name), quantity, purchase date |
+| MF | scheme (`scheme_code` when both are set, else scheme name), units, purchase date |
+| NPS | scheme (`scheme_id`), start date |
+| Gold & Silver | metal, form, purity, weight, purchase date |
+| Cash & Savings | name, kind |
+| EPF & PPF | kind, name |
+| Other | name, category |
+
+- 409 body: `{message: "This looks like a holding you already have", description, duplicates: [{id, name}]}`. The description is `<name> · <key facts> is already in your portfolio.`, or `... and N more are already in your portfolio.` when several match. The key facts are short, for example "₹1,00,000 from 1 Jan 2026" (FD), "10 shares bought 1 Jan 2026" (stock), "Savings account" (cash account kind), "EPF" (EPF & PPF kind). The matches are the existing holdings, oldest first.
+- Web: the asset forms (`use-asset-form.ts`) open `DuplicateDialog` (`components/forms/duplicate-dialog.tsx`, rendered by `form-shell.tsx`) on a 409 with `duplicates`. It shows the API's message and description, the matching holdings as links to their details pages, and two buttons. Cancel closes it and leaves the form filled, nothing saved. "Add anyway" resubmits with `confirm_duplicate=true` and shows "Adding…" with a spinner; the create's own success or error toast then follows. The dialog also has pending state while the retry runs, and it doesn't close on Esc or outside click during the retry.
+- `web/lib/duplicates.ts` reads the 409 (`readDuplicates`), adds the flag (`confirmDuplicatePath`) and builds the link (`duplicateHref`, `/portfolio/{type}/{id}`).
+- SIP creates have their own duplicate check (§8a).
 
 ### Message contract (toasts render these verbatim)
 - POST 201 → record + `message` ("Fixed deposit added" / "Recurring deposit added" / "Stock added" / "Bond added" / "Mutual fund added" / "Gold added" (or "Silver added" for silver) / "Cash & Savings added" / "EPF & PPF added" / "NPS added" / "Other added") + `description` (holding name: FD/RD bank[ · label], stock/bond name, MF scheme_name, gold or silver name, cash name, EPF & PPF name, NPS scheme name, Other name).
@@ -461,6 +485,72 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - "Transaction units must be greater than 0"
   - "Transactions: at most 2000 per fund"
 - 200 → `message` "Imported N funds" ("Imported 1 fund" for one), `description` "X added, Y updated.", `created`, `updated`.
+
+## 8a. Mutual fund SIPs
+
+Code: `api/app/services/sip.py` (due dates, NAV, posting), `api/app/routers/sips.py`, `api/app/schemas/sip.py`, `api/app/models/mf_sip.py`; migration `0028` (`mf_sips`, `mf_sip_skips`, `mf_transactions.sip_id`). Tests: `api/tests/test_sip.py`, `test_sip_api.py`. Web: see "Web" below.
+
+A SIP adds one purchase a month to a mutual fund holding. Each instalment is a `mf_transactions` row with `sip_id` set, so XIRR (§5) and net worth history (§5) count it like a CAS purchase.
+
+### Fields and validation (`POST /api/sips`, `PUT /api/sips/{id}`)
+
+- `scheme_code`: must be in `mf_master`, else 422 on `scheme_code` "Select a scheme from the list". An inactive scheme is 422 on `scheme_code` "This scheme is no longer active".
+- `platform`: required, trimmed, at most 200 characters ("Required" / "Must be at most 200 characters").
+- `amount`: at least ₹100 ("Must be at least ₹100"), at most 2 dp ("Up to 2 decimal places allowed"), at most ₹100 crore ("Must be at most ₹100 crore").
+- `day_of_month`: a whole number ("Must be a whole number") from 1 to 28 ("Day must be between 1 and 28"). Days 29 to 31 are rejected, so every month has the day.
+- `start_date`: on or after 1 Jan 1990 ("Date must be on or after 1 Jan 1990") and at most 366 days after today ("Date can be at most 1 year in the future").
+- `end_date` (PUT only, optional): on or after 1 Jan 1990, and not before the SIP's start date ("End date must be on or after the start date").
+- `include_past` (boolean, default false): see Due dates.
+- `mutual_fund_id` (optional): a holding of yours that isn't deleted (else 404 "Holding not found" / "It may have been deleted, or it belongs to another account."), of the same scheme ("This holding is a different fund", on `mutual_fund_id`).
+
+The web form uses the same wording (rule 3).
+
+### Due dates and posting
+
+- Due dates fall on `day_of_month` of each month. The first posted due date (`post_from`) is the first due date on or after the start date when `include_past` is true, or on or after today (IST) when it is false. Due dates after `end_date` are never posted.
+- On create, the SIP posts its due instalments at once, and the message says how many were added.
+- Skipped dates (`mf_sip_skips`) are never posted.
+- Pause stops posting. Resume moves `post_from` to the next due date on or after today, so the paused months are never added later.
+- **NAV rule.** An instalment uses the first NAV dated on or after its due date, so a weekend or holiday moves to the next trading day's NAV. The latest NAV is used only when its date is the due date itself; a past date never takes the latest NAV. When the stored history has no NAV for the due date, the scheme's history is fetched from mfapi.in, at most once every 6 hours. If no NAV is published yet, or the first NAV is more than 10 days after the due date (a history gap, unless the due date is older than the stored history), the SIP stops there and tries again on the next run. Nothing is posted out of order.
+- **Amount and units.** Invested is the full amount. Units = amount × 0.99995 ÷ NAV (the 0.005% stamp duty is deducted first), rounded half up to 3 dp. The holding's avg NAV = invested ÷ units (4 dp).
+- **Holding.** A SIP without a linked holding creates one at its first instalment: name from `mf_master` (at most 200 characters), the scheme code, the category from `mf_master`, the SIP's platform, and purchase date = the first instalment's NAV date. On create, the SIP links to `mutual_fund_id` when given. Otherwise it links to the holding of the same scheme and platform (platform compared ignoring case and spaces) when exactly one exists; with none or several, no holding is linked until the first instalment creates one.
+- **Opening transaction.** When a SIP posts into an existing holding that has units but no `mf_transactions`, the first posting first writes one purchase for the holding's current units and invested, dated its purchase date. XIRR therefore stays on the transaction basis.
+- **Deleted holdings.** A soft-deleted holding gets no instalments (the holding queries hide deleted rows). A SIP whose holding was purged for good posts nothing, so no new holding appears.
+- **Idempotency.** `last_posted_on` (the due date of the last posted instalment) moves forward with each instalment, and `mf_transactions` has a unique (`sip_id`, `txn_date`). A re-run adds nothing new.
+- **Nightly job.** `post_due_safely` runs at the end of `amfi.import_navall`, for every active SIP whose `post_from` is on or before today (IST). It never fails the import: errors are logged per SIP, and that SIP is skipped in the run. Both the prod AMFI cron (`/api/cron/amfi`) and the dev data refresh run it.
+- **CAS import.** A CAS re-import (§8) replaces the holding's `mf_transactions`, so earlier instalments lose their `sip_id` and show as purchases. The SIP keeps running from `last_posted_on`, so no instalment is added twice.
+- **Cancel.** Instalments already added stay in the holding. Deleting a SIP clears `sip_id` on its instalments and keeps them too.
+
+### Endpoints (`/api/sips`, signed in, per user)
+
+Each outcome returns `message` and `description`. A SIP read has: `id`, `mutual_fund_id` (null until a holding is linked), `scheme_code`, `fund_name`, `platform`, `amount`, `day_of_month`, `start_date`, `end_date`, `status` (`active` | `paused` | `stopped`), `next_date` (null unless active), `skipped_dates` (upcoming skipped dates, oldest first), `instalments_added`, `invested_via_sip`. A SIP that doesn't exist (including one already deleted) or belongs to another user is 404 "SIP not found" / "It may have been deleted already."
+
+- `POST /api/sips` (201): the create body (fields above). `?confirm_duplicate=true` skips the duplicate check. Message "SIP started · N instalment(s) added" (singular for one), or "SIP started"; description `<fund> · ₹5,000 on the 5th of every month`.
+  - **409 duplicate SIP** (unless `confirm_duplicate=true`): an active SIP of the same scheme, day and amount already exists. Body `{message: "This looks like a SIP you already have", description: "<scheme> · <schedule> is already running.", duplicates: [{id, name}]}`. The web shows it in the duplicate dialog.
+- `GET /api/sips?mutual_fund_id=`: the user's SIPs (optionally one holding's), ordered active, then paused, then cancelled, by id.
+- `PUT /api/sips/{id}`: amount, day of month and end date (null clears it). Message "SIP updated". It applies to future instalments only; posted instalments stay. A new day moves `post_from` to the next due date and drops upcoming skips on other days. A cancelled SIP is 409 "SIP is cancelled" / "A cancelled SIP can't be changed. Start a new one."
+- `POST /api/sips/{id}/pause`: only an active SIP. Message "SIP paused". Otherwise 409 "SIP isn't running" / "Only a running SIP can be paused."
+- `POST /api/sips/{id}/resume`: only a paused SIP. Message "SIP resumed". Otherwise 409 "SIP isn't paused" / "Only a paused SIP can be resumed."
+- `POST /api/sips/{id}/stop`: cancels the SIP (the web's "Cancel"). Message "SIP cancelled", description "… instalments already added stay in your holding". Already cancelled: 409 "SIP is already cancelled" / "It has no more instalments to add."
+- `POST /api/sips/{id}/skip`, body `{due_date?}` (default: the next instalment). Message "Instalment skipped", description `<fund> · 5 Dec 2026`. The date must be an upcoming instalment: today or later, on the SIP's day, not already posted, not after `end_date`. Otherwise 422 on `due_date` "Pick an upcoming instalment date". With no instalment left, 422 "There is no upcoming instalment to skip". The SIP must be active (409 "SIP isn't running" / "Only a running SIP has instalments to skip."). Already skipped: 409 "Instalment already skipped" / "<date> is already skipped."
+- `DELETE /api/sips/{id}/skip/{due_date}`: undoes a skip while the date is still upcoming. Message "Skip removed", description `<fund> · 5 Dec 2026 will be added`. Not skipped: 404 "Skip not found" / "That instalment isn't skipped." A past date: 422 "Pick an upcoming instalment date".
+- `DELETE /api/sips/{id}`: deletes the SIP and its skips. Message "SIP deleted", description "<fund> · instalments already added stay in your holding".
+- `GET /api/holdings/mf/{id}/transactions?page=`: one fund's transactions, newest first, 10 a page (`page` is clamped to the last page). Items: `id`, `date`, `kind` (`purchase` | `redemption`), `amount`, `units`, `nav` (amount ÷ units; a SIP instalment's stamp duty is undone first, so this is the NAV used; null when units are 0), `sip` (true for a SIP instalment). Response: `items`, `total`, `page`, `page_size`, `page_count`. 404 when the fund isn't yours.
+- **`sip` on MF holdings.** `GET /api/holdings/mf` rows and `GET /api/holdings/mf/{id}` carry `sip: {id, amount, day_of_month, status, next_date} | null`: the holding's active SIP, or its paused one when none is active; null otherwise (cancelled SIPs are hidden).
+
+### Web
+
+As built in `web/`; the code is the reference when the two differ.
+
+- **Add page.** `/add/mf` has a third tab, "Start a SIP" (`components/forms/sip-form.tsx`, opened by `?tab=sip`), after "Import CAS" and "Manual entry". Fields: Fund (scheme picker), Platform, Monthly amount, SIP date (a day grid, 1–28, in `components/forms/day-of-month-field.tsx`; the trigger reads "5th of every month"), Start date. An "Add to" Select appears when the fund is already held: each of your holdings (platform · units) plus "A New Holding" (`components/forms/use-fund-holdings.ts` loads the holdings once for the picker). When the start date is in the past, a themed Yes/No asks whether to add the past instalments to the total ("Add the 10 past instalments (Jan to Oct 2026) to your total?"); the helper under it reads "Each is added to the holding at its own month's NAV." or "Only instalments from today onward are added."; the count and months come from `lib/sip.ts`. The submit button is "Start SIP", with pending state. Toasts and the 409 duplicate dialog come from the API (§4).
+- **MF details page** (`/portfolio/mf/{id}`, `components/holding-detail/mf-sip-section.tsx`). SIP section: "₹5,000 on the 5th of every month · since Jan 2026", the next date, the status badge, and the same action menu as the SIPs table (`sip-actions.tsx`; see below). Transactions section (`mf-transactions.tsx`): a date tile, "SIP" / "Purchase" / "Redemption", amount, units and NAV. It shows 10 at a time with "Show 10 more", as Bond payouts do.
+- **MF grid.** A small "SIP" badge on funds with an active SIP, "SIP paused" when the SIP is paused (`components/portfolio/grid/configs/mf.tsx`).
+- **SIPs view** on `/portfolio/mf?view=sips`. A themed toggle "Holdings · SIPs" sits above the MF grid (`components/portfolio/portfolio.tsx`). The SIPs view is the SIPs table (`components/sips/sip-grid.tsx`), on the same grid parts as the holdings grids (search, faceted filter, sortable headers, paging of 10). Sorting, filtering and search run in the browser over `GET /api/sips` (`use-sips.ts`), which reloads after each action.
+  - Summary line above the table: "Monthly SIPs" (total monthly amount of the active SIPs), "N active · next 5 Dec 2026", "Invested via SIPs", "Instalments added", and the "Start a SIP" button.
+  - Search "Search SIPs…" (fund name or platform); a "Status" filter with Active, Paused, Cancelled.
+  - Columns (`sip-grid-config.tsx`): Fund, Status (`sip-badge.tsx`: Active, Paused, Cancelled), Monthly amount, SIP date ("5th of every month"), Next instalment (or "Skipping 5 Dec" in amber while the next instalment is skipped), Instalments, Invested via SIP, and an actions menu.
+  - Actions menu (`sip-actions.tsx`): Update SIP (dialog with monthly amount, SIP date and end date; `sip-edit-dialog.tsx`), Skip Next (confirm "Skip Instalment"), Undo Skip (shown in place of Skip Next once the next instalment is skipped), Pause SIP, Resume SIP, Cancel SIP (confirm "Keep SIP" / "Cancel SIP"; instalments already added stay) and Delete SIP (confirm; cancelled SIPs only). Per status: active → Update SIP, Skip Next or Undo Skip, Pause SIP, Cancel SIP; paused → Update SIP, Resume SIP, Cancel SIP; cancelled → Delete SIP.
+  - Every action has a pending state ("Skipping…", "Cancelling…", "Deleting…"), and its toast text comes from the API. An empty state reads "No SIPs yet" and links to "Start a SIP".
 
 ## 9. Analytics (slice 1: Overview)
 
