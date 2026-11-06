@@ -142,7 +142,7 @@ export function MfForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("mf", record, onSaved, (issues) => {
+  const { saving, save, duplicate } = useAssetSave("mf", record, onSaved, (issues) => {
     for (const i of issues) {
       if (i.field === "scheme_code") {
         setError("scheme_code", { type: "server", message: i.message });
@@ -265,6 +265,7 @@ export function MfForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">

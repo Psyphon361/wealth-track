@@ -109,7 +109,7 @@ export function PfForm({
   });
   const kind = useWatch({ control, name: "kind" });
   const rateEdited = !!dirtyFields.interest_rate;
-  const { saving, save } = useAssetSave("pf", record, onSaved);
+  const { saving, save, duplicate } = useAssetSave("pf", record, onSaved);
 
   // Suggest a rate for the chosen account type until the user edits it.
   useEffect(() => {
@@ -138,6 +138,7 @@ export function PfForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <TextField

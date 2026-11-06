@@ -123,7 +123,7 @@ export function StockForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("stock", record, onSaved, (issues) => {
+  const { saving, save, duplicate } = useAssetSave("stock", record, onSaved, (issues) => {
     for (const i of issues) {
       if (i.field === "master_id") {
         setError("master_id", { type: "server", message: i.message });
@@ -195,6 +195,7 @@ export function StockForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">

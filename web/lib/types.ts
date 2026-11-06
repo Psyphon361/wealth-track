@@ -577,6 +577,8 @@ export type MutualFundItem = MutualFund &
     xirr?: number | null;
     xirr_basis?: "transactions" | "purchase_date" | null;
     xirr_transactions?: number;
+    /** The holding's SIP (the running one when several exist); null when none. */
+    sip?: SipSummary | null;
   };
 
 export type GoldItem = Gold &
@@ -1094,4 +1096,74 @@ export interface BondSchedule {
   as_of: string;
   bonds: BondScheduleBond[];
   excluded: number;
+}
+
+// SIPs (GET/POST /sips, /holdings/mf/{id}/transactions)
+
+export type SipStatus = "active" | "paused" | "stopped";
+
+export interface Sip {
+  id: number;
+  mutual_fund_id: number | null;
+  scheme_code: number;
+  fund_name: string;
+  platform: string;
+  amount: number;
+  day_of_month: number;
+  start_date: string;
+  end_date: string | null;
+  status: SipStatus;
+  /** Next due date, even when that instalment is skipped; null when paused or cancelled. */
+  next_date: string | null;
+  /** Upcoming instalment dates the user skipped. */
+  skipped_dates: string[];
+  instalments_added: number;
+  invested_via_sip: number;
+}
+
+/** A SIP plus the API's outcome text for the operation. */
+export type SipResult = Sip & { message: string; description: string };
+
+export interface SipInput {
+  scheme_code: number;
+  platform: string;
+  amount: number;
+  day_of_month: number;
+  start_date: string;
+  include_past: boolean;
+  mutual_fund_id: number | null;
+}
+
+export interface SipUpdateInput {
+  amount: number;
+  day_of_month: number;
+  end_date: string | null;
+}
+
+/** The SIP summary on an MF holding row or detail item. */
+export interface SipSummary {
+  id: number;
+  amount: number;
+  day_of_month: number;
+  status: SipStatus;
+  next_date: string | null;
+}
+
+export interface MfTransaction {
+  id: number;
+  date: string;
+  kind: "purchase" | "redemption";
+  amount: number;
+  units: number;
+  nav: number | null;
+  /** True when a SIP added this instalment. */
+  sip: boolean;
+}
+
+export interface MfTransactionsResponse {
+  items: MfTransaction[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
 }

@@ -59,6 +59,8 @@ export function createColumnKit<TRow extends HoldingRow>(
     id: string,
     get: (row: TRow) => string,
     sub: (row: TRow) => string | null | undefined,
+    /** Small badge shown after the name (e.g. "SIP"). */
+    badge?: (row: TRow) => ReactNode,
   ): GridColumn<TRow> =>
     helper.accessor(get, {
       id,
@@ -66,9 +68,13 @@ export function createColumnKit<TRow extends HoldingRow>(
       enableHiding: false,
       cell: ({ row }) => {
         const line = sub(row.original);
+        const tag = badge?.(row.original);
         return (
           <div className="min-w-32 leading-tight">
-            <div className="font-medium">{get(row.original)}</div>
+            <div className="font-medium">
+              {get(row.original)}
+              {tag ? <span className="ml-1.5 align-middle">{tag}</span> : null}
+            </div>
             {line ? (
               <div className="text-[11px] text-muted-foreground">{line}</div>
             ) : null}

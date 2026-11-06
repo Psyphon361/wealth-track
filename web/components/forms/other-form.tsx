@@ -80,7 +80,7 @@ export function OtherForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("other", record, onSaved);
+  const { saving, save, duplicate } = useAssetSave("other", record, onSaved);
 
   const onSubmit = handleSubmit((values) => {
     const payload: OtherInput = {
@@ -100,6 +100,7 @@ export function OtherForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <TextField

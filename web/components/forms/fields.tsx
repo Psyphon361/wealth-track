@@ -272,10 +272,13 @@ export function SelectField<TIn extends FieldValues, TOut>({
   required,
   options,
   onChange,
+  placeholder,
 }: FieldProps<TIn, TOut> & {
   options: Option[];
   /** Called with the new value after the field changes. */
   onChange?: (value: string) => void;
+  /** Shown while no option is chosen (the field value is ""). */
+  placeholder?: string;
 }) {
   const locked = useFormDisabled();
   return (
@@ -287,7 +290,9 @@ export function SelectField<TIn extends FieldValues, TOut>({
           <Label id={name} label={label} required={required} />
           <Select
             items={options}
-            value={String(field.value ?? "")}
+            value={
+              placeholder && !field.value ? null : String(field.value ?? "")
+            }
             disabled={locked}
             onValueChange={(v) => {
               field.onChange(v ?? "");
@@ -300,7 +305,7 @@ export function SelectField<TIn extends FieldValues, TOut>({
               aria-invalid={fieldState.invalid}
               onBlur={field.onBlur}
             >
-              <SelectValue />
+              <SelectValue placeholder={placeholder} />
             </SelectTrigger>
             <SelectContent alignItemWithTrigger={false}>
               {options.map((o) => (

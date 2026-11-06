@@ -70,7 +70,7 @@ export function CashForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("cash", record, onSaved);
+  const { saving, save, duplicate } = useAssetSave("cash", record, onSaved);
 
   const onSubmit = handleSubmit((values) => {
     const payload: CashInput = {
@@ -89,6 +89,7 @@ export function CashForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <TextField

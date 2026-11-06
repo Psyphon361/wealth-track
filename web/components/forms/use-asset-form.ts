@@ -5,12 +5,14 @@ import { notify } from "@/lib/notify";
 import { invalidateNetWorth } from "@/lib/networth-cache";
 import { markHoldingsStale } from "@/lib/holdings-cache";
 import { ApiError, apiPost, apiPut, type ApiMessage } from "@/lib/api";
+import { confirmDuplicatePath, duplicateHref } from "@/lib/duplicates";
 import type { AssetType, RecordFields } from "@/lib/types";
+import { useDuplicateWarning } from "./duplicate-dialog";
 
 export type FieldIssue = { field: string; message: string };
 
 /** Extract per-field messages from an API 422 `detail` array. */
-function fieldIssues(err: unknown): FieldIssue[] {
+export function fieldIssues(err: unknown): FieldIssue[] {
   if (!(err instanceof ApiError) || err.status !== 422) return [];
   if (!Array.isArray(err.detail)) return [];
   const out: FieldIssue[] = [];
@@ -31,25 +33,53 @@ export function useAssetSave<R extends RecordFields>(
   onFieldIssues?: (issues: FieldIssue[]) => void,
 ) {
   const [saving, setSaving] = useState(false);
+  const warning = useDuplicateWarning((m) => duplicateHref(type, m.id));
+
+  function done(saved: R) {
+    invalidateNetWorth();
+    markHoldingsStale(type);
+    notify.success(saved as Partial<ApiMessage>);
+    onSaved?.(saved);
+  }
+
+  function failed(e: unknown) {
+    notify.error(e);
+    const issues = fieldIssues(e);
+    if (issues.length) onFieldIssues?.(issues);
+  }
 
   async function save(payload: unknown): Promise<void> {
     setSaving(true);
     try {
-      const saved = record
-        ? await apiPut<R>(`/assets/${type}/${record.id}`, payload)
-        : await apiPost<R>(`/assets/${type}`, payload);
-      invalidateNetWorth();
-      markHoldingsStale(type);
-      notify.success(saved as Partial<ApiMessage>);
-      onSaved?.(saved);
+      if (record) {
+        done(await apiPut<R>(`/assets/${type}/${record.id}`, payload));
+      } else {
+        done(await apiPost<R>(`/assets/${type}`, payload));
+      }
     } catch (e) {
-      notify.error(e);
-      const issues = fieldIssues(e);
-      if (issues.length) onFieldIssues?.(issues);
+      // Create only: a 409 duplicate warning opens the dialog instead of a toast.
+      const confirmed = async () => {
+        try {
+          done(
+            await apiPost<R>(
+              confirmDuplicatePath(`/assets/${type}`),
+              payload,
+            ),
+          );
+        } catch (err) {
+          failed(err);
+        }
+      };
+      if (record || !warning.intercept(e, confirmed)) failed(e);
     } finally {
       setSaving(false);
     }
   }
 
-  return { saving, save };
+  return {
+    saving: saving || warning.busy,
+    save,
+    /** Pass to FormShell's `duplicate` prop. */
+    duplicate: warning.props,
+  };
 }

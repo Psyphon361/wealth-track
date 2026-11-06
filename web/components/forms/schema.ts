@@ -388,3 +388,61 @@ export const mfCategoryEnum =z.enum([
   "liquid",
   "other",
 ]);
+
+// ---- SIP rules (same wording as api/app/schemas/sip.py) ----
+
+export const SIP_MIN_AMOUNT = 100;
+export const SIP_AMOUNT_MIN_ERROR = "Must be at least ₹100";
+export const SIP_DAY_ERROR = "Day must be between 1 and 28";
+export const SIP_START_FUTURE_ERROR = "Date can be at most 1 year in the future";
+export const SIP_END_BEFORE_START_ERROR =
+  "End date must be on or after the start date";
+export const SIP_FUTURE_DAYS = 366;
+
+/** Latest allowed SIP start date: one year from today. */
+export function maxSipStartDateISO(): string {
+  return addDaysISO(todayISO(), SIP_FUTURE_DAYS);
+}
+
+/** Monthly SIP amount: at least ₹100, at most ₹100 crore, 2 decimals. */
+export const sipAmount = z
+  .string()
+  .trim()
+  .min(1, "Required")
+  .refine((v) => Number.isFinite(Number(v)), "Enter a valid number")
+  .transform(Number)
+  .refine((n) => n >= SIP_MIN_AMOUNT, SIP_AMOUNT_MIN_ERROR)
+  .refine(
+    (n) => Math.abs(n * 100 - Math.round(n * 100)) < 1e-6,
+    "Up to 2 decimal places allowed",
+  )
+  .refine((n) => n <= MAX_MONEY, MAX_MONEY_ERROR);
+
+/** Day of the month (1 to 28, so it exists in every month). */
+export const sipDay = z
+  .string()
+  .min(1, "Required")
+  .transform(Number)
+  .refine((n) => Number.isInteger(n) && n >= 1 && n <= 28, SIP_DAY_ERROR);
+
+/** SIP start date: on or after 1 Jan 1990, at most a year ahead. */
+export const sipStartDate = dateBase.refine(
+  (v) => !isValidISODate(v) || v <= maxSipStartDateISO(),
+  SIP_START_FUTURE_ERROR,
+);
+
+/** Optional SIP end date: blank becomes null, else on or after 1 Jan 1990. */
+export const optionalSipEndDate = z
+  .string()
+  .trim()
+  .refine((v) => v === "" || !isValidISODate(v) || v >= MIN_DATE, MIN_DATE_ERROR)
+  .transform((v): string | null => (v === "" ? null : v));
+
+/** True when the end date (if any) is on or after the start date. */
+export function sipEndAfterStart(
+  start: string,
+  end: string | null,
+): boolean {
+  if (!end || !isValidISODate(start) || !isValidISODate(end)) return true;
+  return end >= start;
+}

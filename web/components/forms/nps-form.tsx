@@ -60,7 +60,7 @@ export function NpsForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("nps", record, onSaved, (issues) => {
+  const { saving, save, duplicate } = useAssetSave("nps", record, onSaved, (issues) => {
     for (const i of issues) {
       if (i.field === "scheme_id") {
         setError("scheme_id", { type: "server", message: i.message });
@@ -102,6 +102,7 @@ export function NpsForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <div className="sm:col-span-2">

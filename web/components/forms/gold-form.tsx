@@ -103,7 +103,7 @@ export function GoldForm({
     control,
     name: ["metal", "purity", "purchase_date", "weight_grams", "invested_amount"],
   });
-  const { saving, save } = useAssetSave("gold", record, onSaved);
+  const { saving, save, duplicate } = useAssetSave("gold", record, onSaved);
   const rateHint = useGoldRateAutofill({
     enabled: !saving,
     metal: String(metal ?? "gold"),
@@ -133,6 +133,7 @@ export function GoldForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <TextField

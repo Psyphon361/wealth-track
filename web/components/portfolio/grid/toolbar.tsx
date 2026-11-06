@@ -40,7 +40,7 @@ function facetOptions(
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-function SearchInput({
+export function SearchInput({
   value,
   placeholder,
   label,

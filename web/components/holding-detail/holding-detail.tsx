@@ -35,6 +35,8 @@ import {
   type PfItem,
 } from "@/lib/types";
 import { KpiStrip } from "./kpi-strip";
+import { MfSipSection } from "./mf-sip-section";
+import { MfTransactions } from "./mf-transactions";
 import { NotesSection, Section } from "./sections";
 import { TenureBar } from "./tenure-bar";
 import { useHoldingDetail } from "./use-holding-detail";
@@ -175,6 +177,12 @@ function TypedDetail<TRow extends HoldingRow>({
         <Section title="Instrument" fields={detail.instrument(master, item)} />
       ) : null}
       {config.type === "bond" ? <BondSchedule id={item.id} /> : null}
+      {config.type === "mf" ? (
+        <>
+          <MfSipSection id={item.id} />
+          <MfTransactions id={item.id} />
+        </>
+      ) : null}
       {item.notes ? <NotesSection notes={item.notes} /> : null}
 
       <EditDialog

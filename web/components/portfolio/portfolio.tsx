@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
+import { SipGrid } from "@/components/sips/sip-grid";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { apiDelete } from "@/lib/api";
 import { invalidateNetWorth } from "@/lib/networth-cache";
 import { markHoldingsStale } from "@/lib/holdings-cache";
@@ -294,6 +297,40 @@ function TypedPortfolio<TRow extends HoldingRow>({
   );
 }
 
+/** Mutual funds: a Holdings · SIPs toggle (the `view` query param) above the grid or the SIP list. */
+function MfPortfolio() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const view = useSearchParams().get("view") === "sips" ? "sips" : "holdings";
+  return (
+    <div className="space-y-4">
+      <ToggleGroup
+        aria-label="Mutual funds view"
+        value={[view]}
+        onValueChange={(v) => {
+          const next = v[0];
+          if (!next || next === view) return;
+          router.replace(next === "sips" ? `${pathname}?view=sips` : pathname, {
+            scroll: false,
+          });
+        }}
+        variant="outline"
+        size="sm"
+        spacing={0}
+        className="h-7"
+      >
+        <ToggleGroupItem value="holdings" className="h-7 px-3 text-[13.5px]">
+          Holdings
+        </ToggleGroupItem>
+        <ToggleGroupItem value="sips" className="h-7 px-3 text-[13.5px]">
+          SIPs
+        </ToggleGroupItem>
+      </ToggleGroup>
+      {view === "sips" ? <SipGrid /> : <TypedPortfolio config={mfConfig} />}
+    </div>
+  );
+}
+
 export function Portfolio({ type }: { type: AssetType }) {
   switch (type) {
     case "fd":
@@ -305,7 +342,7 @@ export function Portfolio({ type }: { type: AssetType }) {
     case "bond":
       return <TypedPortfolio config={bondConfig} />;
     case "mf":
-      return <TypedPortfolio config={mfConfig} />;
+      return <MfPortfolio />;
     case "gold":
       return <TypedPortfolio config={goldConfig} />;
     case "cash":

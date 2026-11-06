@@ -1,4 +1,5 @@
 import { AssetForm } from "@/components/forms/asset-form";
+import { Badge } from "@/components/ui/badge";
 import {
   MF_CATEGORY_LABELS,
   type MfScheme,
@@ -71,6 +72,26 @@ export const mfConfig: GridConfig<MutualFundItem> = {
       "scheme_name",
       (r) => r.scheme_name,
       () => null,
+      (r) => {
+        if (r.sip?.status === "active") {
+          return (
+            <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-normal">
+              SIP
+            </Badge>
+          );
+        }
+        if (r.sip?.status === "paused") {
+          return (
+            <Badge
+              variant="secondary"
+              className="h-4 px-1.5 text-[10px] font-normal text-muted-foreground"
+            >
+              SIP paused
+            </Badge>
+          );
+        }
+        return null;
+      },
     ),
     kit.text("category", (r) => MF_CATEGORY_LABELS[r.category]),
     kit.text("platform", (r) => r.platform),

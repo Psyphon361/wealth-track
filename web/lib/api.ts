@@ -15,18 +15,22 @@ export class ApiError extends Error {
   readonly status: number;
   readonly description: string;
   readonly detail: unknown;
+  /** Raw `duplicates` field of a 409 "already in your portfolio" body. */
+  readonly duplicates: unknown;
 
   constructor(
     status: number,
     message: string,
     description: string,
     detail?: unknown,
+    duplicates?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.description = description;
     this.detail = detail;
+    this.duplicates = duplicates;
   }
 }
 
@@ -103,6 +107,7 @@ async function request<T>(
       str(data.message) || res.statusText || `HTTP ${res.status}`,
       str(data.description),
       data.detail,
+      data.duplicates,
     );
   }
   if (res.status === 204) return undefined as T;

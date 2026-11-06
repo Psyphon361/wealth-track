@@ -1,37 +1,50 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { AssetForm } from "@/components/forms/asset-form";
 import { CasImport } from "@/components/forms/cas-import/cas-import";
 import { FormBusyContext } from "@/components/forms/form-disabled";
+import { SipForm } from "@/components/forms/sip-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getAssetEntry } from "@/lib/asset-catalog";
+import { SIPS_VIEW_HREF } from "@/lib/sip";
 import type { AssetType } from "@/lib/types";
+
+type MfTab = "manual" | "cas" | "sip";
 
 export function AddFormPage({ type }: { type: AssetType }) {
   const router = useRouter();
+  // `?tab=sip` opens the MF page on the SIP tab (links from the SIPs view).
+  const tabParam = useSearchParams().get("tab");
   // The route stays mounted after leaving it (cacheComponents), so bump the
   // key to remount the form blank for the next visit.
   const [formKey, setFormKey] = useState(0);
-  const [mfTab, setMfTab] = useState<"manual" | "cas">("cas");
+  // The tab the user picked; until then the link decides (SIP) or Import CAS.
+  const [picked, setPicked] = useState<MfTab | null>(null);
+  const mfTab: MfTab = picked ?? (tabParam === "sip" ? "sip" : "cas");
   // True while a form save or CAS upload/import is in flight (locks the tabs).
   const [busy, setBusy] = useState(false);
   // Same for the MF tab: the cleanup runs when the route is hidden, so every
-  // visit opens on Import CAS (the default tab).
-  useEffect(() => () => setMfTab("cas"), []);
+  // visit opens on Import CAS (the default tab) unless the link asks for SIP.
+  useEffect(() => () => setPicked(null), []);
   const entry = getAssetEntry(type);
   if (!entry) return null;
   const onSaved = () => {
     setFormKey((k) => k + 1);
-    setMfTab("cas");
+    setPicked("cas");
     router.push(`/portfolio/${type}`);
+  };
+  const onSipSaved = () => {
+    setFormKey((k) => k + 1);
+    setPicked("cas");
+    router.push(SIPS_VIEW_HREF);
   };
   const onCancel = () => {
     setFormKey((k) => k + 1);
-    setMfTab("cas");
+    setPicked("cas");
     router.push("/add");
   };
 
@@ -48,7 +61,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               value={[mfTab]}
               disabled={busy}
               onValueChange={(v) => {
-                if (v[0]) setMfTab(v[0] as "manual" | "cas");
+                if (v[0]) setPicked(v[0] as MfTab);
               }}
               variant="outline"
               size="sm"
@@ -61,11 +74,16 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <ToggleGroupItem value="manual" className="h-6 px-2 text-xs">
                 Manual entry
               </ToggleGroupItem>
+              <ToggleGroupItem value="sip" className="h-6 px-2 text-xs">
+                Start a SIP
+              </ToggleGroupItem>
             </ToggleGroup>
             <p className="text-xs text-muted-foreground">
               {mfTab === "cas"
                 ? "Recommended — pulls every fund and SIP from your CAS statement, for exact XIRR."
-                : "For a single fund or one not in your CAS; XIRR is estimated from the purchase date."}
+                : mfTab === "sip"
+                  ? "Adds a fixed amount to a fund on the same day every month, at that day's NAV. A SIP that started earlier is fine too."
+                  : "For a single fund or one not in your CAS; XIRR is estimated from the purchase date."}
             </p>
           </div>
         )}
@@ -143,6 +161,13 @@ export function AddFormPage({ type }: { type: AssetType }) {
                 key={formKey}
                 type="other"
                 onSaved={onSaved}
+                onCancel={onCancel}
+              />
+            )}
+            {type === "mf" && mfTab === "sip" && (
+              <SipForm
+                key={`sip-${formKey}`}
+                onSaved={onSipSaved}
                 onCancel={onCancel}
               />
             )}

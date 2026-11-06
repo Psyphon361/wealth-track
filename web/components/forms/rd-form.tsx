@@ -125,7 +125,7 @@ export function RdForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save } = useAssetSave("rd", record, onSaved, (issues) => {
+  const { saving, save, duplicate } = useAssetSave("rd", record, onSaved, (issues) => {
     for (const i of issues) {
       if (i.field === "issuer_id") {
         setError("issuer_id", { type: "server", message: i.message });
@@ -158,6 +158,7 @@ export function RdForm({
       onSubmit={onSubmit}
       saving={saving}
       editing={!!record}
+      duplicate={duplicate}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">
