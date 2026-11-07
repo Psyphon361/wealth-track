@@ -17,6 +17,7 @@ from app.routers.portfolio import load_holding
 from app.schemas.exits import ExitRead, ExitResult, SellBody, SettleBody
 from app.schemas.messages import Outcome
 from app.services import exits as exits_service
+from app.services import fundings as fundings_service
 from app.services import sip as sip_service
 from app.services.exits import EXIT_TYPES, MODELS, SELL_TYPES, SETTLE_TYPES, ExitConflict, ExitError
 
@@ -171,10 +172,7 @@ def settle_holding(
 
     row = outcome.row
     money = sip_service.format_inr(row.amount)
-    if row.destination == "renewed":
-        new_label = "FD" if (row.prev_state or {}).get("new_asset_type") == "fd" else "RD"
-        tail = f"{money} renewed into a new {new_label}"
-    elif outcome.cash_name:
+    if outcome.cash_name:
         tail = f"{money} added to {outcome.cash_name}"
     else:
         tail = f"{money} received"
@@ -192,7 +190,9 @@ def list_exits(
     if slug not in EXIT_TYPES:
         raise _not_found()
     _get_holding(db, slug, item_id, user)
-    return [exits_service.exit_read(r) for r in exits_service.list_exits(db, user.id, slug, item_id)]
+    rows = exits_service.list_exits(db, user.id, slug, item_id)
+    reinvested = fundings_service.reinvested_by_exit(db, user.id, [r.id for r in rows])
+    return [exits_service.exit_read(r, reinvested.get(r.id, Decimal("0"))) for r in rows]
 
 
 @router.delete("/exits/{exit_id}", response_model=Outcome)
@@ -226,6 +226,14 @@ def undo_exit(
                 "description": "A later sale of this holding was recorded after this one.",
             },
         )
+    if fundings_service.reinvested_by_exit(db, user.id, [row.id]).get(row.id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Some of this money was reinvested",
+                "description": "Delete the holdings paid from it first, then undo.",
+            },
+        )
     outcome = exits_service.undo_exit(db, row, holding)
     db.commit()
 
@@ -239,9 +247,6 @@ def undo_exit(
         sentences.append(
             f"The account {outcome.cash_account_kept} was kept; delete it yourself if you don't want it."
         )
-    if outcome.renewed_kept:
-        label = "FD" if outcome.renewed_kept == "fd" else "RD"
-        sentences.append(f"The new {label} was kept; delete it yourself if you don't want it.")
     if outcome.sips_paused:
         sentences.append("Its SIP was left paused; resume it if you still want it.")
     return Outcome(message=what, description=" ".join(sentences))

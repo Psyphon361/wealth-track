@@ -115,7 +115,7 @@ def test_partial_stock_sale_reduces_the_holding(client, users):
     assert shown["exit"] == {
         "id": body["id"], "kind": "sale", "date": SELL_DAY, "quantity": 40, "amount": 3180,
         "cost": 2000, "charges": 20, "destination": "none", "cash_holding_id": None,
-        "new_holding_id": None, "new_asset_type": None,
+        "new_holding_id": None, "new_asset_type": None, "reinvested": 0, "left_in_account": None,
     }  # fmt: skip
     assert group(client, a, "stock")["totals"]["invested"] == 3000
 
@@ -690,94 +690,13 @@ def test_settle_into_an_existing_or_new_cash_account_and_undo(client, users):
     )
 
 
-RENEWED = {
-    "bank": "New Bank", "principal": 108243.22, "rate": 7.5, "start_date": "2025-01-01",
-    "compounding": "quarterly", "payout_type": "cumulative", "tenure_years": 1,
-}  # fmt: skip
-
-
-def test_renewing_creates_the_new_deposit_with_the_settlement(client, users):
+def test_renewed_is_no_longer_a_settle_destination(client, users):
     a = users[0]
     fd_id = add(client, a, "fd", FD)
-    r = settle(client, a, "fd", fd_id, {"kind": "renewed", "fd": RENEWED})
-    assert r.status_code == 201, r.json()
-    body = r.json()
-    assert body["destination"] == "renewed" and body["cash_holding_id"] is None
-    assert body["new_asset_type"] == "fd" and body["new_holding_id"] is not None
-    assert body["description"] == "Old Bank · ₹1,08,243.22 renewed into a new FD"
-    created = asset(client, a, "fd", body["new_holding_id"])
-    assert (created["bank"], created["principal"]) == ("New Bank", 108243.22)
-    assert item(client, a, "fd", fd_id)["exit"]["new_holding_id"] == body["new_holding_id"]
-    assert item(client, a, "fd", fd_id)["exit"]["new_asset_type"] == "fd"
-
-    undone = client.delete(f"/api/exits/{body['id']}", headers=a).json()
-    assert undone["description"] == (
-        "Old Bank is back in your portfolio. The new FD was kept; delete it yourself if you don't want it."
-    )
-    assert asset(client, a, "fd", body["new_holding_id"])["bank"] == "New Bank"  # still there
-
-
-def test_renewing_into_an_rd(client, users):
-    a = users[0]
-    fd_id = add(client, a, "fd", FD)
-    rd = {
-        "bank": "RD Bank", "monthly_instalment": 5000, "rate": 6, "start_date": "2025-01-01",
-        "compounding": "quarterly", "tenure_years": 1,
-    }  # fmt: skip
-    r = settle(client, a, "fd", fd_id, {"kind": "renewed", "rd": rd})
-    assert r.status_code == 201, r.json()
-    assert r.json()["new_asset_type"] == "rd"
-    assert r.json()["description"] == "Old Bank · ₹1,08,243.22 renewed into a new RD"
-    assert asset(client, a, "rd", r.json()["new_holding_id"])["monthly_instalment"] == 5000
-
-
-@pytest.mark.parametrize(
-    ("destination", "field", "message"),
-    [
-        ({"kind": "renewed"}, "fd", "Enter the new deposit's details"),
-        ({"kind": "renewed", "fd": RENEWED, "rd": {}}, None, None),
-        ({"kind": "renewed", "fd": {**RENEWED, "principal": -5}}, "principal", "Must be greater than 0"),
-        ({"kind": "renewed", "fd": {**RENEWED, "tenure_years": 0}}, "tenure_years",
-         "Tenure must be greater than zero"),
-        ({"kind": "none", "fd": RENEWED}, "fd", "Details are only needed when the money was renewed"),
-    ],
-)  # fmt: skip
-def test_a_bad_renewal_writes_nothing(client, users, destination, field, message):
-    a = users[0]
-    fd_id = add(client, a, "fd", FD)
-    r = settle(client, a, "fd", fd_id, destination)
-    assert r.status_code == 422, r.json()
-    if field is not None:
-        loc, msg = errors(r)
-        assert loc[-1] == field and msg == message
-    assert item(client, a, "fd", fd_id)["settled"] is False
-    assert [x["id"] for x in client.get("/api/assets/fd", headers=a).json()] == [fd_id]
-
-
-def test_only_a_deposit_can_be_renewed(client, users):
-    a = users[0]
-    bond = add(client, a, "bond", {**BOND, "purchase_date": "2024-01-01", "maturity_date": "2025-01-01"})
-    r = settle(client, a, "bond", bond, {"kind": "renewed", "fd": RENEWED})
+    r = settle(client, a, "fd", fd_id, {"kind": "renewed"})
     assert r.status_code == 422
-    assert errors(r) == (["destination", "kind"], "Only a deposit can be renewed")
-    assert client.get("/api/assets/fd", headers=a).json() == []
-    assert item(client, a, "bond", bond)["settled"] is False
-
-
-def test_a_failure_while_renewing_leaves_nothing_behind(client, users, monkeypatch):
-    a = users[0]
-    fd_id = add(client, a, "fd", FD)
-    real = exits_service._new_deposit
-
-    def create_then_fail(db, user_id, body):
-        real(db, user_id, body)
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(exits_service, "_new_deposit", create_then_fail)
-    with pytest.raises(RuntimeError):
-        settle(client, a, "fd", fd_id, {"kind": "renewed", "fd": RENEWED})
+    assert errors(r) == (["destination", "kind"], "Choose where the money went")
     assert item(client, a, "fd", fd_id)["settled"] is False
-    assert [x["id"] for x in client.get("/api/assets/fd", headers=a).json()] == [fd_id]
 
 
 # --- scoping and soft delete -----------------------------------------------------------------

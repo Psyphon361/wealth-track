@@ -37,7 +37,6 @@ from app.schemas.exits import (
     CASH_ACCOUNT_ERROR,
     CHARGES_TOO_HIGH_ERROR,
     EXIT_DATE_FUTURE_ERROR,
-    RENEWAL_ONLY_DEPOSITS_ERROR,
     SELL_DATE_BEFORE_PURCHASE_ERROR,
     SELL_QUANTITY_TOO_MANY_ERROR,
     SETTLE_DATE_BEFORE_MATURITY_ERROR,
@@ -46,7 +45,7 @@ from app.schemas.exits import (
     SettleBody,
     _Destination,
 )
-from app.services import analytics, duplicates, fd_issuers, networth, valuation
+from app.services import analytics, duplicates, fundings, networth, valuation
 from app.services import sip as sip_service
 
 SELL_TYPES = ("stock", "bond", "mf", "gold", "other")
@@ -309,8 +308,9 @@ def _not_active(slug: str, record: Any, today: date) -> ExitConflict | None:
 # --- Exit rows ----------------------------------------------------------------------------------
 
 
-def exit_summary(row: HoldingExit) -> dict[str, Any]:
-    """The `exit` object on holding items (JSON-ready)."""
+def exit_summary(row: HoldingExit, reinvested: Decimal = _ZERO) -> dict[str, Any]:
+    """The `exit` object on holding items (JSON-ready). `reinvested` is the money of this exit
+    that "Paid from" put into holdings that still exist."""
     prev = row.prev_state or {}
     return ExitSummary(
         id=row.id,
@@ -324,10 +324,12 @@ def exit_summary(row: HoldingExit) -> dict[str, Any]:
         cash_holding_id=row.cash_holding_id,
         new_holding_id=row.new_holding_id,
         new_asset_type=prev.get("new_asset_type"),
+        reinvested=reinvested,
+        left_in_account=fundings.left_in_account(row.cash_added, reinvested),
     ).model_dump(mode="json")
 
 
-def exit_read(row: HoldingExit) -> dict[str, Any]:
+def exit_read(row: HoldingExit, reinvested: Decimal = _ZERO) -> dict[str, Any]:
     """Fields of the ExitRead response model."""
     prev = row.prev_state or {}
     return {
@@ -347,6 +349,8 @@ def exit_read(row: HoldingExit) -> dict[str, Any]:
         "new_asset_type": prev.get("new_asset_type"),
         "created_at": row.created_at,
         "realised_gain": Decimal(str(row.amount)) - Decimal(str(row.cost)),
+        "reinvested": reinvested,
+        "left_in_account": fundings.left_in_account(row.cash_added, reinvested),
     }
 
 
@@ -380,10 +384,11 @@ def fetch_exit_info(session: Session, user_id: int) -> dict[tuple[str, int], dic
     rows = session.scalars(
         sa.select(HoldingExit).where(HoldingExit.user_id == user_id).order_by(HoldingExit.id)
     ).all()
+    reinvested = fundings.reinvested_by_exit(session, user_id) if rows else {}
     info: dict[tuple[str, int], dict[str, Any]] = {}
     for row in rows:
         entry = info.setdefault((row.asset_type, row.holding_id), {"exit": None, "settled": False})
-        entry["exit"] = exit_summary(row)
+        entry["exit"] = exit_summary(row, reinvested.get(row.id, _ZERO))
         if row.kind == "maturity":
             entry["settled"] = True
     return info
@@ -638,20 +643,6 @@ def record_sale(
     )
 
 
-def _new_deposit(db: Session, user_id: int, body: SettleBody) -> tuple[Any, str]:
-    """Create the renewed FD or RD in the caller's transaction; returns (row, "fd" | "rd")."""
-    dest = body.destination
-    slug, payload = ("fd", dest.fd) if dest.fd is not None else ("rd", dest.rd)
-    data = payload.model_dump()
-    if data.get("issuer_id") is not None:
-        issuer = fd_issuers.require_issuer(db, data["issuer_id"])
-        data["bank"] = (issuer.short_name or issuer.name)[:200]
-    created = MODELS[slug](**data, user_id=user_id)
-    db.add(created)
-    db.flush()
-    return created, slug
-
-
 def record_settlement(
     db: Session, user_id: int, slug: str, holding: Any, item: Mapping[str, Any], body: SettleBody,
     today: date,
@@ -689,16 +680,9 @@ def record_settlement(
         raise ExitError(("date",), SETTLE_DATE_BEFORE_MATURITY_ERROR, settle_date)
     amount = money(body.amount) if body.amount is not None else maturity_amount_of(slug, item)
     dest = body.destination
-    if dest.kind == "renewed" and slug not in ("fd", "rd"):
-        raise ExitError(("destination", "kind"), RENEWAL_ONLY_DEPOSITS_ERROR, dest.kind)
     cash = _resolve_cash(db, user_id, dest)
 
     prev: dict[str, Any] = {}
-    created = None
-    created_slug = None
-    if dest.kind == "renewed":
-        created, created_slug = _new_deposit(db, user_id, body)
-        prev["new_asset_type"] = created_slug
     paid_into = _pay_into_cash(db, user_id, dest, cash, amount, settle_date, prev)
     row = HoldingExit(
         user_id=user_id,
@@ -710,10 +694,9 @@ def record_settlement(
         amount=amount,
         cost=money(item.get("invested") or 0),
         charges=_ZERO,
-        destination="renewed" if created is not None else ("cash" if paid_into else "none"),
+        destination="cash" if paid_into else "none",
         cash_holding_id=paid_into.id if paid_into is not None else None,
         cash_added=amount if paid_into is not None else None,
-        new_holding_id=created.id if created is not None else None,
         prev_state=prev,
     )
     db.add(row)
@@ -735,7 +718,6 @@ class UndoOutcome:
     cash_returned: Decimal | None = None
     sips_paused: int = 0
     cash_account_kept: str | None = None  # a new account the sale created
-    renewed_kept: str | None = None  # "fd" or "rd" when a renewal created a deposit
 
 
 def _was_full_sale(row: HoldingExit, holding: Any) -> bool:
@@ -750,8 +732,7 @@ def _was_full_sale(row: HoldingExit, holding: Any) -> bool:
 
 def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
     """Reverse the exit: restore the holding, take the money back out of the cash account, delete
-    the redemption transaction. Does not delete a cash account or renewed deposit the exit
-    created. The caller checked this is the holding's latest exit. No commit."""
+    the redemption transaction. Does not delete a cash account the exit created. The caller checked this is the holding's latest exit. No commit."""
     prev = row.prev_state or {}
     slug = row.asset_type
     out = UndoOutcome(kind=row.kind, holding_name=duplicates.holding_name(holding))
@@ -805,8 +786,6 @@ def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
             out.cash_returned = Decimal(str(row.cash_added))
             if prev.get("cash_created"):
                 out.cash_account_kept = cash.name
-    if row.new_holding_id is not None:
-        out.renewed_kept = prev.get("new_asset_type")
 
     db.delete(row)
     return out

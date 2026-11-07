@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import create_model
 from sqlalchemy import func, select
@@ -8,8 +9,10 @@ from app import schemas
 from app.db import Base, get_db
 from app.deps import current_user
 from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Nps, Other, Pf, RecurringDeposit, Stock, User
+from app.schemas.fundings import PaidFromBody
 from app.schemas.messages import Outcome
-from app.services import amfi, bond_master, duplicates, fd_issuers, nps, stock_master
+from app.services import amfi, bond_master, duplicates, fd_issuers, fundings, nps, stock_master
+from app.services import sip as sip_service
 
 router = APIRouter(prefix="/assets")
 
@@ -67,6 +70,10 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         return obj.metal.capitalize() if slug == "gold" else label
 
     result = create_model(f"{read.__name__}Result", __base__=(read, Outcome))
+    # POST also takes `paid_from`; PUT never does (editing a holding leaves its funding alone).
+    create_in = create_model(
+        f"{create.__name__}In", __base__=create, paid_from=(PaidFromBody | None, None)
+    )
 
     def _with_message(obj, message: str):
         data = read.model_validate(obj).model_dump()
@@ -74,7 +81,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
 
     def _values(db: Session, body) -> dict:
         """Body as column values; a linked AMFI scheme overwrites scheme_name (snapshot)."""
-        data = body.model_dump()
+        data = body.model_dump(exclude={"paid_from"})
         if slug == "nps":
             nps.require_scheme(db, data["scheme_id"])
         if data.get("scheme_code") is not None:
@@ -101,26 +108,52 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
 
     @sub.post("", response_model=result, status_code=201)
     def create_item(
-        body: create,  # type: ignore[valid-type]
+        body: create_in,  # type: ignore[valid-type]
         background: BackgroundTasks,
         db: Session = Depends(get_db),
         user: User = Depends(current_user),
         confirm_duplicate: bool = False,
     ):
         values = _values(db, body)
+        today = sip_service.today_ist()
+        funding = None
+        if body.paid_from is not None:
+            try:
+                funding = fundings.plan(db, user.id, slug, values, body.paid_from, today)
+            except fundings.FundingError as error:
+                db.rollback()
+                raise RequestValidationError(
+                    [
+                        {
+                            "type": "value_error",
+                            "loc": ("body", *error.loc),
+                            "msg": error.message,
+                            "input": "" if error.value is None else str(error.value),
+                        }
+                    ]
+                ) from None
         if not confirm_duplicate:
             matches = duplicates.find_duplicates(db, slug, model, user.id, values)
             if matches:
+                db.rollback()  # releases the account lock; nothing was debited
                 return JSONResponse(
                     status_code=409, content=duplicates.duplicate_body(slug, matches)
                 )
         obj = model(**values, user_id=user.id)
         db.add(obj)
+        taken_from = None
+        if funding is not None:
+            db.flush()
+            fundings.apply(db, user.id, slug, obj.id, funding)
+            taken_from = fundings.paid_from_text(funding.amount, funding.cash.name)
         db.commit()
         db.refresh(obj)
         if slug == "nps":
             background.add_task(nps.sync_scheme_safely, obj.scheme_id)
-        return _with_message(obj, f"{_label(obj)} added")
+        out = _with_message(obj, f"{_label(obj)} added")
+        if taken_from is not None:
+            out.description = f"{out.description} · {taken_from}"
+        return out
 
     @sub.get("/{item_id}", response_model=read)
     def get_item(item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
@@ -151,6 +184,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         name = _holding_name(obj)
         deleted_label = _label(obj)
         obj.deleted_at = func.now()
+        fundings.refund(db, user.id, slug, obj.id)
         db.commit()
         return Outcome(message=f"{deleted_label} deleted", description=name)
 
@@ -168,6 +202,14 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         ).first()
         if obj is None:
             raise HTTPException(status_code=404, detail="Not found")
+        try:
+            fundings.restore(db, user.id, slug, obj.id)
+        except fundings.FundingConflict as error:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail={"message": error.message, "description": error.description},
+            ) from None
         obj.deleted_at = None
         db.commit()
         if slug == "nps":

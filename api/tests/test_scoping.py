@@ -11,6 +11,7 @@ from app.models import (
     Gold,
     GoldRateLatest,
     HoldingExit,
+    HoldingFunding,
     MFNavLatest,
     MFTransaction,
     MfSip,
@@ -48,7 +49,7 @@ def client(auth_engine, auth_settings):
             for m in (
                 FixedDeposit, RecurringDeposit, Stock, Bond, MutualFund, Gold, Cash, Pf, Other, GoldRateLatest, MFNavLatest,
                 MFTransaction, MfSip, MfSipSkip, NpsMaster, NpsNavLatest, NpsNavHistory, NpsNavHistorySync, Nps,
-                HoldingExit,
+                HoldingExit, HoldingFunding,
             )
         ],
     )

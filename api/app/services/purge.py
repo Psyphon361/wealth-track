@@ -11,6 +11,7 @@ from app.models import (
     FixedDeposit,
     Gold,
     HoldingExit,
+    HoldingFunding,
     MutualFund,
     Nps,
     Other,
@@ -49,29 +50,36 @@ def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> di
 
     mf_transactions go with their fund through the ON DELETE CASCADE foreign key. holding_exits has
     no foreign key to the holding tables, so its rows for the purged holdings are deleted here, in
-    the same transaction. Returns the number of rows removed per type slug, plus "exits" for the
-    holding_exits rows removed.
+    the same transaction, and so are holding_fundings. Returns the number of rows removed per type
+    slug, plus "exits" and "fundings" for the rows removed from those tables.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
     counts: dict[str, int] = {}
     exits_removed = 0
+    fundings_removed = 0
     for slug, model in HOLDING_MODELS.items():
-        if slug in EXIT_SLUGS:
-            ids = list(
-                session.scalars(
-                    select(model.id)
-                    .where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
-                    .execution_options(include_deleted=True)
-                )
+        ids = list(
+            session.scalars(
+                select(model.id)
+                .where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
+                .execution_options(include_deleted=True)
             )
-            if ids:
+        )
+        if ids:
+            if slug in EXIT_SLUGS:
                 exits_removed += session.execute(
                     delete(HoldingExit).where(
                         HoldingExit.asset_type == slug, HoldingExit.holding_id.in_(ids)
                     )
                 ).rowcount
+            fundings_removed += session.execute(
+                delete(HoldingFunding).where(
+                    HoldingFunding.asset_type == slug, HoldingFunding.holding_id.in_(ids)
+                )
+            ).rowcount
         result = session.execute(purge_statement(model, cutoff).execution_options(include_deleted=True))
         counts[slug] = result.rowcount
     counts["exits"] = exits_removed
+    counts["fundings"] = fundings_removed
     session.commit()
     return counts

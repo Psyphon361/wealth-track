@@ -19,6 +19,7 @@ from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
 from app.services import exits as exits_service
+from app.services import fundings as fundings_service
 from app.services import gold_rates, nav_history, nps as nps_service, stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
@@ -110,6 +111,12 @@ def _fetch_exit_info(bind: Any, user_id: int) -> dict[tuple[str, int], dict[str,
     """Latest sale or settlement per holding (and whether it was settled), on this part's own session."""
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         return exits_service.fetch_exit_info(session, user_id)
+
+
+def _fetch_paid_from(bind: Any, user_id: int) -> dict[tuple[str, int], dict[str, Any]]:
+    """The "Paid from" funding of each holding, on this part's own session."""
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return fundings_service.paid_from_info(session, user_id)
 
 
 def _value(
@@ -221,6 +228,7 @@ def build_groups(
             item.setdefault("settled", False)
             item.setdefault("exit", None)
             item.setdefault("maturity_amount", None)
+            item.setdefault("paid_from", None)
         active = [c for c in computed if c["status"] == "active"]
         group = {
             "type": slug,
@@ -259,7 +267,7 @@ def load_records_and_groups(
             stmt = select(model).where(model.user_id == user_id).order_by(model.id)
             return list(session.scalars(stmt).all())
 
-    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 6) as pool:
+    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 7) as pool:
         futures = {
             slug: pool.submit(fetch, model)
             for slug, (model, _c, _r) in REGISTRY.items()
@@ -272,6 +280,7 @@ def load_records_and_groups(
         nps_future = pool.submit(_fetch_nps_navs, bind, user_id)
         nps_prev_future = pool.submit(_fetch_nps_prev_navs, bind, user_id)
         exits_future = pool.submit(_fetch_exit_info, bind, user_id)
+        paid_future = pool.submit(_fetch_paid_from, bind, user_id)
         records = {slug: future.result() for slug, future in futures.items()}
         records["stock"], prices = stock_future.result()
         navs = nav_future.result()
@@ -280,10 +289,12 @@ def load_records_and_groups(
         nps_navs = nps_future.result()
         nps_prev = nps_prev_future.result()
         exit_info = exits_future.result()
+        paid_from = paid_future.result()
     groups = build_groups(
         records, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
     exits_service.apply_exit_info(groups, exit_info)
+    fundings_service.apply_paid_from(groups, paid_from)
     return records, groups
 
 
@@ -319,6 +330,7 @@ def load_group(
     )
     group = next(g for g in groups if g["type"] == slug)
     exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
+    fundings_service.apply_paid_from([group], fundings_service.paid_from_info(db, user_id))
     return group
 
 
@@ -353,6 +365,7 @@ def load_holding(
     )
     group = next(g for g in groups if g["type"] == slug)
     exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
+    fundings_service.apply_paid_from([group], fundings_service.paid_from_info(db, user_id))
     return record, group["items"][0]
 
 

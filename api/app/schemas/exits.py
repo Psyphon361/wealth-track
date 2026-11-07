@@ -15,10 +15,8 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, BaseModel, BeforeValidator, model_validator
 
 from app.schemas.assets import (
-    FixedDepositCreate,
     Money,
     Number,
-    RecurringDepositCreate,
     _blank_to_none,
     _decimals,
     _error,
@@ -43,14 +41,10 @@ DESTINATION_ERROR = "Choose where the money went"
 CASH_ACCOUNT_ERROR = "Choose one of your accounts"
 CASH_NAME_REQUIRED_ERROR = "Required"
 CASH_NAME_LENGTH_ERROR = "Must be at most 200 characters"
-RENEWAL_ONLY_DEPOSITS_ERROR = "Only a deposit can be renewed"
-RENEWAL_MISSING_ERROR = "Enter the new deposit's details"
-RENEWAL_ONE_ONLY_ERROR = "Enter either a new FD or a new RD, not both"
-RENEWAL_NOT_RENEWED_ERROR = "Details are only needed when the money was renewed"
 
 CASH_NAME_MAX = 200
 SELL_DESTINATIONS = ("cash_existing", "cash_new", "none")
-SETTLE_DESTINATIONS = ("cash_existing", "cash_new", "renewed", "none")
+SETTLE_DESTINATIONS = ("cash_existing", "cash_new", "none")
 
 
 def _not_negative(value: Decimal) -> Decimal:
@@ -112,23 +106,13 @@ class SellDestination(_Destination):
 
 class SettleDestination(_Destination):
     kind: Annotated[
-        Literal["cash_existing", "cash_new", "renewed", "none"],
+        Literal["cash_existing", "cash_new", "none"],
         BeforeValidator(_one_of(SETTLE_DESTINATIONS, DESTINATION_ERROR)),
     ]
-    # The new deposit when kind is "renewed": exactly one of fd or rd.
-    fd: FixedDepositCreate | None = None
-    rd: RecurringDepositCreate | None = None
 
     @model_validator(mode="after")
-    def _cash_and_renewal(self):
+    def _cash(self):
         self._check_cash()
-        if self.kind == "renewed":
-            if self.fd is not None and self.rd is not None:
-                _field_error(self, "fd", RENEWAL_ONE_ONLY_ERROR)
-            if self.fd is None and self.rd is None:
-                _field_error(self, "fd", RENEWAL_MISSING_ERROR)
-        elif self.fd is not None or self.rd is not None:
-            _field_error(self, "fd" if self.fd is not None else "rd", RENEWAL_NOT_RENEWED_ERROR)
         return self
 
 
@@ -168,6 +152,10 @@ class ExitRead(BaseModel):
     created_at: datetime
     # amount - cost: the realised gain (negative for a loss).
     realised_gain: Annotated[Decimal, Number]
+    # Money of this exit put into holdings that still exist ("Paid from" this exit).
+    reinvested: Annotated[Decimal, Number]
+    # cash_added - reinvested, never below 0; null when the money went into no account.
+    left_in_account: Annotated[Decimal, Number] | None
 
 
 class ExitResult(ExitRead, Outcome):
@@ -197,6 +185,8 @@ class ExitSummary(BaseModel):
     cash_holding_id: int | None
     new_holding_id: int | None
     new_asset_type: str | None = None
+    reinvested: Annotated[Decimal, Number]
+    left_in_account: Annotated[Decimal, Number] | None
 
 
 class StockClose(BaseModel):

@@ -128,26 +128,37 @@ CONFIG: dict[str, dict[str, Any]] = {
     },
 }
 
+# Sort keys of the Closed tab (derived per row, see _sort_value): the exit date (else closed_on,
+# else maturity date), what came back, and the realised gain (rows without an exit sort last).
+CLOSED_SORT_KEYS = {"closed_on", "received", "realised_gain"}
+CLOSED_DEFAULT_SORT = "closed_on"
+OPEN_DEFAULT_SORT = "current_value"
+
 FdSort = Literal[
     "bank", "principal", "rate", "compounding", "start_date", "maturity_date",
     "current_value", "gain", "gain_pct", "status",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 RdSort = Literal[
     "bank", "monthly_instalment", "rate", "start_date", "maturity_date", "invested",
     "current_value", "gain", "gain_pct", "status",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 StockSort = Literal[
     "name", "exchange", "broker", "quantity", "avg_buy_price", "invested",
     "current_value", "gain", "gain_pct", "buy_date",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 BondSort = Literal[
     "name", "issuer", "bond_type", "platform", "quantity", "face_value", "purchase_price",
     "ytm", "purchase_date", "maturity_date", "invested", "current_value", "gain",
     "gain_pct", "status",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 MfSort = Literal[
     "scheme_name", "category", "platform", "units", "avg_nav", "invested",
     "current_value", "gain", "gain_pct", "xirr", "purchase_date",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 
 NpsSort = Literal[
@@ -158,6 +169,7 @@ NpsSort = Literal[
 GoldSort = Literal[
     "name", "form", "metal", "purity", "weight_grams", "purchase_date", "invested",
     "current_value", "gain", "gain_pct", "xirr",
+    "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 
 CashSort = Literal["name", "kind", "balance_date", "current_value", "interest_rate"]
@@ -167,8 +179,9 @@ PfSort = Literal[
 ]
 
 OtherSort = Literal[
-    "name", "category", "current_value", "invested", "gain", "value_date"
-]
+    "name", "category", "current_value", "invested", "gain", "value_date",
+    "closed_on", "received", "realised_gain",
+]  # fmt: skip
 
 Q =Annotated[str | None, Query(max_length=100)]
 Dir = Literal["asc", "desc"]
@@ -181,6 +194,15 @@ def _dec(value: Any) -> Decimal:
 
 
 def _sort_value(item: dict[str, Any], key: str, text_keys: set[str]) -> Any:
+    """The value a row sorts by; None sorts last. The Closed tab's keys are derived."""
+    if key in CLOSED_SORT_KEYS:
+        exit_ = item.get("exit")
+        if key == "closed_on":
+            found = (exit_ or {}).get("date") or item.get("closed_on") or item.get("maturity_date")
+            return str(found) if found else None
+        if key == "received":
+            return _dec(exit_["amount"] if exit_ else item.get("maturity_amount"))
+        return _dec(exit_["amount"]) - _dec(exit_["cost"]) if exit_ else None
     value = item.get(key)
     if value is not None and key in text_keys:
         return str(value).lower()
@@ -234,8 +256,8 @@ def _run(
     slug: str,
     *,
     q: str | None,
-    sort: str,
-    dir: str,
+    sort: str | None,
+    dir: str | None,
     page: int,
     multi: dict[str, list[str] | None],
     range_field: str | None = None,
@@ -324,6 +346,11 @@ def _run(
         "gain_pct": _q(gain / gain_base * 100) if gain_base else Decimal("0.00"),
     }
 
+    # No sort given: value descending, except the Closed tab (status=closed), newest closed first.
+    closed_tab = "closed" in selected.get("status", set())
+    sort = sort or (CLOSED_DEFAULT_SORT if closed_tab else OPEN_DEFAULT_SORT)
+    dir = dir or "desc"
+
     # Stable tie-break by id, then sort by key; nulls always last.
     filtered.sort(key=lambda r: r["id"])
     text_keys = cfg["text"]
@@ -359,8 +386,8 @@ def get_fd_holdings(
     rate_max: Decimal | None = None,
     maturity_from: date | None = None,
     maturity_to: date | None = None,
-    sort: FdSort = "current_value",
-    dir: Dir = "desc",
+    sort: FdSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -382,8 +409,8 @@ def get_rd_holdings(
     rate_max: Decimal | None = None,
     maturity_from: date | None = None,
     maturity_to: date | None = None,
-    sort: RdSort = "current_value",
-    dir: Dir = "desc",
+    sort: RdSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -402,8 +429,8 @@ def get_stock_holdings(
     exchange: Annotated[list[Literal["NSE", "BSE"]] | None, Query()] = None,
     broker: Texts = None,
     status: Annotated[list[Status] | None, Query()] = None,
-    sort: StockSort = "current_value",
-    dir: Dir = "desc",
+    sort: StockSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -425,8 +452,8 @@ def get_bond_holdings(
     ytm_max: Decimal | None = None,
     maturity_from: date | None = None,
     maturity_to: date | None = None,
-    sort: BondSort = "current_value",
-    dir: Dir = "desc",
+    sort: BondSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -445,8 +472,8 @@ def get_mf_holdings(
     category: Annotated[list[MfCategory] | None, Query()] = None,
     platform: Texts = None,
     status: Annotated[list[Status] | None, Query()] = None,
-    sort: MfSort = "current_value",
-    dir: Dir = "desc",
+    sort: MfSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -463,8 +490,8 @@ def get_nps_holdings(
     pfm_name: Texts = None,
     tier: Annotated[list[NpsTier] | None, Query()] = None,
     asset_class: Annotated[list[NpsAssetClass] | None, Query()] = None,
-    sort: NpsSort = "current_value",
-    dir: Dir = "desc",
+    sort: NpsSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -482,8 +509,8 @@ def get_gold_holdings(
     metal: Annotated[list[GoldMetal] | None, Query()] = None,
     purity: Annotated[list[GoldPurity] | None, Query()] = None,
     status: Annotated[list[Status] | None, Query()] = None,
-    sort: GoldSort = "current_value",
-    dir: Dir = "desc",
+    sort: GoldSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -498,8 +525,8 @@ def get_gold_holdings(
 def get_cash_holdings(
     q: Q = None,
     kind: Annotated[list[CashKind] | None, Query()] = None,
-    sort: CashSort = "current_value",
-    dir: Dir = "desc",
+    sort: CashSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -514,8 +541,8 @@ def get_cash_holdings(
 def get_pf_holdings(
     q: Q = None,
     kind: Annotated[list[PfKind] | None, Query()] = None,
-    sort: PfSort = "current_value",
-    dir: Dir = "desc",
+    sort: PfSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
@@ -531,8 +558,8 @@ def get_other_holdings(
     q: Q = None,
     category: Texts = None,
     status: Annotated[list[Status] | None, Query()] = None,
-    sort: OtherSort = "current_value",
-    dir: Dir = "desc",
+    sort: OtherSort | None = None,
+    dir: Dir | None = None,
     page: Page = 1,
     db: Session = Depends(get_db),
     user: User = Depends(current_user),
