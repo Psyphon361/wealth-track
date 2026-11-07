@@ -41,6 +41,8 @@ import {
 } from "./schema";
 import { SchemePicker } from "./scheme-picker";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 import { useNavAutofill } from "./use-nav-autofill";
 
 const schema = z
@@ -123,7 +125,10 @@ export function MfForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: MutualFund;
   onSaved?: (record: MutualFund) => void;
   onCancel?: () => void;
@@ -142,7 +147,9 @@ export function MfForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const pf = usePaidFrom({ type: "mf", record, control, setValue, reinvest });
   const { saving, save, duplicate } = useAssetSave("mf", record, onSaved, (issues) => {
+    pf.applyIssues(issues);
     for (const i of issues) {
       if (i.field === "scheme_code") {
         setError("scheme_code", { type: "server", message: i.message });
@@ -245,6 +252,7 @@ export function MfForm({
   }
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const manual = values.scheme_mode === "manual";
     const payload: MutualFundInput = {
       scheme_code: manual ? null : values.scheme_code,
@@ -257,7 +265,7 @@ export function MfForm({
       purchase_date: values.purchase_date,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -266,6 +274,7 @@ export function MfForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">

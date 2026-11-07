@@ -65,6 +65,7 @@ export const mfConfig: GridConfig<MutualFundItem> = {
     },
     { kind: "facet", key: "platform", title: "Platform" },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

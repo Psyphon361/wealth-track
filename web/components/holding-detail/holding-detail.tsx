@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, HandCoins, Pencil, Trash2 } from "lucide-react";
 import { BondSchedule } from "@/components/analytics/bond-schedule";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { useBreadcrumbLabel } from "@/components/breadcrumb-label";
+import { SellDialog } from "@/components/exits/sell-dialog";
+import { SettleDialog } from "@/components/exits/settle-dialog";
 import { DeleteDialog, type DeleteTarget } from "@/components/portfolio/delete-dialog";
 import { EditDialog } from "@/components/portfolio/edit-dialog";
 import { bondConfig } from "@/components/portfolio/grid/configs/bond";
@@ -24,7 +26,17 @@ import type { GridConfig } from "@/components/portfolio/grid/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiDelete } from "@/lib/api";
+import {
+  CASH_PAID_FROM_INFO,
+  canSell,
+  canSettle,
+  isSellableType,
+  isSettleableType,
+  paidFromText,
+} from "@/lib/exits";
+import { formatDate } from "@/lib/format";
 import { markHoldingsStale } from "@/lib/holdings-cache";
+import { amountText } from "@/lib/sip";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
 import {
@@ -34,6 +46,7 @@ import {
   type OtherItem,
   type PfItem,
 } from "@/lib/types";
+import { ExitsSection } from "./exits-section";
 import { KpiStrip } from "./kpi-strip";
 import { MfSipSection } from "./mf-sip-section";
 import { MfTransactions } from "./mf-transactions";
@@ -70,9 +83,16 @@ function TypedDetail<TRow extends HoldingRow>({
   id: number;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data, error, refetch, retry } = useHoldingDetail<TRow>(config.type, id);
   const [editing, setEditing] = useState<TRow | null>(null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const [selling, setSelling] = useState(false);
+  // The dashboard links here with ?settle=1 to open the settle dialog straight away.
+  const [settling, setSettling] = useState(searchParams.get("settle") === "1");
+  // Bumped after a sale, settlement or undo so the exits list reloads.
+  const [exitsVersion, setExitsVersion] = useState(0);
   const entry = getAssetEntry(config.type);
   const backHref = `/portfolio/${config.type}`;
   useBreadcrumbLabel(data ? config.rowName(data.item) : null);
@@ -113,7 +133,25 @@ function TypedDetail<TRow extends HoldingRow>({
   const name = config.rowName(item);
   const subtitle = detail.subtitle(item);
   const tenure = detail.tenure?.(item) ?? null;
-  const hasStatus = config.type === "fd" || config.type === "rd" || config.type === "bond";
+  const hasStatus =
+    config.type === "fd" ||
+    config.type === "rd" ||
+    config.type === "bond" ||
+    item.status === "sold";
+  const sellable = canSell(config.type, item);
+  const settleable = canSettle(config.type, item);
+  const paidFrom = paidFromText(item);
+  const hasExits =isSellableType(config.type) || isSettleableType(config.type);
+
+  function exitDone() {
+    refetch();
+    setExitsVersion((n) => n + 1);
+  }
+
+  function closeSettle() {
+    setSettling(false);
+    if (searchParams.get("settle")) router.replace(pathname, { scroll: false });
+  }
 
   function handleDelete(target: DeleteTarget) {
     setDeleting(null);
@@ -143,6 +181,12 @@ function TypedDetail<TRow extends HoldingRow>({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {sellable ? (
+            <Button variant="outline" size="sm" onClick={() => setSelling(true)}>
+              <HandCoins aria-hidden />
+              Sell
+            </Button>
+          ) : null}
           <Button variant="outline" size="sm" onClick={() => setEditing(item)}>
             <Pencil aria-hidden />
             Edit
@@ -159,6 +203,21 @@ function TypedDetail<TRow extends HoldingRow>({
         </div>
       </div>
 
+      {settleable ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted/30 px-4 py-3">
+          <p className="text-[13.5px]">
+            Matured on {item.maturity_date ? formatDate(item.maturity_date) : "its maturity date"}
+            {item.maturity_amount != null
+              ? ` · ${amountText(item.maturity_amount)} paid out`
+              : ""}
+            . Where did the money go?
+          </p>
+          <Button size="sm" onClick={() => setSettling(true)}>
+            Settle
+          </Button>
+        </div>
+      ) : null}
+
       <KpiStrip
         item={item}
         fourth={detail.kpi(item)}
@@ -172,6 +231,12 @@ function TypedDetail<TRow extends HoldingRow>({
       />
       {tenure ? <TenureBar start={tenure.start} end={tenure.end} label={tenure.label} /> : null}
 
+      {paidFrom ? (
+        <p className="num text-[13.5px] text-muted-foreground">{paidFrom}</p>
+      ) : null}
+      {config.type === "cash" ? (
+        <p className="text-[13.2px] text-muted-foreground">{CASH_PAID_FROM_INFO}</p>
+      ) : null}
       <Section title="Holding" fields={detail.holding(item)} />
       {master ? (
         <Section title="Instrument" fields={detail.instrument(master, item)} />
@@ -183,8 +248,36 @@ function TypedDetail<TRow extends HoldingRow>({
           <MfTransactions id={item.id} />
         </>
       ) : null}
+      {hasExits ? (
+        <ExitsSection
+          type={config.type}
+          id={item.id}
+          version={exitsVersion}
+          onChanged={exitDone}
+        />
+      ) : null}
       {item.notes ? <NotesSection notes={item.notes} /> : null}
 
+      <SellDialog
+        type={config.type}
+        row={selling && sellable ? item : null}
+        name={name}
+        onClose={() => setSelling(false)}
+        onDone={() => {
+          setSelling(false);
+          exitDone();
+        }}
+      />
+      <SettleDialog
+        type={config.type}
+        row={settling && settleable ? item : null}
+        name={name}
+        onClose={closeSettle}
+        onDone={() => {
+          closeSettle();
+          exitDone();
+        }}
+      />
       <EditDialog
         config={config}
         row={editing}

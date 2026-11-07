@@ -53,6 +53,7 @@ export const goldConfig: GridConfig<GoldItem> = {
     { kind: "facet", key: "form", title: "Form", labels: GOLD_FORM_LABELS },
     { kind: "facet", key: "purity", title: "Purity", labels: GOLD_PURITY_FACET_LABELS },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

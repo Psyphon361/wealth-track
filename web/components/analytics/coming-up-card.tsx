@@ -147,6 +147,14 @@ export function ComingUpCard({ comingUp }: { comingUp: AnalyticsComingUp }) {
                         {TYPE_LABELS[r.type] ?? r.type}
                       </span>
                     </span>
+                    {!r.settled && (
+                      <span className="shrink-0 rounded-full border border-foreground/30 px-2 py-0.5 text-[11px] text-foreground">
+                        Not Settled
+                      </span>
+                    )}
+                    {r.amount != null && (
+                      <span className="num shrink-0 text-right">{formatINR(r.amount)}</span>
+                    )}
                   </Link>
                 </li>
               ))}

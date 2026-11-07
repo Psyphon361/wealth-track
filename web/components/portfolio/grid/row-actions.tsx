@@ -1,8 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Eye, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  CircleCheck,
+  Eye,
+  HandCoins,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
+import { SellDialog } from "@/components/exits/sell-dialog";
+import { SettleDialog } from "@/components/exits/settle-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -16,7 +25,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { AssetType } from "@/lib/types";
+import { canSell, canSettle } from "@/lib/exits";
+import type { AssetType, HoldingRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Flip once the /portfolio/{type}/{id} details page exists. */
@@ -35,16 +45,37 @@ export function RowActions({
   type,
   id,
   name,
+  row,
   onEdit,
   onDelete,
 }: {
   type: AssetType;
   id: number;
   name: string;
+  row: HoldingRow;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const entries: MenuEntry[] = [
+  // Sell and Settle open their own dialogs, so the grid needs no handlers for them.
+  const [dialog, setDialog] = useState<"sell" | "settle" | null>(null);
+  const entries: MenuEntry[] = [];
+  if (canSell(type, row)) {
+    entries.push({
+      key: "sell",
+      label: "Sell",
+      icon: <HandCoins />,
+      run: () => setDialog("sell"),
+    });
+  }
+  if (canSettle(type, row)) {
+    entries.push({
+      key: "settle",
+      label: "Settle",
+      icon: <CircleCheck />,
+      run: () => setDialog("settle"),
+    });
+  }
+  entries.push(
     {
       key: "edit",
       label: "Edit",
@@ -59,7 +90,7 @@ export function RowActions({
       separatorBefore: true,
       run: onDelete,
     },
-  ];
+  );
 
   return (
     <div className="flex items-center justify-end gap-0.5">
@@ -122,6 +153,18 @@ export function RowActions({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <SellDialog
+        type={type}
+        row={dialog === "sell" ? row : null}
+        name={name}
+        onClose={() => setDialog(null)}
+      />
+      <SettleDialog
+        type={type}
+        row={dialog === "settle" ? row : null}
+        name={name}
+        onClose={() => setDialog(null)}
+      />
     </div>
   );
 }

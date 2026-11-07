@@ -43,6 +43,7 @@ export const otherConfig: GridConfig<OtherItem> = {
   searchPlaceholder: "Search other holdings…",
   sortKeys: ["name", "category", "current_value", "invested", "gain", "value_date"],
   filters: [{ kind: "facet", key: "category", title: "Category" }],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

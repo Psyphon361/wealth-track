@@ -4,10 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { apiGet } from "@/lib/api";
 import { ASSET_CATALOG, ASSET_GROUPS } from "@/lib/asset-catalog";
+import { reinvestNote } from "@/lib/paid-from";
+import { peekReinvest } from "@/lib/reinvest";
 import type { AssetType, DashboardResponse } from "@/lib/types";
 
 export function AssetGallery() {
   const [counts, setCounts] = useState<Partial<Record<AssetType, number>>>({});
+  const [note, setNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    const p = peekReinvest();
+    // Read after mount: sessionStorage does not exist during server rendering.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNote(p ? `${reinvestNote(p)} Pick what you bought.` : null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +44,11 @@ export function AssetGallery() {
           Pick the kind of asset you want to record.
         </p>
       </div>
+      {note ? (
+        <p className="num rounded-md border border-border bg-muted/30 px-3 py-2 text-[13.2px] text-muted-foreground">
+          {note}
+        </p>
+      ) : null}
       {ASSET_GROUPS.map((group) => (
         <section key={group} className="flex flex-col gap-2">
           <h3 className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">

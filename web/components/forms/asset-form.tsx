@@ -5,14 +5,17 @@ import type {
   Bond,
   Cash,
   FixedDeposit,
+  FixedDepositInput,
   Gold,
   MutualFund,
   Nps,
   Other,
   Pf,
   RecurringDeposit,
+  RecurringDepositInput,
   Stock,
 } from "@/lib/types";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 import { BondForm } from "./bond-form";
 import { CashForm } from "./cash-form";
 import { FdForm } from "./fd-form";
@@ -28,11 +31,20 @@ type Common<R> = {
   record?: R;
   onSaved?: (r: R) => void;
   onCancel?: () => void;
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
+};
+
+/** Prefill a new record, and optionally take the payload instead of saving it. */
+type Prefill<TInput> = {
+  defaults?: Partial<TInput>;
+  submit?: (payload: TInput) => Promise<void> | void;
+  submitLabel?: string;
 };
 
 export type AssetFormProps =
-  | ({ type: "fd" } & Common<FixedDeposit>)
-  | ({ type: "rd" } & Common<RecurringDeposit>)
+  | ({ type: "fd" } & Common<FixedDeposit> & Prefill<FixedDepositInput>)
+  | ({ type: "rd" } & Common<RecurringDeposit> & Prefill<RecurringDepositInput>)
   | ({ type: "stock" } & Common<Stock>)
   | ({ type: "bond" } & Common<Bond>)
   | ({ type: "mf" } & Common<MutualFund>)
@@ -54,21 +66,30 @@ export function AssetForm(props: AssetFormProps) {
       return (
         <FdForm
           record={props.record}
+          defaults={props.defaults}
+          submit={props.submit}
+          submitLabel={props.submitLabel}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
+          reinvest={props.reinvest}
         />
       );
     case "rd":
       return (
         <RdForm
           record={props.record}
+          defaults={props.defaults}
+          submit={props.submit}
+          submitLabel={props.submitLabel}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
+          reinvest={props.reinvest}
         />
       );
     case "stock":
       return (
         <StockForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -77,6 +98,7 @@ export function AssetForm(props: AssetFormProps) {
     case "bond":
       return (
         <BondForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -85,6 +107,7 @@ export function AssetForm(props: AssetFormProps) {
     case "mf":
       return (
         <MfForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -93,6 +116,7 @@ export function AssetForm(props: AssetFormProps) {
     case "gold":
       return (
         <GoldForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -101,6 +125,7 @@ export function AssetForm(props: AssetFormProps) {
     case "cash":
       return (
         <CashForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -109,6 +134,7 @@ export function AssetForm(props: AssetFormProps) {
     case "pf":
       return (
         <PfForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -117,6 +143,7 @@ export function AssetForm(props: AssetFormProps) {
     case "nps":
       return (
         <NpsForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}
@@ -125,6 +152,7 @@ export function AssetForm(props: AssetFormProps) {
     case "other":
       return (
         <OtherForm
+          reinvest={props.reinvest}
           record={props.record}
           onSaved={props.onSaved}
           onCancel={props.onCancel}

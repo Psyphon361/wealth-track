@@ -19,6 +19,8 @@ import {
   startDateString,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z.object({
   scheme_id: z.string().min(1, NPS_SCHEME_ERROR),
@@ -47,7 +49,10 @@ export function NpsForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Nps;
   onSaved?: (record: Nps) => void;
   onCancel?: () => void;
@@ -60,7 +65,9 @@ export function NpsForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const pf = usePaidFrom({ type: "nps", record, control, setValue, reinvest });
   const { saving, save, duplicate } = useAssetSave("nps", record, onSaved, (issues) => {
+    pf.applyIssues(issues);
     for (const i of issues) {
       if (i.field === "scheme_id") {
         setError("scheme_id", { type: "server", message: i.message });
@@ -87,6 +94,7 @@ export function NpsForm({
   }, [initialId]);
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const payload: NpsInput = {
       scheme_id: values.scheme_id,
       units: values.units,
@@ -94,7 +102,7 @@ export function NpsForm({
       start_date: values.start_date,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -103,6 +111,7 @@ export function NpsForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <div className="sm:col-span-2">

@@ -87,7 +87,7 @@ export function AssetTabs() {
       apiGet<DashboardResponse>("/dashboard")
         .then((res) => {
           const next: Counts = {};
-          for (const row of res.by_type) next[row.type] = row.count + row.matured_count;
+          for (const row of res.by_type) next[row.type] = row.count + row.closed_count;
           cachedCounts = next;
           if (!cancelled) setCounts(next);
         })

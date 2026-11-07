@@ -53,6 +53,7 @@ export const stockConfig: GridConfig<StockItem> = {
     },
     { kind: "facet", key: "broker", title: "Broker" },
   ],
+  statusTabs: true,
   columnLabels: labels,
   rowName,
   createColumns: (handlers) => [

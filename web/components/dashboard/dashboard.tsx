@@ -11,6 +11,7 @@ import type { DashboardResponse } from "@/lib/types";
 import { AllocationCard } from "./allocation-card";
 import { HoldingsByType } from "./holdings-by-type";
 import { NetWorthChart } from "./net-worth-chart";
+import { UnsettledPrompt } from "./unsettled-prompt";
 
 type State =
   | { status: "loading" }
@@ -82,7 +83,7 @@ export function Dashboard() {
   }
 
   const { data } = state;
-  if (data.by_type.every((r) => r.count + r.matured_count === 0)) {
+  if (data.by_type.every((r) => r.count + r.closed_count === 0)) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
         <p className="text-sm font-medium">No holdings yet</p>
@@ -98,6 +99,7 @@ export function Dashboard() {
 
   return (
     <div className="space-y-3">
+      <UnsettledPrompt unsettled={data.unsettled} />
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
         <div className="min-w-0 [&>*]:h-full">
           <NetWorthChart data={data} />

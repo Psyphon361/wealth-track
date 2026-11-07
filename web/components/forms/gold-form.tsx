@@ -36,6 +36,8 @@ import {
   startDateString,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 import { useGoldRateAutofill } from "./use-gold-rate-autofill";
 
 const schema = z
@@ -90,7 +92,10 @@ export function GoldForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Gold;
   onSaved?: (record: Gold) => void;
   onCancel?: () => void;
@@ -103,7 +108,8 @@ export function GoldForm({
     control,
     name: ["metal", "purity", "purchase_date", "weight_grams", "invested_amount"],
   });
-  const { saving, save, duplicate } = useAssetSave("gold", record, onSaved);
+  const pf = usePaidFrom({ type: "gold", record, control, setValue, reinvest });
+  const { saving, save, duplicate } = useAssetSave("gold", record, onSaved, pf.applyIssues);
   const rateHint = useGoldRateAutofill({
     enabled: !saving,
     metal: String(metal ?? "gold"),
@@ -115,6 +121,7 @@ export function GoldForm({
   });
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const payload: GoldInput = {
       name: values.name,
       metal: values.metal,
@@ -125,7 +132,7 @@ export function GoldForm({
       invested_amount: values.invested_amount,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -134,6 +141,7 @@ export function GoldForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <TextField

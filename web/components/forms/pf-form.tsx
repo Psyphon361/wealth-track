@@ -33,6 +33,8 @@ import {
   todayISO,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
   .object({
@@ -93,7 +95,10 @@ export function PfForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Pf;
   onSaved?: (record: Pf) => void;
   onCancel?: () => void;
@@ -109,7 +114,8 @@ export function PfForm({
   });
   const kind = useWatch({ control, name: "kind" });
   const rateEdited = !!dirtyFields.interest_rate;
-  const { saving, save, duplicate } = useAssetSave("pf", record, onSaved);
+  const pf = usePaidFrom({ type: "pf", record, control, setValue, reinvest });
+  const { saving, save, duplicate } = useAssetSave("pf", record, onSaved, pf.applyIssues);
 
   // Suggest a rate for the chosen account type until the user edits it.
   useEffect(() => {
@@ -120,6 +126,7 @@ export function PfForm({
   }, [kind, record, rateEdited, setValue]);
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const payload: PfInput = {
       name: values.name,
       kind: values.kind,
@@ -130,7 +137,7 @@ export function PfForm({
       opened_on: values.kind === "ppf" ? values.opened_on : null,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -139,6 +146,7 @@ export function PfForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <TextField

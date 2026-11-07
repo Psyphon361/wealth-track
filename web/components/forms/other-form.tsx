@@ -20,6 +20,8 @@ import {
   todayISO,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
   .object({
@@ -71,18 +73,23 @@ export function OtherForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Other;
   onSaved?: (record: Other) => void;
   onCancel?: () => void;
 }) {
-  const { control, handleSubmit } = useForm<FormIn, unknown, FormOut>({
+  const { control, handleSubmit, setValue } = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
-  const { saving, save, duplicate } = useAssetSave("other", record, onSaved);
+  const pf = usePaidFrom({ type: "other", record, control, setValue, reinvest });
+  const { saving, save, duplicate } = useAssetSave("other", record, onSaved, pf.applyIssues);
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const payload: OtherInput = {
       name: values.name,
       category: values.category,
@@ -92,7 +99,7 @@ export function OtherForm({
       acquired_on: values.acquired_on === "" ? null : values.acquired_on,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -101,6 +108,7 @@ export function OtherForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <TextField

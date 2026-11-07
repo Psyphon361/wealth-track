@@ -10,6 +10,7 @@ import { SipForm } from "@/components/forms/sip-form";
 import { Card, CardContent } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { getAssetEntry } from "@/lib/asset-catalog";
+import { takeReinvest, type ReinvestPrefill } from "@/lib/reinvest";
 import { SIPS_VIEW_HREF } from "@/lib/sip";
 import type { AssetType } from "@/lib/types";
 
@@ -30,9 +31,23 @@ export function AddFormPage({ type }: { type: AssetType }) {
   // Same for the MF tab: the cleanup runs when the route is hidden, so every
   // visit opens on Import CAS (the default tab) unless the link asks for SIP.
   useEffect(() => () => setPicked(null), []);
+  // "Reinvest" hands over a one-shot prefill; take it each time the page opens
+  // and remount the form so it starts from it.
+  const [reinvest, setReinvest] = useState<ReinvestPrefill | null>(null);
+  useEffect(() => {
+    const taken = takeReinvest(type);
+    if (!taken) return;
+    // One-shot handoff read from sessionStorage (an external store); it can
+    // only be read after mount, so state is set here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setReinvest(taken);
+    setFormKey((k) => k + 1);
+    if (type === "mf") setPicked("manual");
+  }, [type]);
   const entry = getAssetEntry(type);
   if (!entry) return null;
   const onSaved = () => {
+    setReinvest(null);
     setFormKey((k) => k + 1);
     setPicked("cas");
     router.push(`/portfolio/${type}`);
@@ -43,6 +58,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
     router.push(SIPS_VIEW_HREF);
   };
   const onCancel = () => {
+    setReinvest(null);
     setFormKey((k) => k + 1);
     setPicked("cas");
     router.push("/add");
@@ -96,6 +112,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="fd"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -104,6 +121,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="rd"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -112,6 +130,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="stock"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -120,6 +139,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="bond"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -128,6 +148,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="gold"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -136,6 +157,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="cash"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -144,6 +166,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="pf"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -152,6 +175,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="nps"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -160,6 +184,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="other"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />
@@ -175,6 +200,7 @@ export function AddFormPage({ type }: { type: AssetType }) {
               <AssetForm
                 key={formKey}
                 type="mf"
+                reinvest={reinvest}
                 onSaved={onSaved}
                 onCancel={onCancel}
               />

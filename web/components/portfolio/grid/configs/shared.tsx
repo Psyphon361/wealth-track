@@ -16,6 +16,7 @@ import type { GridColumn, GridConfig, RowHandlers } from "../types";
 export const STATUS_LABELS: Record<HoldingStatus, string> = {
   active: "Active",
   matured: "Matured",
+  sold: "Sold",
 };
 
 const dash = <span className="text-muted-foreground">—</span>;
@@ -27,7 +28,7 @@ export function StatusBadge({ status }: { status: HoldingStatus }) {
     </Badge>
   ) : (
     <Badge variant="secondary" className="font-normal text-muted-foreground">
-      {STATUS_LABELS.matured}
+      {STATUS_LABELS[status]}
     </Badge>
   );
 }
@@ -234,6 +235,7 @@ export function createColumnKit<TRow extends HoldingRow>(
           type={type}
           id={row.original.id}
           name={rowName(row.original)}
+          row={row.original}
           onEdit={() => handlers.onEdit(row.original)}
           onDelete={() => handlers.onDelete(row.original)}
         />

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -43,6 +44,8 @@ import {
 } from "./schema";
 import { TenureField } from "./tenure-field";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
   .object({
@@ -90,30 +93,48 @@ type FormOut = z.output<typeof schema>;
 
 const COMPOUNDING_OPTIONS = toOptions(COMPOUNDING_LABELS);
 
-function toDefaults(r?: RecurringDeposit): FormIn {
+/** A saved record (edit) or prefilled values for a new one. */
+function toDefaults(
+  r?: RecurringDeposit,
+  d?: Partial<RecurringDepositInput>,
+): FormIn {
+  const s: Partial<RecurringDepositInput> | undefined = r ?? d;
+  const manual = r ? r.issuer_id == null : !!d && d.issuer_id == null && !!d.bank;
   return {
-    master_mode: !r || r.issuer_id != null ? "picker" : "manual",
-    issuer_id: r?.issuer_id ?? null,
-    bank: r?.bank ?? "",
-    label: r?.label ?? "",
-    monthly_instalment: r ? String(r.monthly_instalment) : "",
-    rate: r ? String(r.rate) : "",
-    start_date: r?.start_date ?? "",
-    tenure_years: String(r?.tenure_years ?? 0),
-    tenure_months: String(r?.tenure_months ?? 0),
-    tenure_days: String(r?.tenure_days ?? 0),
+    master_mode: manual ? "manual" : "picker",
+    issuer_id: s?.issuer_id ?? null,
+    bank: s?.bank ?? "",
+    label: s?.label ?? "",
+    monthly_instalment:
+      s?.monthly_instalment != null ? String(s.monthly_instalment) : "",
+    rate: s?.rate != null ? String(s.rate) : "",
+    start_date: s?.start_date ?? "",
+    tenure_years: String(s?.tenure_years ?? 0),
+    tenure_months: String(s?.tenure_months ?? 0),
+    tenure_days: String(s?.tenure_days ?? 0),
     maturity_date: "",
-    compounding: r?.compounding ?? "quarterly",
-    notes: r?.notes ?? "",
+    compounding: s?.compounding ?? "quarterly",
+    notes: s?.notes ?? "",
   };
 }
 
 export function RdForm({
   record,
+  defaults,
+  submit,
+  submitLabel,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: RecurringDeposit;
+  /** Prefill a new RD (ignored when `record` is given). */
+  defaults?: Partial<RecurringDepositInput>;
+  /** Takes the payload instead of POSTing /api/assets/rd (the form still locks while it runs). */
+  submit?: (payload: RecurringDepositInput) => Promise<void> | void;
+  submitLabel?: string;
   onSaved?: (record: RecurringDeposit) => void;
   onCancel?: () => void;
 }) {
@@ -123,18 +144,22 @@ export function RdForm({
     FormOut
   >({
     resolver: zodResolver(schema),
-    defaultValues: toDefaults(record),
+    defaultValues: toDefaults(record, defaults),
   });
-  const { saving, save, duplicate } = useAssetSave("rd", record, onSaved, (issues) => {
+  const [submitting, setSubmitting] = useState(false);
+  const pf = usePaidFrom({ type: "rd", record, control, setValue, reinvest });
+  const { saving: assetSaving, save, duplicate } = useAssetSave("rd", record, onSaved, (issues) => {
+    pf.applyIssues(issues);
     for (const i of issues) {
       if (i.field === "issuer_id") {
         setError("issuer_id", { type: "server", message: i.message });
       }
     }
   });
+  const saving = assetSaving || submitting;
   const mode = useWatch({ control, name: "master_mode" });
   const bankText = useWatch({ control, name: "bank" });
-  const [meta, setMeta] = useIssuerMeta(record?.issuer_id ?? null);
+  const [meta, setMeta] = useIssuerMeta((record ?? defaults)?.issuer_id ?? null);
 
   function switchMode(next: "picker" | "manual") {
     setValue("master_mode", next);
@@ -143,6 +168,7 @@ export function RdForm({
     clearErrors(["issuer_id", "bank"]);
   }
   const onSubmit = handleSubmit((values) => {
+    if (!submit && pf.error) return;
     const { master_mode, ...withMaturity } = values;
     const rest: Partial<typeof withMaturity> = { ...withMaturity };
     delete rest.maturity_date;
@@ -150,7 +176,9 @@ export function RdForm({
       ...(rest as Omit<typeof withMaturity, "maturity_date">),
       issuer_id: master_mode === "manual" ? null : values.issuer_id,
     };
-    return save(payload);
+    if (!submit) return save({ ...payload, ...pf.body });
+    setSubmitting(true);
+    return Promise.resolve(submit(payload)).finally(() => setSubmitting(false));
   });
 
   return (
@@ -159,6 +187,8 @@ export function RdForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={submit ? undefined : pf}
+      submitLabel={submitLabel}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">

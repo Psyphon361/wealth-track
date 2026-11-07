@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import type { HoldingRow, HoldingsResponse, SortDir } from "@/lib/types";
 import { sortAria } from "./column-header";
+import { withClosedColumns } from "./closed-columns";
 import { gridFeatures } from "./features";
 import { Pagination } from "./pagination";
 import { Toolbar } from "./toolbar";
@@ -114,10 +115,11 @@ export function HoldingsGrid<TRow extends HoldingRow>({
   onDelete: (row: TRow) => void;
 }) {
   const [visibility, setVisibility] = useState<ColumnVisibilityState>({});
-  const columns = useMemo(
-    () => config.createColumns({ onEdit, onDelete }),
-    [config, onEdit, onDelete],
-  );
+  const closedTab = filters.closed;
+  const columns = useMemo(() => {
+    const all = config.createColumns({ onEdit, onDelete });
+    return closedTab ? withClosedColumns(all) : all;
+  }, [config, onEdit, onDelete, closedTab]);
 
   // Apply the saved value after mount (avoids an SSR hydration mismatch).
   useEffect(() => {

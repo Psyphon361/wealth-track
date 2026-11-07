@@ -36,16 +36,16 @@ const LABEL = "text-[11px] font-medium tracking-wider text-muted-foreground uppe
 
 function StatusTabs({
   summary,
-  matured,
+  closed,
   onChange,
 }: {
   summary: HoldingsSummary;
-  matured: boolean;
-  onChange: (matured: boolean) => void;
+  closed: boolean;
+  onChange: (closed: boolean) => void;
 }) {
   const tabs = [
     { value: false, label: "Active", n: summary.count },
-    { value: true, label: "Matured", n: summary.matured_count },
+    { value: true, label: "Closed", n: summary.closed_count },
   ];
   return (
     <div
@@ -58,11 +58,11 @@ function StatusTabs({
           key={t.label}
           type="button"
           role="tab"
-          aria-selected={matured === t.value}
-          onClick={() => matured !== t.value && onChange(t.value)}
+          aria-selected={closed === t.value}
+          onClick={() => closed !== t.value && onChange(t.value)}
           className={cn(
             "rounded-sm px-3 py-1.5 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
-            matured === t.value
+            closed === t.value
               ? "bg-background font-medium text-foreground shadow-sm"
               : "text-muted-foreground hover:text-foreground",
           )}
@@ -88,10 +88,10 @@ function SummaryStrip({
       {tabs ?? (
         <div className="num font-medium">
           {summary.count} active
-          {summary.matured_count > 0 ? (
+          {summary.closed_count > 0 ? (
             <span className="font-normal text-muted-foreground">
               {" "}
-              · {summary.matured_count} matured
+              · {summary.closed_count} closed
             </span>
           ) : null}
         </div>
@@ -133,7 +133,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const addLabel = addLabelFor(config.type);
   const count = q.data
-    ? q.data.summary.count + q.data.summary.matured_count
+    ? q.data.summary.count + q.data.summary.closed_count
     : undefined;
 
   useEffect(() => {
@@ -204,7 +204,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
 
   const { data, filters } = q;
 
-  if (data.summary.count + data.summary.matured_count === 0) {
+  if (data.summary.count + data.summary.closed_count === 0) {
     return (
       <>
         <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
@@ -227,12 +227,12 @@ function TypedPortfolio<TRow extends HoldingRow>({
         {config.statusTabs ? (
           <SummaryStrip
             summary={data.summary}
-            showTotals={!filters.matured}
+            showTotals={!filters.closed}
             tabs={
               <StatusTabs
                 summary={data.summary}
-                matured={filters.matured}
-                onChange={q.setMatured}
+                closed={filters.closed}
+                onChange={q.setClosed}
               />
             }
           />
@@ -258,12 +258,12 @@ function TypedPortfolio<TRow extends HoldingRow>({
       ) : null}
 
       <div className="min-w-0">
-        {filters.matured &&
+        {filters.closed &&
         data.total === 0 &&
         !q.fetching &&
         !hasActiveFilters(filters) ? (
           <div className="rounded-lg border border-dashed py-12 text-center text-[13.5px] text-muted-foreground">
-            No matured {config.noun}
+            No closed {config.noun}
           </div>
         ) : (
           <HoldingsGrid

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAID_FROM_ACCOUNT_ERROR } from "@/lib/paid-from";
 import {
   GOLD_PURITIES_BY_METAL,
   type GoldMetal,
@@ -47,6 +48,11 @@ export const CASH_KIND_ERROR = "Choose an account type";
 export const PF_KIND_ERROR = CASH_KIND_ERROR;
 export const PF_OPENED_ON_ERROR = "Enter the opening date";
 export const NPS_SCHEME_ERROR = "Choose a scheme";
+export {
+  PAID_FROM_ACCOUNT_ERROR,
+  PAID_FROM_AMOUNT_ERROR,
+  PAID_FROM_BALANCE_ERROR,
+} from "@/lib/paid-from";
 export const EMAIL_ERROR = "Enter a valid email address";
 export const PASSWORD_MIN = 10;
 export const PASSWORD_MAX = 128;
@@ -389,6 +395,74 @@ export const mfCategoryEnum =z.enum([
   "other",
 ]);
 
+// ---- Sell and settle rules (same wording as api/app/schemas/exits.py) ----
+
+export const EXIT_DATE_FUTURE_ERROR = "Date can't be in the future";
+export const SELL_DATE_BEFORE_PURCHASE_ERROR =
+  "Date can't be before the purchase date";
+export const SETTLE_DATE_BEFORE_MATURITY_ERROR =
+  "Date can't be before the maturity date";
+export const SELL_QUANTITY_TOO_MANY_ERROR = "Can't sell more than you hold";
+export const CHARGES_NEGATIVE_ERROR = "Can't be negative";
+export const CHARGES_TOO_HIGH_ERROR = "Charges must be less than the sale value";
+export const DESTINATION_ERROR = "Choose where the money went";
+export const CASH_ACCOUNT_ERROR = "Choose one of your accounts";
+
+/** Date of a sale or settlement: on or after 1 Jan 1990, not in the future. */
+export const exitDate = dateBase.refine(
+  (v) => !isValidISODate(v) || v <= todayISO(),
+  EXIT_DATE_FUTURE_ERROR,
+);
+
+/** Sale quantity: whole shares or bonds, or up to 3 decimals for funds and metal. */
+export function saleQuantity(whole: boolean) {
+  return whole ? positiveInteger : positiveUnits;
+}
+
+/** Sale price per unit: > 0, at most 4 decimals, at most ₹100 crore. */
+export const salePrice = positiveNumber
+  .refine(
+    (n) => Math.abs(n * 10000 - Math.round(n * 10000)) < 1e-6,
+    "Up to 4 decimal places allowed",
+  )
+  .refine((n) => n <= MAX_MONEY, MAX_MONEY_ERROR);
+
+/** Sale charges: blank is 0, never negative, at most 2 decimals, at most ₹100 crore. */
+export const saleCharges = z
+  .string()
+  .trim()
+  .transform((v, ctx): number => {
+    if (v === "") return 0;
+    const n = Number(v);
+    if (!Number.isFinite(n)) {
+      ctx.addIssue({ code: "custom", message: "Enter a valid number" });
+      return z.NEVER;
+    }
+    if (n < 0) {
+      ctx.addIssue({ code: "custom", message: CHARGES_NEGATIVE_ERROR });
+      return z.NEVER;
+    }
+    if (Math.abs(n * 100 - Math.round(n * 100)) >= 1e-6) {
+      ctx.addIssue({ code: "custom", message: "Up to 2 decimal places allowed" });
+      return z.NEVER;
+    }
+    if (n > MAX_MONEY) {
+      ctx.addIssue({ code: "custom", message: MAX_MONEY_ERROR });
+      return z.NEVER;
+    }
+    return n;
+  });
+
+/** Where the money went: one of the select's values (see lib/exits.ts). */
+export const destinationChoice = z.string().min(1, DESTINATION_ERROR);
+
+/** Name of a new savings account created for the money. */
+export const newAccountName = z
+  .string()
+  .trim()
+  .min(1, "Required")
+  .max(MAX_TEXT, tooLong(MAX_TEXT));
+
 // ---- SIP rules (same wording as api/app/schemas/sip.py) ----
 
 export const SIP_MIN_AMOUNT = 100;
@@ -446,3 +520,11 @@ export function sipEndAfterStart(
   if (!end || !isValidISODate(start) || !isValidISODate(end)) return true;
   return end >= start;
 }
+
+/** "Paid from" choice sent as `paid_from`; null means outside money. */
+export const paidFromSchema = z
+  .object({
+    cash_id: z.number(PAID_FROM_ACCOUNT_ERROR).int(PAID_FROM_ACCOUNT_ERROR),
+    from_exit_id: z.number().int().optional(),
+  })
+  .nullable();

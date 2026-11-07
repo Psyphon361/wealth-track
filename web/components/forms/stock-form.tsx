@@ -38,6 +38,8 @@ import {
   symbolText,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
   .object({
@@ -110,7 +112,10 @@ export function StockForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Stock;
   onSaved?: (record: Stock) => void;
   onCancel?: () => void;
@@ -123,7 +128,9 @@ export function StockForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const pf = usePaidFrom({ type: "stock", record, control, setValue, reinvest });
   const { saving, save, duplicate } = useAssetSave("stock", record, onSaved, (issues) => {
+    pf.applyIssues(issues);
     for (const i of issues) {
       if (i.field === "master_id") {
         setError("master_id", { type: "server", message: i.message });
@@ -175,6 +182,7 @@ export function StockForm({
   }
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const manual = values.master_mode === "manual";
     const payload: StockInput = {
       master_id: manual ? null : values.master_id,
@@ -187,7 +195,7 @@ export function StockForm({
       buy_date: values.buy_date,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -196,6 +204,7 @@ export function StockForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">

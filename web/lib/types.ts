@@ -493,6 +493,12 @@ export type AssetRecord =
 
 // Portfolio
 
+export type ExitSummary = { id: number; kind: "maturity" | "sale"; date: string; quantity: number | null; amount: number; cost: number; charges: number; destination: "cash" | "none"; cash_holding_id: number | null; new_holding_id: number | null; new_asset_type: "fd" | "rd" | null; reinvested: number; left_in_account: number | null };
+/** What a holding was paid from (api/app/schemas/fundings.py). */
+export type PaidFrom = { cash_holding_id: number | null; cash_name: string | null; amount: number; date: string };
+export type UnsettledItem = { type: "fd" | "rd" | "bond"; id: number; name: string; maturity_date: string; amount: number };
+export type Unsettled = { count: number; amount: number; items: UnsettledItem[] };
+
 export interface ComputedFields {
   invested: number;
   current_value: number;
@@ -500,7 +506,14 @@ export interface ComputedFields {
   gain_pct: number;
   interest_received?: number | null;
   maturity_date?: string;
-  status: "active" | "matured";
+  status: "active" | "matured" | "sold";
+  closed_on: string | null;
+  settled: boolean;
+  exit: ExitSummary | null;
+  /** The cash account this holding was paid from; null for outside money. */
+  paid_from: PaidFrom | null;
+  /** What a matured, unsettled deposit or bond pays out; null otherwise. */
+  maturity_amount: number | null;
 }
 
 export type PortfolioItem = AssetRecord & ComputedFields;
@@ -528,6 +541,7 @@ export interface DashboardByType {
   label: string;
   count: number;
   matured_count: number;
+  closed_count: number;
   invested: number;
   current: number;
   allocation_pct: number;
@@ -547,11 +561,12 @@ export interface DashboardResponse {
   day_change_pct: number | null;
   day_change_as_of: string | null;
   by_type: DashboardByType[];
+  unsettled: Unsettled;
 }
 
 // Holdings grids (GET /holdings/{type})
 
-export type HoldingStatus = "active" | "matured";
+export type HoldingStatus = "active" | "matured" | "sold";
 export type SortDir = "asc" | "desc";
 
 export type FixedDepositItem = FixedDeposit & ComputedFields;
@@ -638,6 +653,7 @@ export interface FacetValue {
 export interface HoldingsSummary {
   count: number;
   matured_count: number;
+  closed_count: number;
   invested: number;
   current_value: number;
   gain: number;
@@ -747,6 +763,8 @@ export interface AnalyticsMaturedHolding {
   id: number;
   name: string;
   maturity_date: string | null;
+  amount: number | null;
+  settled: boolean;
 }
 
 export interface AnalyticsComingUp {

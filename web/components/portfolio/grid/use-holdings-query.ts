@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
+import { isClosedStatusParam } from "@/lib/closed";
 import { holdingsVersion, subscribeHoldings } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { HoldingRow, HoldingsResponse, SortDir } from "@/lib/types";
@@ -9,6 +10,21 @@ import { filterParamKeys, type FilterDef, type GridConfig } from "./types";
 export const DEFAULT_SORT = "current_value";
 export const DEFAULT_DIR: SortDir = "desc";
 
+/** Sort keys only the Closed tab offers (the API derives them), and its default: newest closed first. */
+export const CLOSED_SORT_KEYS: readonly string[] = [
+  "closed_on",
+  "received",
+  "realised_gain",
+];
+export const CLOSED_DEFAULT_SORT = "closed_on";
+
+/** The sort a tab starts on: value descending (Active) or newest closed first (Closed). */
+function defaultSort(closed: boolean): { sort: string; dir: SortDir } {
+  return closed
+    ? { sort: CLOSED_DEFAULT_SORT, dir: DEFAULT_DIR }
+    : { sort: DEFAULT_SORT, dir: DEFAULT_DIR };
+}
+
 export interface HoldingsFilters {
   q: string;
   /** Filter values by query-string key; an empty array means unset. */
@@ -16,8 +32,8 @@ export interface HoldingsFilters {
   sort: string;
   dir: SortDir;
   page: number;
-  /** Matured tab selected (only for configs with `statusTabs`). */
-  matured: boolean;
+  /** Closed tab selected (only for configs with `statusTabs`). */
+  closed: boolean;
 }
 
 export interface FilterPatch {
@@ -50,15 +66,20 @@ export function parseFilters(
       .filter((v) => v !== "" && (allowed === null || allowed.includes(v)));
     if (values.length > 0) params[key] = values;
   }
+  const closed =
+    config.statusTabs === true && isClosedStatusParam(sp.get("status"));
+  const fallback = defaultSort(closed);
   const sort = sp.get("sort") ?? "";
   const dir = sp.get("dir");
+  const known =
+    config.sortKeys.includes(sort) || (closed && CLOSED_SORT_KEYS.includes(sort));
   return {
     q: sp.get("q") ?? "",
     params,
-    sort: config.sortKeys.includes(sort) ? sort : DEFAULT_SORT,
-    dir: dir === "asc" || dir === "desc" ? dir : DEFAULT_DIR,
+    sort: known ? sort : fallback.sort,
+    dir: dir === "asc" || dir === "desc" ? dir : fallback.dir,
     page: posInt(sp.get("page"), 1),
-    matured: config.statusTabs === true && sp.get("status") === "matured",
+    closed,
   };
 }
 
@@ -69,12 +90,13 @@ export function toQueryString(f: HoldingsFilters): string {
   for (const [key, values] of Object.entries(f.params)) {
     values.forEach((v) => sp.append(key, v));
   }
-  if (f.sort !== DEFAULT_SORT || f.dir !== DEFAULT_DIR) {
+  const fallback = defaultSort(f.closed);
+  if (f.sort !== fallback.sort || f.dir !== fallback.dir) {
     sp.set("sort", f.sort);
     sp.set("dir", f.dir);
   }
   if (f.page !== 1) sp.set("page", String(f.page));
-  if (f.matured) sp.set("status", "matured");
+  if (f.closed) sp.set("status", "closed");
   return sp.toString();
 }
 
@@ -84,7 +106,7 @@ function toApiQueryString(
   config: Pick<GridConfig<HoldingRow>, "statusTabs">,
 ): string {
   const query = toQueryString(f);
-  if (!config.statusTabs || f.matured) return query;
+  if (!config.statusTabs || f.closed) return query;
   return query ? `${query}&status=active` : "status=active";
 }
 
@@ -187,8 +209,16 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   );
 
   const setSort = useCallback(
-    (sort: string, dir: SortDir) =>
-      navigate({ ...filters, sort, dir, page: 1 }),
+    (sort: string, dir: SortDir) => {
+      // The header's "back to default" step asks for the Active default; on the Closed tab
+      // that column is not shown, so go back to the Closed default instead.
+      const reset = filters.closed && sort === DEFAULT_SORT;
+      navigate({
+        ...filters,
+        ...(reset ? defaultSort(true) : { sort, dir }),
+        page: 1,
+      });
+    },
     [navigate, filters],
   );
 
@@ -202,9 +232,10 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     [navigate, filters],
   );
 
-  /** Switch Active / Matured tab; resets to page 1. */
-  const setMatured = useCallback(
-    (matured: boolean) => navigate({ ...filters, matured, page: 1 }),
+  /** Switch Active / Closed tab; resets to page 1 and to that tab's default sort. */
+  const setClosed = useCallback(
+    (closed: boolean) =>
+      navigate({ ...filters, ...defaultSort(closed), closed, page: 1 }),
     [navigate, filters],
   );
 
@@ -248,8 +279,9 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
               total: Math.max(0, prev.total - 1),
               summary: {
                 ...prev.summary,
-                ...(filters.matured
+                ...(filters.closed
                   ? {
+                      closed_count: Math.max(0, prev.summary.closed_count - 1),
                       matured_count: Math.max(0, prev.summary.matured_count - 1),
                     }
                   : { count: Math.max(0, prev.summary.count - 1) }),
@@ -259,7 +291,7 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
       );
       return () => setData(snapshot);
     },
-    [data, filters.matured],
+    [data, filters.closed],
   );
 
   // If the current page no longer exists (e.g. after deletes), go to the last one.
@@ -286,7 +318,7 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     setFilters,
     setSort,
     setPage,
-    setMatured,
+    setClosed,
     resetFilters,
     refetch,
     retry,

@@ -54,6 +54,8 @@ import {
   todayISO,
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
+import { usePaidFrom } from "./paid-from-field";
+import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
   .object({
@@ -174,7 +176,10 @@ export function BondForm({
   record,
   onSaved,
   onCancel,
+  reinvest,
 }: {
+  /** One-shot prefill from "Reinvest" (create only). */
+  reinvest?: ReinvestPrefill | null;
   record?: Bond;
   onSaved?: (record: Bond) => void;
   onCancel?: () => void;
@@ -193,7 +198,9 @@ export function BondForm({
     resolver: zodResolver(schema),
     defaultValues: toDefaults(record),
   });
+  const pf = usePaidFrom({ type: "bond", record, control, setValue, reinvest });
   const { saving, save, duplicate } = useAssetSave("bond", record, onSaved, (issues) => {
+    pf.applyIssues(issues);
     for (const i of issues) {
       if (i.field === "master_id") {
         setError("master_id", { type: "server", message: i.message });
@@ -289,6 +296,7 @@ export function BondForm({
   }
 
   const onSubmit = handleSubmit((values) => {
+    if (pf.error) return;
     const manual = values.master_mode === "manual";
     const payload: BondInput = {
       master_id: manual ? null : values.master_id,
@@ -306,7 +314,7 @@ export function BondForm({
       maturity_date: values.maturity_date,
       notes: values.notes,
     };
-    return save(payload);
+    return save({ ...payload, ...pf.body });
   });
 
   return (
@@ -315,6 +323,7 @@ export function BondForm({
       saving={saving}
       editing={!!record}
       duplicate={duplicate}
+      paidFrom={pf}
       onCancel={onCancel}
     >
       <div className="flex flex-col gap-1.5 sm:col-span-2">
