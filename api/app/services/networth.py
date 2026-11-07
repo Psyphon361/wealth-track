@@ -82,15 +82,26 @@ def date_list(range_key: str, today: date, earliest: date | None) -> list[date]:
 # --- Mutual funds --------------------------------------------------------------
 
 
+def is_closed_on(record: Any, d: date) -> bool:
+    """True when the holding was sold (closed_on set) on or before d. Like maturity, a sold
+    holding counts until its closing day (exclusive)."""
+    closed_on = getattr(record, "closed_on", None)
+    return closed_on is not None and d >= closed_on
+
+
 def txns_match(mf: Any, txns: Sequence[Any]) -> bool:
-    """True when the transactions exist and their net units equal the holding's units."""
+    """True when the transactions exist and their net units equal the holding's units.
+
+    A fund sold out keeps its original units but its transactions net to zero, so those are
+    compared with zero."""
     if not txns:
         return False
     net = sum(
         (Decimal(t.units) if t.kind == "purchase" else -Decimal(t.units) for t in txns),
         Decimal(0),
     )
-    return abs(net - Decimal(mf.units)) <= UNITS_TOLERANCE
+    expected = Decimal(0) if getattr(mf, "closed_on", None) is not None else Decimal(mf.units)
+    return abs(net - expected) <= UNITS_TOLERANCE
 
 
 def sorted_txns(txns: Sequence[Any]) -> list[Any]:
@@ -181,7 +192,7 @@ def earliest_start(
 
 def _mf_at(m: _Mf, d: date, navs: dict[int, Series]) -> tuple[Decimal, Decimal] | None:
     """(invested, current) of a fund on d, or None when it is not held yet."""
-    if d < m.start:
+    if d < m.start or is_closed_on(m.record, d):
         return None
     mf = m.record
     if m.txns is not None:
@@ -229,7 +240,7 @@ def build_history(
             ("bond", valuation.value_bond),
         ):
             for r in holdings.get(slug, ()):
-                if _holding_start(slug, r) > d:
+                if _holding_start(slug, r) > d or is_closed_on(r, d):
                     continue
                 v = valuer(r, d)
                 if v["status"] != "active":
@@ -237,7 +248,7 @@ def build_history(
                 invested += v["invested"]
                 current += v["current_value"]
         for r in holdings.get("stock", ()):
-            if r.buy_date > d:
+            if r.buy_date > d or is_closed_on(r, d):
                 continue
             cost = Decimal(r.quantity) * Decimal(r.avg_buy_price)
             close = on_or_before(closes.get(r.master_id, ()), d) if r.master_id is not None else None
@@ -254,7 +265,7 @@ def build_history(
             invested += cost
             current += cost if nav is None else _q(Decimal(r.units) * f * Decimal(nav))
         for r in holdings.get("gold", ()):
-            if r.purchase_date > d:
+            if r.purchase_date > d or is_closed_on(r, d):
                 continue
             cost = _q(Decimal(r.invested_amount))
             rate = on_or_before(gold_rates.get((r.metal, r.purity), ()), d, GOLD_RATE_MAX_GAP_DAYS)
@@ -273,7 +284,7 @@ def build_history(
             invested += v["invested"]
             current += v["current_value"]
         for r in holdings.get("other", ()):
-            if _holding_start("other", r) > d:
+            if _holding_start("other", r) > d or is_closed_on(r, d):
                 continue
             value = _q(Decimal(r.current_value))
             if r.invested_amount is None:

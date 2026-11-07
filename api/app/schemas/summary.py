@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel
 
 from app.schemas.assets import Number
+from app.schemas.exits import Unsettled
 
 AssetType = Literal["fd", "rd", "stock", "bond", "mf", "nps", "gold", "cash", "pf", "other"]
 Amount = Annotated[Decimal, Number]
@@ -26,7 +27,9 @@ class PortfolioGroup(BaseModel):
     items: list[dict[str, Any]]
     totals: Totals
     count: int
+    # Closed holdings: matured or sold. matured_count is an alias kept for compatibility.
     matured_count: int
+    closed_count: int
 
 
 class PortfolioResponse(BaseModel):
@@ -38,6 +41,7 @@ class DashboardByType(BaseModel):
     label: str
     count: int
     matured_count: int
+    closed_count: int
     invested: Amount
     current: Amount
     gain: Amount | None = None
@@ -58,3 +62,5 @@ class DashboardResponse(BaseModel):
     day_change_pct: Amount | None = None
     day_change_as_of: date | None = None
     by_type: list[DashboardByType]
+    # Matured deposits and bonds whose payout has not been recorded yet.
+    unsettled: Unsettled = Unsettled()

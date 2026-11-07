@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Delete, delete
+from sqlalchemy import Delete, delete, select
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -10,6 +10,7 @@ from app.models import (
     Cash,
     FixedDeposit,
     Gold,
+    HoldingExit,
     MutualFund,
     Nps,
     Other,
@@ -35,6 +36,10 @@ HOLDING_MODELS = {
 }
 
 
+# Types that can have holding_exits rows (HoldingExit.asset_type).
+EXIT_SLUGS = ("fd", "rd", "bond", "stock", "mf", "gold", "other")
+
+
 def purge_statement(model, cutoff: datetime) -> Delete:
     return delete(model).where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
 
@@ -42,13 +47,31 @@ def purge_statement(model, cutoff: datetime) -> Delete:
 def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> dict[str, int]:
     """Hard-delete holdings (all users) soft-deleted more than `older_than_days` ago.
 
-    mf_transactions go with their fund through the ON DELETE CASCADE foreign key.
-    Returns the number of rows removed per type slug.
+    mf_transactions go with their fund through the ON DELETE CASCADE foreign key. holding_exits has
+    no foreign key to the holding tables, so its rows for the purged holdings are deleted here, in
+    the same transaction. Returns the number of rows removed per type slug, plus "exits" for the
+    holding_exits rows removed.
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
     counts: dict[str, int] = {}
+    exits_removed = 0
     for slug, model in HOLDING_MODELS.items():
+        if slug in EXIT_SLUGS:
+            ids = list(
+                session.scalars(
+                    select(model.id)
+                    .where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
+                    .execution_options(include_deleted=True)
+                )
+            )
+            if ids:
+                exits_removed += session.execute(
+                    delete(HoldingExit).where(
+                        HoldingExit.asset_type == slug, HoldingExit.holding_id.in_(ids)
+                    )
+                ).rowcount
         result = session.execute(purge_statement(model, cutoff).execution_options(include_deleted=True))
         counts[slug] = result.rowcount
+    counts["exits"] = exits_removed
     session.commit()
     return counts

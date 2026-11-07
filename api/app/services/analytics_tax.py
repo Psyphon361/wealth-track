@@ -194,6 +194,12 @@ def tax_overview(
                 if schedule is None:
                     bonds += 1
                     continue
+                sold_on = _to_date(item.get("closed_on"))
+                if sold_on is not None:
+                    # Sold before maturity: only the coupons up to the sale were earned.
+                    schedule = [
+                        p for p in schedule if p["kind"] == "coupon" and p["date"] <= sold_on
+                    ]
                 projected_q = _q(bond_schedule.sum_in_window(schedule, *window_full))
                 if projected_q <= 0:
                     continue

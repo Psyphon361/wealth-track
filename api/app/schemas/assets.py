@@ -368,7 +368,7 @@ class StockCreate(_Create, StockBase):
 
 
 class StockRead(StockBase, _Read):
-    pass
+    closed_on: date | None = None
 
 
 # --- Bonds ------------------------------------------------------------------
@@ -418,7 +418,7 @@ class BondCreate(_Create, BondBase):
 
 
 class BondRead(BondBase, _Read):
-    pass
+    closed_on: date | None = None
 
 
 # --- Mutual funds -----------------------------------------------------------
@@ -453,7 +453,7 @@ class MutualFundCreate(_Create, MutualFundBase):
 
 
 class MutualFundRead(MutualFundBase, _Read):
-    pass
+    closed_on: date | None = None
 
 
 # --- Gold -------------------------------------------------------------------
@@ -533,7 +533,7 @@ class GoldCreate(_Create, GoldBase):
 
 
 class GoldRead(GoldBase, _Read):
-    pass
+    closed_on: date | None = None
 
 
 # --- Cash & savings ---------------------------------------------------------
@@ -648,7 +648,7 @@ class OtherCreate(_Create, OtherBase):
 
 
 class OtherRead(OtherBase, _Read):
-    pass
+    closed_on: date | None = None
 
 
 # --- NPS --------------------------------------------------------------------

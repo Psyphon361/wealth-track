@@ -18,3 +18,5 @@ class Other(TimestampedMixin, Base):
     value_date: Mapped[date]
     invested_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     acquired_on: Mapped[date | None]
+    # Set when the holding is sold; the row stays (status "sold").
+    closed_on: Mapped[date | None]

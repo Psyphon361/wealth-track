@@ -30,7 +30,12 @@ PAGE_SIZE = 10
 _ZERO = Decimal("0")
 
 COMPOUNDING = ["monthly", "quarterly", "half_yearly", "yearly", "simple"]
+# Facet values per type. The status filter also accepts "closed" (matured plus sold), which is
+# not a facet of its own. Deposits are never sold, so their list leaves "sold" out.
 STATUSES = ["active", "matured"]
+BOND_STATUSES = ["active", "matured", "sold"]
+SELLABLE_STATUSES = ["active", "sold"]
+CLOSED_STATUSES = {"matured", "sold"}
 BOND_TYPES = ["government", "corporate", "tax_free", "sgb", "other"]
 GOLD_FORMS = ["jewellery", "coin", "bar", "digital"]
 GOLD_METALS = ["gold", "silver"]
@@ -42,7 +47,7 @@ NPS_ASSET_CLASSES = ["E", "C", "G", "A", "other"]
 MF_CATEGORIES = ["equity", "debt", "hybrid", "index", "elss", "liquid", "other"]
 
 Compounding = Literal["monthly", "quarterly", "half_yearly", "yearly", "simple"]
-Status = Literal["active", "matured"]
+Status = Literal["active", "matured", "sold", "closed"]
 BondType = Literal["government", "corporate", "tax_free", "sgb", "other"]
 GoldForm = Literal["jewellery", "coin", "bar", "digital"]
 GoldMetal = Literal["gold", "silver"]
@@ -73,7 +78,7 @@ CONFIG: dict[str, dict[str, Any]] = {
     },
     "stock": {
         "search": ("name", "symbol", "broker", "notes"),
-        "facets": {"exchange": ["NSE", "BSE"], "broker": None},
+        "facets": {"exchange": ["NSE", "BSE"], "broker": None, "status": SELLABLE_STATUSES},
         "text": {"name", "exchange", "broker"},
     },
     "bond": {
@@ -82,13 +87,13 @@ CONFIG: dict[str, dict[str, Any]] = {
             "bond_type": BOND_TYPES,
             "issuer": None,
             "platform": None,
-            "status": STATUSES,
+            "status": BOND_STATUSES,
         },
         "text": {"name", "issuer", "bond_type", "platform", "status"},
     },
     "mf": {
         "search": ("scheme_name", "platform", "notes"),
-        "facets": {"category": MF_CATEGORIES, "platform": None},
+        "facets": {"category": MF_CATEGORIES, "platform": None, "status": SELLABLE_STATUSES},
         "text": {"scheme_name", "category", "platform"},
     },
     "nps": {
@@ -98,7 +103,12 @@ CONFIG: dict[str, dict[str, Any]] = {
     },
     "gold": {
         "search": ("name", "notes"),
-        "facets": {"form": GOLD_FORMS, "metal": GOLD_METALS, "purity": GOLD_PURITIES},
+        "facets": {
+            "form": GOLD_FORMS,
+            "metal": GOLD_METALS,
+            "purity": GOLD_PURITIES,
+            "status": SELLABLE_STATUSES,
+        },
         "text": {"name", "form", "metal", "purity"},
     },
     "cash": {
@@ -113,7 +123,7 @@ CONFIG: dict[str, dict[str, Any]] = {
     },
     "other": {
         "search": ("name", "category"),
-        "facets": {"category": None},
+        "facets": {"category": None, "status": SELLABLE_STATUSES},
         "text": {"name", "category"},
     },
 }
@@ -193,10 +203,12 @@ def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]
             by_holding.setdefault(t.mutual_fund_id, []).append(t)
     enriched = []
     for item in items:
+        # A fund sold out has nothing left to value: its XIRR is realised, from the transactions.
+        sold_out = item.get("closed_on") is not None
         pct, basis, used = valuation.mf_xirr(
-            _dec(item["units"]), _dec(item["invested_amount"]), item["purchase_date"],
-            _dec(item["current_value"]), by_holding.get(item["id"], []),
-            item.get("nav_date") or date.today(),
+            _ZERO if sold_out else _dec(item["units"]), _dec(item["invested_amount"]),
+            item["purchase_date"], _ZERO if sold_out else _dec(item["current_value"]),
+            by_holding.get(item["id"], []), item.get("nav_date") or date.today(),
         )  # fmt: skip
         enriched.append({
             **item,
@@ -250,7 +262,10 @@ def _run(
         ):
             return False
         for key, values in selected.items():
-            if key != skip and item.get(key) not in values:
+            if key == skip:
+                continue
+            wanted = values | CLOSED_STATUSES if key == "status" and "closed" in values else values
+            if item.get(key) not in wanted:
                 return False
         if range_field and (range_min is not None or range_max is not None):
             value = item.get(range_field)
@@ -300,7 +315,9 @@ def _run(
     )
     summary = {
         "count": len(active_rows),
+        # Closed = matured or sold; matured_count is an alias kept for compatibility.
         "matured_count": len(rows) - len(active_rows),
+        "closed_count": len(rows) - len(active_rows),
         "invested": _q(invested),
         "current_value": _q(current),
         "gain": _q(gain),
@@ -384,6 +401,7 @@ def get_stock_holdings(
     q: Q = None,
     exchange: Annotated[list[Literal["NSE", "BSE"]] | None, Query()] = None,
     broker: Texts = None,
+    status: Annotated[list[Status] | None, Query()] = None,
     sort: StockSort = "current_value",
     dir: Dir = "desc",
     page: Page = 1,
@@ -392,7 +410,7 @@ def get_stock_holdings(
 ):
     return _run(
         db, user.id, "stock",q=q, sort=sort, dir=dir, page=page,
-        multi={"exchange": exchange, "broker": broker},
+        multi={"exchange": exchange, "broker": broker, "status": status},
     )  # fmt: skip
 
 
@@ -426,6 +444,7 @@ def get_mf_holdings(
     q: Q = None,
     category: Annotated[list[MfCategory] | None, Query()] = None,
     platform: Texts = None,
+    status: Annotated[list[Status] | None, Query()] = None,
     sort: MfSort = "current_value",
     dir: Dir = "desc",
     page: Page = 1,
@@ -434,7 +453,7 @@ def get_mf_holdings(
 ):
     return _run(
         db, user.id, "mf",q=q, sort=sort, dir=dir, page=page,
-        multi={"category": category, "platform": platform},
+        multi={"category": category, "platform": platform, "status": status},
     )  # fmt: skip
 
 
@@ -462,6 +481,7 @@ def get_gold_holdings(
     form: Annotated[list[GoldForm] | None, Query()] = None,
     metal: Annotated[list[GoldMetal] | None, Query()] = None,
     purity: Annotated[list[GoldPurity] | None, Query()] = None,
+    status: Annotated[list[Status] | None, Query()] = None,
     sort: GoldSort = "current_value",
     dir: Dir = "desc",
     page: Page = 1,
@@ -470,7 +490,7 @@ def get_gold_holdings(
 ):
     return _run(
         db, user.id, "gold",q=q, sort=sort, dir=dir, page=page,
-        multi={"form": form, "metal": metal, "purity": purity},
+        multi={"form": form, "metal": metal, "purity": purity, "status": status},
     )  # fmt: skip
 
 
@@ -510,6 +530,7 @@ def get_pf_holdings(
 def get_other_holdings(
     q: Q = None,
     category: Texts = None,
+    status: Annotated[list[Status] | None, Query()] = None,
     sort: OtherSort = "current_value",
     dir: Dir = "desc",
     page: Page = 1,
@@ -518,7 +539,7 @@ def get_other_holdings(
 ):
     return _run(
         db, user.id, "other", q=q, sort=sort, dir=dir, page=page,
-        multi={"category": category},
+        multi={"category": category, "status": status},
     )  # fmt: skip
 
 

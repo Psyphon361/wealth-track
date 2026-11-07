@@ -191,6 +191,30 @@ def nav_for_due(session: Session, scheme_code: int, due: date) -> tuple[date, De
 # --- Posting -------------------------------------------------------------------
 
 
+def ensure_opening_transaction(session: Session, holding: MutualFund) -> MFTransaction | None:
+    """Give a holding with no transactions an opening purchase of what it already was.
+
+    Keeps XIRR on the transaction basis once an instalment or a sale is added. Returns the new
+    transaction (added to the session, not flushed), or None when nothing was needed.
+    """
+    has_transactions = session.scalar(
+        sa.select(sa.func.count())
+        .select_from(MFTransaction)
+        .where(MFTransaction.mutual_fund_id == holding.id)
+    )
+    if has_transactions or Decimal(str(holding.units)) <= 0:
+        return None
+    opening = MFTransaction(
+        mutual_fund_id=holding.id,
+        txn_date=holding.purchase_date,
+        kind="purchase",
+        amount=holding.invested_amount,
+        units=holding.units,
+    )
+    session.add(opening)
+    return opening
+
+
 def _post_one(session: Session, sip: MfSip, today: date) -> int:
     """Post every due, unskipped instalment of one SIP (stops at the first missing NAV)."""
     holding = None
@@ -213,22 +237,7 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
         return 0
 
     if holding is not None:
-        has_transactions = session.scalar(
-            sa.select(sa.func.count())
-            .select_from(MFTransaction)
-            .where(MFTransaction.mutual_fund_id == holding.id)
-        )
-        if not has_transactions and Decimal(str(holding.units)) > 0:
-            # Keep XIRR on the transaction basis: record what the holding already was.
-            session.add(
-                MFTransaction(
-                    mutual_fund_id=holding.id,
-                    txn_date=holding.purchase_date,
-                    kind="purchase",
-                    amount=holding.invested_amount,
-                    units=holding.units,
-                )
-            )
+        ensure_opening_transaction(session, holding)
 
     posted = 0
     for due in dues:

@@ -27,3 +27,5 @@ class Gold(TimestampedMixin, Base):
     weight_grams: Mapped[Decimal] = mapped_column(Numeric(12, 3))
     purchase_date: Mapped[date]
     invested_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    # Set when the whole holding is sold; the row stays (status "sold").
+    closed_on: Mapped[date | None]

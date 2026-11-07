@@ -630,8 +630,13 @@ def test_coming_up_amounts_and_windows(client, seeded):
     # The matured bond is listed apart and counted in no total or row.
     assert coming["already_matured"] == {
         "count": 1,
-        "rows": [{"type": "bond", "id": 3, "name": "Old Bond", "maturity_date": "2026-10-01"}],
-    }
+        "rows": [
+            {
+                "type": "bond", "id": 3, "name": "Old Bond", "maturity_date": "2026-10-01",
+                "amount": 10000, "settled": False,
+            }
+        ],
+    }  # fmt: skip
     assert "Old Bond" not in {r["name"] for r in in_year["rows"]}
 
 

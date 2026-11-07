@@ -18,6 +18,7 @@ from app.models.nps_master import NpsNavLatest
 from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
+from app.services import exits as exits_service
 from app.services import gold_rates, nav_history, nps as nps_service, stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
@@ -105,7 +106,30 @@ def _fetch_gold_rates(bind: Any) -> dict[tuple[str, str], tuple[Decimal, date]]:
         return gold_rates.latest_rates(session)
 
 
+def _fetch_exit_info(bind: Any, user_id: int) -> dict[tuple[str, int], dict[str, Any]]:
+    """Latest sale or settlement per holding (and whether it was settled), on this part's own session."""
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        return exits_service.fetch_exit_info(session, user_id)
+
+
 def _value(
+    slug: str,
+    record: Any,
+    today: date,
+    navs: dict[int, tuple[Decimal, date]],
+    prices: dict[int, StockPriceLatest],
+    prev_navs: dict[int, tuple[date, Decimal]],
+    rates: dict[tuple[str, str], tuple[Decimal, date]],
+    nps_navs: dict[str, tuple[Decimal, date]],
+    nps_prev: dict[str, tuple[date, Decimal]],
+):
+    out = _value_open(slug, record, today, navs, prices, prev_navs, rates, nps_navs, nps_prev)
+    if getattr(record, "closed_on", None) is not None:
+        out["status"] = "sold"  # sold holdings are listed but never counted, like matured ones
+    return out
+
+
+def _value_open(
     slug: str,
     record: Any,
     today: date,
@@ -191,6 +215,12 @@ def build_groups(
             _item(r, read_schema, c)
             for r, c in zip(records_by_type.get(slug, []), computed, strict=True)
         ]
+        for item in items:
+            # Filled in by exits_service.apply_exit_info once the exits are loaded.
+            item.setdefault("closed_on", None)
+            item.setdefault("settled", False)
+            item.setdefault("exit", None)
+            item.setdefault("maturity_amount", None)
         active = [c for c in computed if c["status"] == "active"]
         group = {
             "type": slug,
@@ -198,7 +228,9 @@ def build_groups(
             "items": items,
             "totals": valuation.aggregate(active),
             "count": len(active),
+            # Closed = matured or sold; matured_count is kept as an alias of closed_count.
             "matured_count": len(computed) - len(active),
+            "closed_count": len(computed) - len(active),
         }
         if slug == "stock":
             times = [
@@ -227,7 +259,7 @@ def load_records_and_groups(
             stmt = select(model).where(model.user_id == user_id).order_by(model.id)
             return list(session.scalars(stmt).all())
 
-    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 5) as pool:
+    with ThreadPoolExecutor(max_workers=len(REGISTRY) + 6) as pool:
         futures = {
             slug: pool.submit(fetch, model)
             for slug, (model, _c, _r) in REGISTRY.items()
@@ -239,6 +271,7 @@ def load_records_and_groups(
         rates_future = pool.submit(_fetch_gold_rates, bind)
         nps_future = pool.submit(_fetch_nps_navs, bind, user_id)
         nps_prev_future = pool.submit(_fetch_nps_prev_navs, bind, user_id)
+        exits_future = pool.submit(_fetch_exit_info, bind, user_id)
         records = {slug: future.result() for slug, future in futures.items()}
         records["stock"], prices = stock_future.result()
         navs = nav_future.result()
@@ -246,9 +279,11 @@ def load_records_and_groups(
         rates = rates_future.result()
         nps_navs = nps_future.result()
         nps_prev = nps_prev_future.result()
+        exit_info = exits_future.result()
     groups = build_groups(
         records, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
+    exits_service.apply_exit_info(groups, exit_info)
     return records, groups
 
 
@@ -282,7 +317,9 @@ def load_group(
     groups = build_groups(
         {slug: records}, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
-    return next(g for g in groups if g["type"] == slug)
+    group = next(g for g in groups if g["type"] == slug)
+    exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
+    return group
 
 
 def load_holding(
@@ -315,6 +352,7 @@ def load_holding(
         {slug: [record]}, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
     group = next(g for g in groups if g["type"] == slug)
+    exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
     return record, group["items"][0]
 
 
@@ -336,6 +374,7 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
                 "label": g["label"],
                 "count": g["count"],
                 "matured_count": g["matured_count"],
+                "closed_count": g["closed_count"],
                 "invested": g["totals"]["invested"],
                 "current": current,
                 "gain": g["totals"]["gain"] if has_gain else None,
@@ -353,6 +392,7 @@ def build_dashboard(groups: list[dict[str, Any]]) -> dict[str, Any]:
         "total_gain": total_gain,
         "gain_pct": gain_pct,
         "by_type": by_type,
+        "unsettled": exits_service.unsettled(groups),
     }
 
 

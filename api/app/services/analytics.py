@@ -790,7 +790,8 @@ def coming_up(
     """Maturities of active FDs, RDs, bonds and PPFs falling strictly after `today`.
 
     Returns {"next_30_days", "next_90_days", "next_180_days", "next_12_months": windows, "already_matured": {"count",
-    "rows": [{type, id, name, maturity_date}]}}; a window is {"until", "total", "rows"} and its
+    "rows": [{type, id, name, maturity_date, amount, settled}]}}; a matured row's amount is what it
+    paid at maturity (what was received once settled), settled says its payout was recorded; a window is {"until", "total", "rows"} and its
     rows are {type, id, name, maturity_date, amount, rate, days_left, approximate}, sorted by
     date, type, id. The windows run to today + 30, 90 and 180 days and today + 1 calendar year,
     all inclusive; each longer window includes the rows of the shorter ones.
@@ -810,12 +811,21 @@ def coming_up(
         for item in group.get("items", []):
             maturity = _to_date(item.get("maturity_date"))
             if item.get("status") == "matured":
+                settled = bool(item.get("settled"))
+                if settled and (item.get("exit") or {}).get("amount") is not None:
+                    amount = _dec(item["exit"]["amount"])  # what was actually received
+                elif maturity is not None and asset_type in ("fd", "rd", "bond"):
+                    amount = _maturity_amount(asset_type, item, maturity, bond_masters)[0]
+                else:
+                    amount = None
                 matured.append(
                     {
                         "type": asset_type,
                         "id": item.get("id"),
                         "name": _item_name(item),
                         "maturity_date": maturity,
+                        "amount": _q(amount) if amount is not None else None,
+                        "settled": settled,
                     }
                 )
                 continue
@@ -1011,7 +1021,8 @@ def data_health(groups: Sequence[Mapping[str, Any]], today: date) -> dict[str, A
       stale_balances   active cash, EPF/PPF and Other whose balance or value date is more than 6
                        calendar months before `today` (exactly 6 months is not stale); items
                        carry "as_of"
-      matured_open     holdings whose status is matured (items carry "maturity_date")
+      matured_open     holdings whose status is matured and whose payout has not been recorded
+                       (not settled); items carry "maturity_date"
       latest           {"stock_price", "mf_nav", "nps_nav", "gold_rate"}: the newest such date
                        among held items, None when nothing has one
     """
@@ -1029,7 +1040,7 @@ def data_health(groups: Sequence[Mapping[str, Any]], today: date) -> dict[str, A
                 seen = _to_date(item.get(field))
                 if seen is not None and (latest[key] is None or seen > latest[key]):
                     latest[key] = seen
-            if item.get("status") == "matured":
+            if item.get("status") == "matured" and not item.get("settled"):
                 matured.append({**ref, "maturity_date": _to_date(item.get("maturity_date"))})
             if item.get("status") != "active":
                 continue

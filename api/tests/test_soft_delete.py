@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Cash, FixedDeposit
+from app.models import Cash, FixedDeposit, HoldingExit, Stock
 from app.routers.assets import REGISTRY, _holding_name
 from app.routers.deleted import deleted_item, deleted_union, name_expr
 from app.services import purge
@@ -175,6 +175,39 @@ def test_purge_removes_only_rows_deleted_over_30_days_ago(session):
     assert sum(n for slug, n in counts.items() if slug != "cash") == 0
     left = select(Cash.name).order_by(Cash.id).execution_options(include_deleted=True)
     assert list(session.scalars(left)) == ["live", "recent"]
+
+
+def test_purge_removes_the_exit_rows_of_purged_holdings_only(session):
+    def stock(name, deleted_days_ago):
+        return Stock(
+            user_id=1, name=name, exchange="NSE", quantity=10, avg_buy_price=100,
+            buy_date=date(2025, 1, 1), deleted_at=_utc_ago(deleted_days_ago) if deleted_days_ago else None,
+        )  # fmt: skip
+
+    old, recent = stock("old", 40), stock("recent", 5)
+    session.add_all([old, recent])
+    session.flush()
+
+    def exit_row(asset_type, holding_id):
+        return HoldingExit(
+            user_id=1, asset_type=asset_type, holding_id=holding_id, kind="sale",
+            exit_date=date(2026, 1, 15), quantity=1, amount=1, cost=1, destination="none",
+        )  # fmt: skip
+
+    # Same id under another type must survive: holding_id is only unique within a type.
+    session.add_all(
+        [exit_row("stock", old.id), exit_row("stock", old.id), exit_row("stock", recent.id),
+         exit_row("gold", old.id)]
+    )  # fmt: skip
+    session.commit()
+
+    counts = purge.purge_deleted(session)
+
+    assert counts["stock"] == 1 and counts["exits"] == 2
+    kept = session.scalars(select(HoldingExit).order_by(HoldingExit.id)).all()
+    assert [(e.asset_type, e.holding_id) for e in kept] == [
+        ("stock", recent.id), ("gold", old.id),
+    ]
 
 
 def test_deleted_union_covers_every_slug():

@@ -289,6 +289,7 @@ def test_dashboard_with_no_groups():
     assert build_dashboard([]) == {
         "total_invested": D("0.00"), "total_current": D("0.00"), "total_gain": D("0.00"),
         "gain_pct": D("0.00"), "by_type": [],
+        "unsettled": {"count": 0, "amount": D("0"), "items": []},
     }  # fmt: skip
 
 
@@ -429,7 +430,8 @@ def test_holdings_summary_with_zero_invested(monkeypatch):
         "stock",
     )
     assert _summary(monkeypatch, group) == {
-        "count": 1, "matured_count": 0, "invested": D("0.00"), "current_value": D("120.00"),
+        "count": 1, "matured_count": 0, "closed_count": 0, "invested": D("0.00"),
+        "current_value": D("120.00"),
         "gain": D("120.00"), "gain_pct": D("0.00"),
     }  # fmt: skip
 
@@ -437,7 +439,8 @@ def test_holdings_summary_with_zero_invested(monkeypatch):
 def test_holdings_summary_of_an_empty_type(monkeypatch):
     group = _group(build_groups({}, TODAY), "stock")
     assert _summary(monkeypatch, group) == {
-        "count": 0, "matured_count": 0, "invested": D("0.00"), "current_value": D("0.00"),
+        "count": 0, "matured_count": 0, "closed_count": 0, "invested": D("0.00"),
+        "current_value": D("0.00"),
         "gain": D("0.00"), "gain_pct": D("0.00"),
     }  # fmt: skip
 
@@ -445,7 +448,8 @@ def test_holdings_summary_of_an_empty_type(monkeypatch):
 def test_holdings_summary_gain_pct_ignores_rows_without_a_gain(monkeypatch):
     group = _group(build_groups({"other": _other_mix()}, TODAY), "other")
     assert _summary(monkeypatch, group) == {
-        "count": 2, "matured_count": 0, "invested": D("200.00"), "current_value": D("250.00"),
+        "count": 2, "matured_count": 0, "closed_count": 0, "invested": D("200.00"),
+        "current_value": D("250.00"),
         "gain": D("50.00"), "gain_pct": D("50.00"),
     }  # fmt: skip
 

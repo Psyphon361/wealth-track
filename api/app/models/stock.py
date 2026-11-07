@@ -26,3 +26,5 @@ class Stock(TimestampedMixin, Base):
     quantity: Mapped[int]
     avg_buy_price: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     buy_date: Mapped[date]
+    # Set when the whole holding is sold; the row stays (status "sold").
+    closed_on: Mapped[date | None]

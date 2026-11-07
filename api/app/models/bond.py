@@ -29,3 +29,5 @@ class Bond(TimestampedMixin, Base):
     purchase_date: Mapped[date]
     ytm: Mapped[Decimal] = mapped_column(Numeric(6, 3))
     maturity_date: Mapped[date]
+    # Set when the whole holding is sold before maturity; the row stays (status "sold").
+    closed_on: Mapped[date | None]

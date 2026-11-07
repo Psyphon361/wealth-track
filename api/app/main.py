@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.routers import analytics, assets, auth, cas_import, cron, deleted, holdings, master, networth, portfolio, search
-from app.routers import analytics_returns, analytics_tax, sips
+from app.routers import analytics_returns, analytics_tax, exits, sips
 from app.routers.assets import ASSET_LABELS
 
 app = FastAPI(title="Wealth Tracker API")
@@ -33,6 +33,10 @@ _FIELD_LABELS = {
     "avg_nav": "Average NAV",
     "ytm": "YTM",
     "acquired_on": "Purchase date",
+    "cash_id": "Account",
+    "cash_name": "Account name",
+    "fd": "New FD",
+    "rd": "New RD",
     "tenure_years": "Tenure",
     "tenure_months": "Tenure",
     "tenure_days": "Tenure",
@@ -161,6 +165,7 @@ api_router.include_router(analytics_returns.router)
 api_router.include_router(analytics_tax.router)
 api_router.include_router(sips.router)
 api_router.include_router(holdings.router)
+api_router.include_router(exits.router)
 api_router.include_router(master.router)
 api_router.include_router(cas_import.router)
 

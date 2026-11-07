@@ -5,6 +5,7 @@ from app.models.fd_issuer_master import FdIssuerMaster
 from app.models.fixed_deposit import FixedDeposit
 from app.models.gold import Gold
 from app.models.gold_rate import GoldRateHistory, GoldRateLatest
+from app.models.holding_exit import HoldingExit
 from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNavLatest
 from app.models.login_attempt import LoginAttempt
 from app.models.mf_sip import MfSip, MfSipSkip
@@ -31,6 +32,7 @@ __all__ = [
     "Gold",
     "GoldRateHistory",
     "GoldRateLatest",
+    "HoldingExit",
     "MFMaster",
     "MFNavHistory",
     "MFNavHistorySync",

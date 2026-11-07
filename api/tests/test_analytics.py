@@ -1117,11 +1117,17 @@ def test_coming_up_already_matured_listed_but_never_totalled():
     result = analytics.coming_up(_coming_up_portfolio(), TODAY)
     matured = result["already_matured"]
     assert matured["count"] == 3
+    # Amount = what it paid at maturity: the RD's four paid instalments grown at 12% simple
+    # (4 x 10,000 + 10,000 x 0.12 x (106 + 76 + 45 + 14) / 365), a payout FD's principal, and a
+    # bond's face value x quantity (10 x 1,000).
     assert matured["rows"] == [
-        {"type": "rd", "id": 11, "name": "Bank 11", "maturity_date": date(2026, 9, 15)},
-        {"type": "fd", "id": 10, "name": "Bank 10", "maturity_date": date(2026, 10, 1)},
-        {"type": "bond", "id": 12, "name": "Bond 12", "maturity_date": date(2026, 10, 20)},
-    ]
+        {"type": "rd", "id": 11, "name": "Bank 11", "maturity_date": date(2026, 9, 15),
+         "amount": D("40792.33"), "settled": False},
+        {"type": "fd", "id": 10, "name": "Bank 10", "maturity_date": date(2026, 10, 1),
+         "amount": D("1000.00"), "settled": False},
+        {"type": "bond", "id": 12, "name": "Bond 12", "maturity_date": date(2026, 10, 20),
+         "amount": D("10000.00"), "settled": False},
+    ]  # fmt: skip
     listed = {(r["type"], r["id"]) for r in result["next_12_months"]["rows"]}
     assert not listed & {("rd", 11), ("fd", 10), ("bond", 12)}
     assert ("fd", 13) not in listed  # maturing today is neither coming up nor matured
@@ -1467,6 +1473,46 @@ def test_data_health_matured_open_lists_matured_holdings_only():
         {"type": "fd", "id": 1, "name": "Bank 1", "maturity_date": date(2026, 10, 1)},
         {"type": "rd", "id": 3, "name": "Bank 3", "maturity_date": date(2026, 9, 15)},
         {"type": "bond", "id": 4, "name": "bond 4", "maturity_date": date(2026, 10, 20)},
+    ]
+
+
+def test_data_health_matured_open_skips_settled_and_sold_holdings():
+    groups = groups_of(
+        h("fd", 1, 100.0, status="matured", maturity_date="2026-10-01", settled=True),
+        h("fd", 2, 100.0, status="matured", maturity_date="2026-10-02", settled=False),
+        h("bond", 3, 100.0, status="sold", maturity_date="2030-01-01", closed_on="2026-06-01"),
+        h("stock", 4, 100.0, status="sold", price=None, closed_on="2026-06-01"),
+    )
+    health = analytics.data_health(groups, TODAY)
+    assert [i["id"] for i in health["matured_open"]["items"]] == [2]
+    assert health["at_cost"]["count"] == 0  # a sold stock without a price is not "at cost"
+
+
+def test_a_sold_holding_counts_in_no_total():
+    groups = groups_of(
+        h("stock", 1, 500.0),
+        h("stock", 2, 9000.0, status="sold", closed_on="2026-06-01"),
+        h("bond", 3, 7000.0, status="sold", closed_on="2026-06-01", maturity_date="2030-01-01"),
+    )
+    assert [x.id for x in analytics._active_holdings(groups)] == [1]
+    liquidity = analytics.liquidity(groups, today=TODAY)
+    assert liquidity["total"] == D("500.00")
+    assert analytics.coming_up(groups, TODAY)["next_12_months"]["rows"] == []
+    assert analytics.coming_up(groups, TODAY)["already_matured"]["count"] == 0
+
+
+def test_already_matured_rows_report_the_amount_received_once_settled():
+    groups = groups_of(
+        fd_item(
+            1, "2026-10-01", status="matured", settled=True,
+            exit={"id": 5, "kind": "maturity", "amount": 1013.5},
+        ),
+        fd_item(2, "2026-10-02", status="matured", settled=False),
+    )
+    rows = analytics.coming_up(groups, TODAY)["already_matured"]["rows"]
+    assert [(r["id"], r["settled"], r["amount"]) for r in rows] == [
+        (1, True, D("1013.50")),  # the money actually received
+        (2, False, D("1000.00")),  # a payout FD's principal
     ]
 
 

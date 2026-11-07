@@ -495,6 +495,16 @@ def test_bond_holding_lists_the_fy_coupons_with_subtitle():
     assert all(p["paid"] for p in prev["payments"])
 
 
+def test_a_bond_sold_early_counts_only_the_coupons_up_to_the_sale():
+    sold = {**bond(), "closed_on": date(2026, 10, 15)}
+    body = bond_overview(sold, masters={1: bmaster()})
+    h = body["payers"][0]["holdings"][0]
+    # Monthly coupons on the 30th from Apr to Sep (6 x 395.83); the 30 Oct coupon was never earned.
+    assert [p["date"] for p in h["payments"]] == [date(2026, m, 30) for m in range(4, 10)]
+    assert h["interest_projected"] == Decimal("2374.98")
+    assert h["tds_estimate"] == Decimal("237.48")  # 6 x 39.58
+
+
 def test_deposits_have_no_payments_or_subtitle():
     deposit = item(1, "Some Bank", 100000, rate=10, start="2026-04-01", years=1,
                    compounding="simple", payout="cumulative")  # fmt: skip

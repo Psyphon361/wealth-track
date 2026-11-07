@@ -14,10 +14,21 @@ from app.schemas.assets import (
     GoldMetal,
     GoldPurity,
 )
+from app.schemas.exits import StockClose
 from app.schemas.gold import GoldRateOnDate
 from app.schemas.market_master import BondMasterRead, FdIssuerRead, NpsMasterRead, StockMasterRead
 from app.schemas.mf_scheme import MFNavOnDate, MFSchemeRead
-from app.services import amfi, bond_master, fd_issuers, gold_rates, nav_history, nps, stock_master
+from app.services import (
+    amfi,
+    bond_master,
+    fd_issuers,
+    gold_rates,
+    nav_history,
+    nps,
+    stock_history,
+    stock_master,
+    stock_prices,
+)
 
 router = APIRouter(prefix="/master", tags=["master"], dependencies=[Depends(current_user)])
 
@@ -83,6 +94,37 @@ def get_stock(master_id: int, db: Session = Depends(get_db)):
             },
         )
     return stock
+
+
+STOCK_CLOSE_MAX_GAP_DAYS = 7
+
+
+@router.get("/stock/{master_id}/close", response_model=StockClose)
+def get_stock_close(
+    master_id: int,
+    on_date: date = Query(alias="date"),
+    db: Session = Depends(get_db),
+):
+    """The stock's close on or up to 7 days before a date: the stored daily close, else the newest
+    stored close when that falls in the same window. 404 when neither exists."""
+    nav_history.validate_not_future(on_date)
+    window_start = on_date - timedelta(days=STOCK_CLOSE_MAX_GAP_DAYS)
+    closes = stock_history.closes_between(db, [master_id], window_start, on_date).get(master_id)
+    if closes:
+        price_date, price = closes[-1]
+        return {"price": price, "price_date": price_date, "source": "history"}
+    latest = stock_prices.latest_prices(db, [master_id]).get(master_id)
+    if latest is not None and latest.price_time is not None:
+        latest_date = latest.price_time.date()
+        if window_start <= latest_date <= on_date:
+            return {"price": latest.price, "price_date": latest_date, "source": "latest"}
+    raise HTTPException(
+        status_code=404,
+        detail={
+            "message": "Price not available",
+            "description": "No close for this stock on or just before this date. Enter the price yourself.",
+        },
+    )
 
 
 @router.get("/bond", response_model=list[BondMasterRead])

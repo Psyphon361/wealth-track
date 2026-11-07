@@ -85,11 +85,17 @@ def _matches(slug: str, new: dict, old) -> bool:
 
 
 def find_duplicates(db: Session, slug: str, model, user_id: int, values: dict) -> list:
-    """The user's active holdings of this type that look the same as `values`, oldest first."""
+    """The user's active holdings of this type that look the same as `values`, oldest first.
+
+    Holdings that were sold (closed_on set) are not compared: buying again after a sale is normal."""
     rows = db.scalars(
         select(model).where(model.user_id == user_id).order_by(model.id)
     ).all()
-    return [row for row in rows if _matches(slug, values, row)]
+    return [
+        row
+        for row in rows
+        if getattr(row, "closed_on", None) is None and _matches(slug, values, row)
+    ]
 
 
 def holding_name(obj) -> str:

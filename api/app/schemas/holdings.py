@@ -8,7 +8,9 @@ from app.schemas.summary import Amount
 
 class HoldingsSummary(BaseModel):
     count: int
+    # Closed holdings: matured or sold. matured_count is an alias kept for compatibility.
     matured_count: int
+    closed_count: int
     invested: Amount
     current_value: Amount
     gain: Amount

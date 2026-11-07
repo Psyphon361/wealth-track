@@ -139,6 +139,10 @@ class MaturedHolding(BaseModel):
     id: int
     name: str
     maturity_date: date | None = None
+    # What it paid at maturity (the amount received once settled); null when unknown.
+    amount: Amount | None = None
+    # True once where the money went has been recorded.
+    settled: bool = False
 
 
 class AlreadyMatured(BaseModel):
