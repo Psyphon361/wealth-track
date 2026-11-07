@@ -27,6 +27,13 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/sip.py  SIP maths and posting: due dates, next due, units after 0.005% stamp duty, first NAV on or after the due date (NAV history fetch), post_due (the only writer of SIP instalments; idempotent via last_posted_on and the (sip_id, txn_date) key); post_due_safely runs at the end of amfi.import_navall (SPEC §8a)
   app/schemas/sip.py  SIP create, update and skip bodies, read and result models, MF transactions page, and the SIP validation messages (shared verbatim with the web form; SPEC §8a)
   app/routers/sips.py  /api/sips: POST (create; 409 duplicate SIP unless confirm_duplicate=true), GET ?mutual_fund_id=, PUT /{id}, POST /{id}/pause, /resume, /stop, /skip, DELETE /{id}/skip/{due_date}, DELETE /{id} (SPEC §8a)
+  app/models/holding_exit.py  holding_exits (one row per sale or settlement: asset_type, holding_id, kind sale|maturity, exit date, quantity, amount, cost, charges, destination cash|none, cash account link, prev_state for undo; migration 0029, SPEC §8b)
+  app/services/exits.py  closing holdings: pure maths (check_sale, sale_cost, FIFO), record_sale, record_settlement and undo_exit (the only writers; they never commit), unsettled for the dashboard (SPEC §8b)
+  app/schemas/exits.py  sell, settle and undo bodies, exit read models, and the closing validation messages (shared verbatim with the web forms; SPEC §8b)
+  app/routers/exits.py  /api/holdings/{type}/{id}/sell and /settle, GET /api/holdings/{type}/{id}/exits, DELETE /api/exits/{id} (undo) (SPEC §8b)
+  app/models/holding_funding.py  holding_fundings (money a holding was paid for from a cash account: asset_type, holding_id, cash_holding_id, amount, funded_on, from_exit_id, prev_balance_date, refunded_at; migration 0030, SPEC §8c)
+  app/services/fundings.py  "Paid from": amount per type, plan (checks, no writes), apply (debit), refund (soft delete), restore, reinvested per exit, paid_from info on items (the only writer of holding_fundings; SPEC §8c)
+  app/schemas/fundings.py  the paid_from body and its validation messages (shared verbatim with the web forms; SPEC §8c)
   app/services/duplicates.py  duplicate-holding match rules for POST /api/assets/{type}: same user and type, active holdings only; 409 body; ?confirm_duplicate=true adds anyway (SPEC §4 "Duplicate warnings")
   app/models/gold.py    gold_holdings (metal, form, purity, weight_grams, purchase_date, invested_amount; no master link; migrations 0019, 0022)
   app/models/gold_rate.py  gold_rate_latest (one row per metal and purity) and gold_rate_history (metal + purity + rate_date), IBJA rates per gram
@@ -40,7 +47,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/schemas/gold.py  gold import result and rate-on-date read models
   app/schemas/messages.py, summary.py   outcome + portfolio/dashboard response models (the dashboard also returns the 1-day change: day_change, day_change_pct, day_change_as_of, from valuation.portfolio_day_change)
   app/routers/search.py + app/services/search_index.py + app/schemas/search.py  GET /api/search/index: one flat item per holding with search terms from the linked masters; ranking happens in the browser (SPEC §4)
-  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|nps|gold|cash|pf|other}
+  app/routers/assets.py CRUD for /api/assets/{fd|rd|stock|bond|mf|nps|gold|cash|pf|other} (POST takes an optional `paid_from`, SPEC §8c)
   app/routers/cas_import.py  /api/import/cas/preview (parse a CAMS/KFintech CAS PDF in memory) and /api/import/cas/commit (save the chosen MF rows, all-or-nothing) (SPEC §8)
   app/routers/portfolio.py /api/portfolio, /api/dashboard (one query per type, run concurrently)
   app/routers/networth.py + app/services/networth.py  GET /api/networth/history?range=1m|6m|1y|all: net worth over time (pure maths in services/networth.py; schema app/schemas/networth.py)
@@ -87,13 +94,13 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/jobs/gold_import.py  CLI: `python -m app.jobs.gold_import` runs the IBJA gold rate import
   app/services/gold_history.py  gold and silver rate history backfill into gold_rate_history (inserts missing rows only): ibja.co daily PDFs from 10 May 2022, Wayback snapshot of ibjarates.com for 2014-01-01 to 2018-02-14 (other gold purities derived by ratio); Mar 2018 to Apr 2022 is empty by design
   app/jobs/gold_backfill.py  CLI: `python -m app.jobs.gold_backfill` runs that backfill (re-runnable)
-  app/services/purge.py  soft-delete retention: hard-deletes holdings soft-deleted more than 30 days ago (MF transactions go with their fund)
+  app/services/purge.py  soft-delete retention: hard-deletes holdings soft-deleted more than 30 days ago (MF transactions go with their fund; holding_exits and holding_fundings rows of purged holdings go too)
   app/jobs/purge_deleted.py  CLI: `python -m app.jobs.purge_deleted` runs the purge
   app/routers/deleted.py, app/schemas/deleted.py  GET /api/deleted: the user's holdings deleted in the last 30 days (restore is POST /api/assets/{type}/{id}/restore in routers/assets.py; /api/cron/purge in routers/cron.py)
   app/jobs/nps_import.py  CLI: `python -m app.jobs.nps_import` runs the NPS NAV import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches), 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches), 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id, 0029 holding_exits (sales and settlements; SPEC §8b), 0030 holding_fundings ("Paid from"; SPEC §8c)
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -117,6 +124,16 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   components/sips/sip-grid-config.tsx  SIPs table columns (Fund, Status, Monthly amount, SIP date, Next instalment, Instalments, Invested via SIP, actions) (SPEC §8a)
   components/sips/sip-badge.tsx  status badge (Active, Paused, Cancelled) and the next-instalment progress line (SPEC §8a)
   components/sips/sip-actions.tsx  SIP action menu (Update SIP, Skip Next / Undo Skip, Pause SIP / Resume SIP, Cancel SIP, Delete SIP) with confirm dialogs; also used by the MF details page (SPEC §8a)
+  components/exits/  closing dialogs: sell-dialog.tsx (Sell), settle-dialog.tsx (Settle), destination-field.tsx ("Where Did The Money Land?" options, net-worth effect line and the Paid From info line), reinvest.tsx (success step and Reinvest menu), use-cash-accounts.ts, use-price-autofill.ts, after-exit.ts (SPEC §8b, §8c)
+  lib/exits.ts  closing helpers: labels per type, destination options, net-worth effect text, request destinations, exit list text (vitest tests in exits.test.ts; SPEC §8b)
+  lib/paid-from.ts  "Paid from" helpers: labels and messages (shared with the API), amount per type, effect line, request body, read-only line (vitest tests in paid-from.test.ts; SPEC §8c)
+  lib/reinvest.ts  one-shot Reinvest prefill in sessionStorage (`wt.reinvest`), taken once by the add form of that type (vitest tests in reinvest.test.ts; SPEC §8c)
+  components/forms/paid-from-field.tsx  the "Paid From" select on every add form, the reinvest note, and the read-only line on the Edit dialog (SPEC §8c)
+  lib/closed.ts  Closed tab helpers: status text, received amount, realised gain, Closed On date (vitest tests in closed.test.ts; SPEC §5)
+  lib/unsettled.ts  dashboard "matured holdings to settle" helpers: title, rows, Show All toggle, settle link (vitest tests in unsettled.test.ts; SPEC §5)
+  components/dashboard/unsettled-prompt.tsx  "matured holdings to settle" card at the top of the dashboard (SPEC §5)
+  components/holding-detail/exits-section.tsx  Sales and settlements list on the details page, with Undo on the latest exit (SPEC §8b)
+  components/portfolio/grid/closed-columns.tsx  Closed tab columns: Status, Closed On, Received, Realised Gain (SPEC §5, §8b)
   components/sips/sip-edit-dialog.tsx  Update SIP dialog: monthly amount, SIP date, end date (SPEC §8a)
   components/sips/use-sips.ts  loads GET /api/sips (all, or one holding's) and reloads on demand (SPEC §8a)
   components/holding-detail/mf-sip-section.tsx, mf-transactions.tsx  MF details page: SIP section (same actions) and the paged Transactions list (SPEC §8a)
@@ -198,7 +215,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0028`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0030`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)

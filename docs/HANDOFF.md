@@ -1,5 +1,42 @@
 # HANDOFF — session resume notes (2026-11-03)
 
+## Resume notes (2026-11-07)
+
+### Where things stand
+- Shipped and pushed today:
+  - Closing holdings (SPEC §8b): Sell for stock, bond, MF, gold and Other, full or partial; Settle for matured FD, RD and bonds; Undo of the latest exit. The table is `holding_exits` (migration 0029).
+  - Paid from (SPEC §8c): every Add form can say "Paid from" a cash account, which takes the invested amount off that balance. The table is `holding_fundings` (migration 0030). Soft delete refunds the amount and restore takes it again.
+  - Settle and Sell money lands in a cash account. A success step offers Reinvest buttons that prefill an Add form through sessionStorage (`web/lib/reinvest.ts`). "More…" goes through the /add gallery.
+  - Grids have Active / Closed tabs (fd, rd, bond, stock, mf, gold, other) with Closed On, Received and Realised Gain columns, sortable on the server. The Closed tab defaults to newest closed first.
+  - The dashboard has a "matured holdings to settle" card at the top (`unsettled` in /api/dashboard).
+- Migration head is 0030. The prod migration runs through the deploy workflow on push.
+- Tests: 2,119 API and 348 web, all green. Both features were live-probed on the dev DB as the probe account, and the probe rows were deleted.
+
+### Small loose ends
+- SPEC §8c does not yet list the /add gallery note "Reinvesting ₹X from <account>. Pick what you bought." (web/components/add/asset-gallery.tsx).
+- `models/holding_exit.py` and the 0029 CHECK constraint still allow destination "renewed", which nothing writes any more. A later migration can drop it.
+- Stock sell-price auto-fill works only for dates with a stored close (month-end backfill plus daily closes for held stocks). Other dates ask the user to enter the price.
+- MF holding id 20 on the probe account is soft-deleted and will be purged in 30 days.
+
+### Next items, in order
+1. **Capital gains report** (Analytics tab), built from the `holding_exits` sale rows:
+   - STCG/LTCG per financial year by asset class: listed equity and equity MF (12 months; 20% / 12.5% after 23 Jul 2024, with the ₹1.25L LTCG exemption), debt MF bought on or after 1 Apr 2023 (slab), listed bonds (12 months; 12.5%), gold and Other (24 months; 12.5%), and SGBs (redemption at maturity is tax-free).
+   - The estimated tax.
+   - Pre-2018 grandfathering flagged, not computed.
+   - FY helpers already exist in `api/app/services/analytics_tax.py` (`fy_bounds`, `available_fys`).
+   - Plan it first and show the user.
+2. **Buy more** for existing holdings (an MF lump sum into a held fund, more shares of a held stock). Today each holding is one lot; MF has transactions. This needs a design.
+3. **SIP instalments paid from a cash account** (a monthly debit when a SIP posts).
+4. Parked by the user: mobile/PWA, password reset, stock import.
+
+### Working rules for the next session
+- Orchestrator mode: the main agent plans, reviews and commits; builders (Sonnet, **medium** effort per the global rules) edit; scouts and Haiku do lookups and chores. Never Opus.
+- At most 3 builders in parallel, and only after file ownership is split.
+- Builders never git stash, checkout or reset, and never delete web/.next.
+- The user checks UI in their browser (the agent's browser pane isn't signed in).
+- Live API probes use the probe account (credentials in ~/.config/wealth-track/probe.env) on port 8010; rows are named zz-probe-…; delete only those rows.
+- UX first: layman wording; spell out the net worth effect (never a vague "Not tracking"); Title Case options; amber for attention (never red).
+
 ## Latest (2026-11-03)
 
 Everything is pushed: `origin/main` is at `af6122d`, which includes the speed-up work.

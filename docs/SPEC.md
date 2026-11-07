@@ -173,7 +173,7 @@ Year fraction = (365 per whole calendar year from the start date, plus the days 
 - **NPS**: invested = `contributed`. Current = units × latest NAV (`nps_nav_latest`, 4 dp); with no NAV, current = contributed. `nav` and `nav_date` are in API items; `day_change` = units × (nav − previous stored NAV), as for MF. No XIRR; no status (always active).
 - **Other**: current = `current_value` as entered (no price lookup; it changes only when the user edits it). With `invested_amount` set: invested = `invested_amount`, gain = current − invested, gain_pct = gain / invested × 100. Without it: invested = current, and `gain` and `gain_pct` are null (no gain is shown). xirr null. Always active (never matures). Totals skip a null gain, so those holdings add nothing to gain.
 - gain = current − invested (payout FD: interest_received); gain_pct = gain / invested × 100. Group and dashboard totals SUM item gains (not current − invested; null gains are skipped). Aggregates also return `gain_base` = the invested of only those holdings that have a gain; the aggregate `gain_pct` = gain / `gain_base` × 100, so "Other" holdings without an invested amount don't dilute it. Outputs rounded to 2 dp.
-- **Matured holdings are closed**: they still appear in `items` (status Matured) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded.
+- **Matured and sold holdings are closed**: they still appear in `items` (status `matured`, or `sold` after a full sale, §8b) but are excluded from every total (group totals, dashboard totals/allocation, holdings `summary`) and from `count`. `matured_count` reports how many were excluded. The holdings `summary` also has `closed_count` (matured plus sold); it is the same number as `matured_count` there.
 
 Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 → 107185.90. Payout FD 100000 @ 7.2% quarterly 1y → 3600.00 after 2 quarters, 7200.00 at maturity. Bond 10 × 1000, ytm 8, 1 year → 10800.00.
 
@@ -235,6 +235,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
     - pf: `kind` (enum facet). Sort keys: name, kind, balance_date, current_value (default), interest_rate, maturity_date.
     - other: `category*` (grouped ignoring case; each shows the spelling of its newest holding). Sort keys: name, category, current_value (default), invested, gain, value_date; a null gain sorts last. Search: name, category.
     - (`*` = free-text values whose options come from the data.)
+    - `status` on fd and rd: `active` | `matured`; bond: `active` | `matured` | `sold`; stock, mf, gold and other: `active` | `sold`. `closed` (matured plus sold) selects the Closed tab on every type that has one. Deposits are never sold.
   - Response: `{items (record + computed values), total, page, page_size: 10, page_count, summary{count, matured_count, invested, current_value, gain, gain_pct} for the whole type (unfiltered; active holdings only, count = active count), facets{<filter>: [{value, count}]}}`. Each facet counts rows matching every other filter. Enum facets list all values; text facets list values present for that type.
   - Item: record fields + `invested, current_value, gain, gain_pct, status`, plus `maturity_date` (fd/rd/bond), `interest_received` (payout FD), `nav` + `nav_date` (mf, nps), and `rate_per_gram` + `rate_date` (gold).
 - `GET /holdings/{fd|rd|stock|bond|mf|nps|gold|cash|pf|other}/{id}` → `{item, master}` for the details page. `item` has the same shape as a grid row, plus `xirr`, `xirr_basis` and `xirr_transactions` for MF (§5; MF grid rows carry them too); `master` is the linked master read model (`app/schemas/market_master.py`), or null when the holding is not linked. 404 "Holding not found" / "It may have been deleted, or it belongs to another account."
@@ -283,7 +284,8 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 
 ## 5. Web app
 
-- Pages: `/dashboard` Dashboard (top to bottom: a hero row, then the holdings-by-type table).
+- Pages: `/dashboard` Dashboard (top to bottom: the matured-holdings card when there is one, a hero row, then the holdings-by-type table).
+  - Matured holdings to settle (`web/components/dashboard/unsettled-prompt.tsx`): shown at the top only when `unsettled.count` is above 0. Title "N matured holdings to settle · ₹X" ("matured holding" for one), then "This money left your totals. Tell us where it went." Rows: icon, name, "Matured {date}", amount and a Settle link to `/portfolio/{type}/{id}?settle=1` (opens the settle dialog). Three rows show; "Show All N" / "Show Less" appears beyond that. Data from `unsettled` in `/api/dashboard` (§8b).
   - Hero card (left, 2/3 wide on `lg`; stacked on smaller screens). Net worth at the top, then Invested, Gain / loss (signed amount and %) and 1-day change (signed amount and %, `text-gain` / `text-loss`, with an arrow). The 1-day change shows no as-of date. With no figure it shows "—" and no %. `day_change_as_of` is still returned by the API but not shown.
   - Growth over the selected range = change in (current − invested) from the first to the last point ("Growth (1Y) +…"). Shown only with 2 or more points.
   - Net worth chart inside the hero card: range toggle 1M / 6M / 1Y / All (default 1Y). The Y axis fits the data (padded, floored at 0). The gap between current value and invested is tinted: gain colour when the last point is at or above invested, loss colour otherwise. Dashed invested line.
@@ -292,11 +294,11 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - `/portfolio` redirects to the first asset type you hold (first non-empty type in catalog order).
   - `/portfolio/{type}` shows compact pill tabs with an icon and a round green count badge (a pulsing placeholder while counts load). Deposits (FD, RD, Cash & Savings, EPF & PPF) come first, then a divider, then Market-linked (Stocks, Mutual Funds, NPS, Bonds, Gold & Silver), then a divider and Other. The order and groups come from `web/lib/asset-catalog.ts`, which also drives the Add menu, the `/add` gallery and the `/portfolio` redirect. The content fades in when the type changes; reduced motion is respected.
   - Each type has a summary strip (count, invested, current, gain) and an "Add FD"/"Add RD"/"Add stocks"/… button linking to `/add/{type}`.
-  - FD, RD and bond pages replace the "N active · M matured" text with an Active (n) / Matured (m) segmented control (config `statusTabs`). Active is the default (URL has no `status`; the request sends `status=active`); Matured sets `?status=matured`, resets to page 1, and hides the Invested/Current/Gain totals. Reset keeps the tab. An empty Matured tab shows "No matured {noun}". The FD/RD/bond toolbar has no status filter (the Status column stays). The dashboard holdings-by-type table shows only the active count (no matured note).
+  - Types with `statusTabs` (FD, RD, bond, stock, MF, gold and other) replace the "N active · M matured" text with an Active / Closed segmented control with counts (`components/portfolio/portfolio.tsx`). Active is the default (URL has no `status`; the request sends `status=active`); Closed sets `?status=closed`, resets to page 1, and hides the Invested/Current/Gain totals. Reset keeps the tab. An empty Closed tab shows "No closed {noun}". Closed sorts by Closed On, newest closed first by default. Its columns replace Current, Gain, Gain % and Status with Status (Matured · Settled, Matured · Not Settled or Sold), Closed On, Received and Realised Gain (§8b). The FD/RD/bond toolbar has no status filter (the Status column stays). The dashboard holdings-by-type table shows only the active count (no matured note).
   - Its own grid has type-specific columns and filters. Stocks include Price (latest price with day change %), Current/Gain/Gain %; a note under the stocks summary reads "Prices are the NSE/BSE closing price, updated nightly. Last updated <IST time>." Stocks without a price show current = invested. MF Current/Gain use the latest NAV where available (see §3). The MF grid has a sortable "XIRR" column after Gain % (signed %, `text-gain` / `text-loss`, "—" when null). It has a visible-by-default, non-sortable "NAV" column after Avg NAV: latest NAV with a muted "as of {date}" line, "—" when null.
   - The grid has debounced search, faceted filters, %-range and maturity-date range filters, Reset, and a Columns menu saved per type in localStorage `wt.portfolio.columns.{type}`.
   - Sortable headers; 10 rows per page; no totals row.
-  - Row actions: eye (opens the details page `/portfolio/{type}/{id}`) and ⋯ Edit/Delete.
+  - Row actions: eye (opens the details page `/portfolio/{type}/{id}`) and ⋯ Edit/Delete. Sell (active holdings of stock, bond, MF, gold and other) and Settle (matured deposits and bonds with no payout recorded) open their dialogs (§8b).
   - State lives in the URL. Breadcrumb reads `Portfolio › {type label}`.
 - **Fresh data after changes.** Grids and the dashboard keep their data when the route is hidden and revisited (stale-while-revalidate). After a create, update, delete or CAS import made outside the grid, the grid, dashboard, tab counts and details page show their loading state on the next reveal instead of stale data (`web/lib/holdings-cache.ts`: version counters per type; `markHoldingsStale`, `holdingsVersion`, `anyHoldingsVersion`). In-grid edits and deletes refresh in place. `holdings-cache` subscribers refetch visible grids when a holding is deleted or restored.
 - **Delete and Recently deleted.** The delete confirm dialog says: "It moves to Recently deleted and is permanently deleted after 30 days. Restore it from there if you need it." Restoring uses `restoreHolding` (`web/lib/restore-holding.ts`) and shows the API's "restored" toast. `/deleted` ("Recently deleted", `web/app/(app)/deleted/`, `web/components/deleted/recently-deleted.tsx`, linked at the bottom of the sidebar) lists `GET /api/deleted` with days left before permanent removal and a Restore action per row.
@@ -552,6 +554,196 @@ As built in `web/`; the code is the reference when the two differ.
   - Actions menu (`sip-actions.tsx`): Update SIP (dialog with monthly amount, SIP date and end date; `sip-edit-dialog.tsx`), Skip Next (confirm "Skip Instalment"), Undo Skip (shown in place of Skip Next once the next instalment is skipped), Pause SIP, Resume SIP, Cancel SIP (confirm "Keep SIP" / "Cancel SIP"; instalments already added stay) and Delete SIP (confirm; cancelled SIPs only). Per status: active → Update SIP, Skip Next or Undo Skip, Pause SIP, Cancel SIP; paused → Update SIP, Resume SIP, Cancel SIP; cancelled → Delete SIP.
   - Every action has a pending state ("Skipping…", "Cancelling…", "Deleting…"), and its toast text comes from the API. An empty state reads "No SIPs yet" and links to "Start a SIP".
 
+## 8b. Closing holdings
+
+Code: `api/app/services/exits.py` (the maths, and the only writers), `api/app/routers/exits.py`, `api/app/schemas/exits.py` (bodies, read models and the validation messages shared with the web), `api/app/models/holding_exit.py`; migration `0029` (`holding_exits`). Web: see "Web" below.
+
+A closing is a sale (all or part of a holding) or a settlement (a matured deposit or bond paid out). Each writes one `holding_exits` row: `kind` (`sale` | `maturity`), date, quantity (sales), `amount` (money received, after charges), `cost`, `charges`, `destination` (`cash` | `none`), the cash account it touched, and `prev_state` (what undo needs).
+
+### Sell (`POST /api/holdings/{stock|bond|mf|gold|other}/{id}/sell`)
+
+- Quantity (shares, bonds, fund units or grams) can be part of the holding. Stock and bond quantities are whole numbers. Other is always sold whole; its sale value is sent as `amount` (before charges).
+- `amount` = quantity × price − charges, 2 dp. For Other, `amount` = the sale value − charges.
+- `cost` is what the sold part cost. A fund whose stored transactions match its units (within 0.01) uses FIFO over those transactions. Anything else uses the invested amount pro rata, never more than invested. A full sale takes all of the invested amount. Realised gain = amount − cost.
+- A partial sale reduces the quantity and the invested amount by the cost, and recalculates a fund's average NAV.
+- A full sale keeps the quantity and invested amount as they were and sets `closed_on` (status `sold`).
+- A fund sale also writes a `redemption` transaction dated the sale date. A fund with no transactions yet gets an opening purchase for its current units first, so XIRR stays on transactions. A full sale of a fund stops its active and paused SIPs; the count comes back as `sips_cancelled`.
+- The sale date can't be in the future or before the purchase date (stock buy date; bond, fund and gold purchase date; Other acquired date).
+- A matured bond can't be sold, and a sold holding can't be sold again (409, see below).
+
+### Settle (`POST /api/holdings/{fd|rd|bond}/{id}/settle`)
+
+- Only a matured deposit or bond with no payout recorded. Both body fields default: `date` to the maturity date, and `amount` to what it pays at maturity (the same figure as Coming up, §9). The amount can be changed.
+- The date can't be in the future or before the maturity date.
+- One settlement per holding. A second one is 409, and so is a request that races it.
+
+### Destinations
+
+- `cash_existing` (`cash_id`): the account's balance goes up by the amount; its balance date becomes the later of its own and the exit date.
+- `cash_new` (`cash_name`): a new savings account, with the amount as its balance, dated the exit date.
+- `none` ("Spent Or Moved Elsewhere (Not Counted)"): nothing is added to any account.
+
+Sell and settle take the same three choices. Money that went into an account can later be put into a holding with "Paid From" (§8c).
+
+### Undo (`DELETE /api/exits/{exit_id}`)
+
+- Only a holding's latest exit can be undone.
+- A full sale clears `closed_on`. A partial sale adds the sold quantity and cost back. A fund's redemption transaction is deleted. SIPs that the sale stopped go back to paused; missed instalments are not added.
+- A settlement puts the holding back to matured.
+- Money added to an account is taken out again (the balance stops at 0, and its balance date is restored if nothing changed it since). An account the exit created is kept, and the message says so. Undo never deletes it.
+- Undo is refused (409) while some of the money is reinvested, that is, paid into a holding that still exists (§8c).
+
+### Endpoints
+
+Each outcome returns `message` and `description`. Signed in, per user.
+
+- `POST /api/holdings/{stock|bond|mf|gold|other}/{id}/sell` (201, `ExitResult`): body `{date, quantity?, price?, amount? (Other), charges (default 0), destination: {kind: cash_existing | cash_new | none, cash_id?, cash_name?}}`. Result: the exit fields plus `closed`, `remaining` (quantity left; null when closed or for Other), `cash_name` and `sips_cancelled`.
+- `POST /api/holdings/{fd|rd|bond}/{id}/settle` (201, `ExitResult`): body `{date?, amount?, destination: {kind: cash_existing | cash_new | none, cash_id?, cash_name?}}`.
+- `GET /api/holdings/{type}/{id}/exits`: the holding's exits, newest first (`id`, `kind`, `date`, `quantity`, `amount`, `cost`, `charges`, `destination`, `cash_holding_id`, `cash_added`, `new_holding_id`, `new_asset_type`, `realised_gain`, `reinvested`, `left_in_account`).
+- `DELETE /api/exits/{exit_id}`: undo (above). Returns `message` and `description`.
+- `GET /api/master/stock/{id}/close?date=`: the stock's close on the date or up to 7 days before it, as `{price, price_date, source: history | latest}`. It pre-fills the sell price. 404 "Price not available" / "No close for this stock on or just before this date. Enter the price yourself."
+- Grid and details items carry `exit` (the latest exit, or null), `settled`, and `maturity_amount` (matured, unsettled deposits and bonds only). `GET /api/dashboard` carries `unsettled`: `{count, amount, items: [{type, id, name, maturity_date, amount}]}`, the matured FD, RD and bonds that are not sold and have no payout recorded, oldest maturity first.
+
+### Messages
+
+Validation (422 on the field named; the web forms use the same wording):
+
+- Date: "Date can't be in the future"; "Date can't be before the purchase date" (sell); "Date can't be before the maturity date" (settle); "Date must be on or after 1 Jan 1990".
+- Quantity: "Required"; "Must be greater than 0"; "Must be a whole number" (stock, bond); "Can't sell more than you hold"; "Up to 3 decimal places allowed"; "Must be at most 1 crore".
+- Price: "Required"; "Must be greater than 0"; "Up to 4 decimal places allowed"; "Must be at most ₹100 crore".
+- Amount (Other): "Required"; "Must be greater than 0"; "Up to 2 decimal places allowed"; "Must be at most ₹100 crore".
+- Charges: "Can't be negative"; "Charges must be less than the sale value"; "Up to 2 decimal places allowed"; "Must be at most ₹100 crore".
+- Destination: "Choose where the money went" (unknown kind); "Choose one of your accounts" (`cash_id` not yours); "Required" and "Must be at most 200 characters" (`cash_name`).
+
+Conflicts (409):
+
+- "Already sold" / "This holding has been sold. Undo the sale first if it was a mistake." (sell a sold holding)
+- "This bond has matured" / "Record where the money went with Settle instead of selling." (sell a matured bond)
+- "Already sold" / "This bond was sold before it matured. Undo the sale first." (settle a sold bond)
+- "Not matured yet" / "<name> matures on 5 Jan 2027." (settle before maturity)
+- "Already settled" / "Undo the settlement first if you need to change it." (settle twice, or two at once)
+- "Undo the latest one first" / "A later sale of this holding was recorded after this one." (undo an older exit)
+- "Holding not found" / "It was deleted. Restore it from Recently deleted, then undo." (undo a deleted holding)
+
+Not found (404):
+
+- "Holding not found" / "It may have been deleted, or it belongs to another account."
+- "Can't be sold" (sell on a type that can't be sold: fd, rd, NPS, cash, EPF & PPF); "Can't be settled" (settle on any other type). Both use the same description.
+- "Record not found" (undo an unknown exit), with the same description.
+- "Price not available" (see the close endpoint).
+
+Success:
+
+- Sell: "Stock sold", "Bond sold", "Fund sold", "Gold sold" or "Silver sold", "Holding sold" (Other); a part sale reads "Part of stock sold" (and so on). Description: `<name> · <quantity> sold for <amount>`, then "gain ₹X" or "loss ₹X" when there is a cost and the gain is not zero, then "added to <account>", then "SIP cancelled" or "SIPs cancelled".
+- Settle: "Maturity recorded"; description `<name> · ₹X received` or `<name> · ₹X added to <account>`.
+- Undo: "Sale undone" or "Settlement undone". Description: "<name> is back in your portfolio.", then "₹X was taken out of <account>." when money was taken out, then "The account <name> was kept; delete it yourself if you don't want it.", then "Its SIP was left paused; resume it if you still want it." when that applies.
+
+### Web
+
+As built in `web/`; the code is the reference when the two differ.
+
+- **Sell dialog** (`components/exits/sell-dialog.tsx`; the grid's row menu "Sell" and the details page's Sell button, for active holdings of the five sellable types). Title "Sell {name}". Fields: Date; the quantity field (label "Quantity" for stock, "Bonds" for bond, "Units" for MF, "Weight (g)" for gold; "Sell All" fills it, and the button then reads "Selling All · Clear"); the price ("Price per share", "Price per bond", "NAV per unit", "Rate per gram"; a stock's price is pre-filled from its close on the sale date); for Other, "Amount" (the sale value); Charges (hint "Brokerage, taxes or fees paid on the sale"); "Where Did The Money Land?" (see the destination field below). Submit "Sell", pending "Selling…".
+- **Settle dialog** (`components/exits/settle-dialog.tsx`; the details page's Settle button or banner, and the dashboard card's link, which opens it at once). Title "Settle {name}", description "Matured on <date>". Fields: "Amount received" (pre-filled with the amount it pays at maturity); "Date received"; "Where Did The Money Land?". Submit "Settle", pending "Settling…".
+- **Destination field** (`components/exits/destination-field.tsx`, used by both dialogs). Label "Where Did The Money Land?". Options, in order: each cash account ("Name · ₹balance"), "A New Savings Account" (its name pre-filled from the bank, e.g. "HDFC Bank Savings"), "Spent Or Moved Elsewhere (Not Counted)". The effect line under it reads "Name: ₹old → ₹new" for an account, "Adds ₹X to your net worth" for a new account, and "This ₹X won't be added to your net worth." for none. Below that, the info line "Investing this money later? Pick this account under 'Paid From' when you add the holding, so it isn't counted twice." (§8c).
+- **Success step** (`components/exits/reinvest.tsx`, `ExitSuccess`). After a sell or settle that put money in an account, the dialog shows "₹X is now in <account>." with "Reinvested some of it?" and buttons "+ Mutual Fund", "+ FD", "+ Stock", "+ Bond", "+ Gold", "More…" and "Done". Each button opens that type's add form paid from the account (§8c); "More…" opens the type gallery without a prefill.
+- **Details page** (`components/holding-detail/holding-detail.tsx`, `exits-section.tsx`). A matured deposit or bond with no payout recorded shows a banner: "Matured on <date> · ₹X paid out. Where did the money go?" with a Settle button. Below the sections, "Sales and settlements" lists the exits, newest first: "Sold 40 shares" (or "Sold" for Other, "Settled" for a settlement); "Into <account>" or "Spent or moved elsewhere"; "Gain ₹X" or "Loss ₹X"; and the money line (§8c, "reinvested · still in"). A "Reinvest" menu (same buttons as the success step) shows on each exit that still has money in an account. Only the latest one has Undo: a dialog asks "Undo this sale?" or "Undo this settlement?" with "Keep It" and "Undo" (pending "Undoing…").
+- **Grid row menu** (`components/portfolio/grid/row-actions.tsx`): "Sell" on active holdings of the sellable types; "Settle" on matured deposits and bonds with no payout recorded.
+- **Closed tab** (`components/portfolio/grid/closed-columns.tsx`, `lib/closed.ts`). Status: "Matured · Settled", "Matured · Not Settled" (outlined, so it stands out) or "Sold". Closed On. Received: the exit amount, else the maturity amount. Realised Gain: amount − cost, with a "+" on a gain.
+- **Dashboard card** (`components/dashboard/unsettled-prompt.tsx`): see §5.
+- **Coming up** (§9): matured rows show their amount and a "Not Settled" badge until the payout is recorded.
+
+## 8c. Paid from
+
+Code: `api/app/services/fundings.py` (the maths, and the only writer of `holding_fundings`), `api/app/schemas/fundings.py` (the `paid_from` body and its messages), `api/app/models/holding_funding.py`, `api/app/routers/assets.py` (create, delete, restore). Migration `0030` (`holding_fundings`). Web: see "Web" below.
+
+Every Add form (`/add/{type}`) has an optional "Paid From" field. It applies to all ten types, including MF lump sums, stocks, bonds, FDs, RDs, gold and silver. Choose an account (e.g. "HDFC Savings") and the amount comes out of that balance. Leave it as "Outside Money (New Money)" and nothing changes. Net worth stays correct with no double counting: the money is already in the account, so it is counted once, as the holding.
+
+### Flow
+
+- Settle or Sell money lands in a cash account (§8b).
+- Investing it later uses Paid From: the add form takes that account.
+- After a settle or sell that put money in an account, the success step offers Reinvest buttons (+ Mutual Fund, + FD, + Stock, + Bond, + Gold) and "More…", which goes through the type gallery. The details page's Reinvest menu does the same.
+- The prefill (type, amount left in the account, exit date, account and exit) is passed through sessionStorage (key `wt.reinvest`), not the URL. The add form takes it once, only for that type, and clears it.
+
+### Data
+
+`holding_fundings` (migration `0030`): one row per holding created with a paid-from account.
+
+- `user_id`, `asset_type` (`fd` | `rd` | `stock` | `bond` | `mf` | `nps` | `gold` | `cash` | `pf` | `other`), `holding_id` (no foreign key: it points at the table named by `asset_type`).
+- `cash_holding_id` (the account; set null when the account is deleted for good), `amount` (2 dp), `funded_on` (the holding's start, purchase or acquired date, or today when blank), `from_exit_id` (the sale or settlement the money came from, if any; set null when that exit is deleted).
+- `prev_balance_date` (the account's balance date before the debit, kept for the record), `refunded_at` (null while the funding is active).
+
+### Amount taken per type
+
+The amount is what the holding costs, rounded to 2 dp. None is taken when it is 0.
+
+- FD: principal.
+- RD: monthly instalment × the instalments paid so far (due on or before today and before maturity, counted as the valuation counts them). With no instalment paid yet, the RD is saved and nothing is taken.
+- Stock: quantity × average buy price.
+- Bond, MF, Gold & Silver: invested amount.
+- NPS: contributed.
+- Cash & Savings: the opening balance.
+- EPF & PPF: contributed, or the balance when contributed is blank.
+- Other: amount invested (required, see Validation).
+
+### Cash effect
+
+- Create: the account's balance goes down by the amount. Its balance date becomes the later of its own and `funded_on`.
+- Delete (soft): the balance goes back up by the amount, and `refunded_at` is set. The balance date is not changed.
+- Restore: the amount is taken out again and `refunded_at` is cleared. The balance date is not changed.
+- Edit: never changes the funding (see below).
+- Purge (§8b, `services/purge.py`): the funding rows of a purged holding are removed. No money moves, as the refund was made at delete.
+- When the account is deleted, delete and restore move no money. The line on the holding then reads "a deleted account".
+
+### Validation
+
+Validation (422 on the field named; the web forms use the same wording and check it live):
+
+- `paid_from.cash_id`: "Choose one of your accounts" (not one of your active Cash & Savings accounts).
+- `paid_from.from_exit_id`: "Choose one of your accounts" (not one of your exits).
+- `paid_from.cash_id`: "More than this account's balance" (the amount is more than the balance).
+- `paid_from.cash_id`: "Enter the amount invested to pay it from an account" (the holding has no amount invested, such as Other without one).
+
+The `paid_from` check runs before the duplicate check (§4). A 422 wins even when the holding also matches a duplicate. A 409 duplicate rolls back, so nothing is debited; "Add anyway" repeats the create with `confirm_duplicate=true` and debits then.
+
+### Edit
+
+`PUT /api/assets/{type}/{id}` takes no `paid_from` and never changes the funding. Changing the holding's amount does not move money. The Edit dialog shows the funding as a read-only line: "Paid from HDFC Savings · ₹50,000" (or "Paid from a deleted account · ₹50,000").
+
+### Restore
+
+Restoring a holding takes its refunded fundings out of their accounts again. When an account has too little, the restore is 409 and nothing changes: "Not enough in <account>" / "Update its balance, then restore."
+
+### Exits
+
+- `reinvested` on each exit (and on its `exit` summary on holding items): the money of that exit put into holdings that still exist (active fundings with `from_exit_id` set to it). Deleting such a holding lowers it again.
+- `left_in_account`: `cash_added` less `reinvested`, never below 0; null when the money went into no account.
+- Undo is refused while `reinvested` is above 0: 409 "Some of this money was reinvested" / "Delete the holdings paid from it first, then undo." (§8b, Undo).
+- The details page line: "₹50,000 reinvested · ₹57,186 still in HDFC Savings", or "₹1,07,186 in HDFC Savings" when none was reinvested.
+
+### API fields
+
+- `POST /api/assets/{type}` takes an optional `paid_from`: `{cash_id, from_exit_id?}`. Omitted or null means outside money.
+- Holding items (grid and details) carry `paid_from`: `{cash_holding_id, cash_name, amount, date}` for an active funding, else null. `date` is `funded_on`.
+- The create result's description appends the money taken: `<name> · ₹50,000 taken from HDFC Savings`.
+- Exits carry `reinvested` and `left_in_account` (§8b, Endpoints).
+
+### Web
+
+As built in `web/`; the code is the reference when the two differ.
+
+- **Paid From field** (`components/forms/paid-from-field.tsx`; logic in `lib/paid-from.ts`). Label "Paid From". Options: "Outside Money (New Money)", then each account ("Name · ₹balance"). While accounts load: "Loading Accounts…". The helper line under it: "Bought with money already in one of your accounts? Pick it so it isn't counted twice." With an account chosen, the effect line reads "HDFC Savings: ₹2,25,000 → ₹1,75,000". Edit dialog: no select, only the read-only line.
+- **Reinvest note** (above the add form when prefilled, `components/exits/reinvest.tsx`, `lib/reinvest.ts`): "Reinvesting ₹1,07,186 from HDFC Savings." The amount field takes the amount; for RD and stock there is no single amount field, so the hint "₹50,000 to invest" shows instead.
+- **Gallery note** (`web/components/add/asset-gallery.tsx`): while a reinvest prefill is pending, the /add type gallery shows "Reinvesting ₹1,07,186 from HDFC Savings. Pick what you bought."
+- **Success step**, **Reinvest menu** and **money line**: as in §8b, Web.
+- **Cash & Savings details page** (`components/holding-detail/holding-detail.tsx`): the info line "Use this account as 'Paid From' when you add a holding bought with this money."
+- **Destination info line** on the sell and settle dialogs: as in §8b, Web.
+
+### Out of scope
+
+- "Buy more" for an existing holding (adding money to a holding already held).
+- SIP instalments taking money from an account. A SIP's instalments are not paid from a cash account.
+
 ## 9. Analytics (slice 1: Overview)
 
 `GET /api/analytics/overview` (`routers/analytics.py`; maths in `services/analytics.py`, shapes in `schemas/analytics.py`) returns `as_of` plus six sections computed from the user's valued holdings and loaded masters. Only active holdings count; matured ones are excluded from every figure except the already-matured and data-health lists. Money is 2 dp; percents are of the section's own total.
@@ -584,7 +776,7 @@ ELSS funds are split per lot: purchases and redemptions from stored transactions
 Active FDs, RDs, bonds and PPFs maturing strictly after today. Windows end at today + 30, 90 and 180 days and today + 1 calendar year, all inclusive; each longer window includes the shorter ones. Rows are sorted by date, type, id and carry `amount`, `rate`, `days_left` and `approximate`.
 
 - Amount: cumulative FD, value on maturity; payout FD, its principal; RD, value on maturity with every instalment paid (approximate); bond, face value × quantity (SGB: its current value; a bond with no face value: invested amount grown at the yield; both approximate); PPF, balance plus interest to maturity (approximate, later contributions are unknown). Perpetual bonds have no date and are skipped.
-- `already_matured` lists holdings whose status is matured (count and rows). They are never counted in a window total.
+- `already_matured` lists holdings whose status is matured (count and rows). They are never counted in a window total. Each row has `amount` (what it paid at maturity) and `settled`.
 
 ### Bank safety
 
@@ -621,7 +813,7 @@ Splits the change in net worth into new money and growth. Pure maths in `service
 - Allocation: donut (shared `components/charts/donut.tsx`, also used by the dashboard allocation card) with class rows that expand to asset types and holdings (links to the holding). An "Include retirement" switch swaps the view; off shows a line with the excluded retirement amount and percent. Fixed colour per class.
 - Liquidity: headline = instant + 1-3 days amount, subline "available within 3 days · N% of your portfolio", a segmented bar and bucket rows (zero buckets hidden).
 - Bank safety: headline in red when over the cover ("₹X over the ₹5L cover"), muted when only unknown cover, green when all covered; bank rows expand to their deposits (links).
-- Coming up: themed Select for the window (Next 30 / 90 / 180 days, Next 1 year; default 90 days), total, rows with a date block, type, rate, "~ approximate" and amount (links), and an expandable "N already matured" list.
+- Coming up: themed Select for the window (Next 30 / 90 / 180 days, Next 1 year; default 90 days), total, rows with a date block, type, rate, "~ approximate" and amount (links), and an expandable "N already matured" list. A matured row shows its amount and, until its payout is recorded, a "Not Settled" badge (§8b).
 - Hover is linked: hovering a donut slice, bar segment or legend row dims the others. No native controls.
 - States: skeleton while loading, API-sourced error with Retry, and an empty state ("No holdings yet" with an "Add a holding" button) when there are no active holdings. The page reloads after holding changes (`holdings-cache`).
 

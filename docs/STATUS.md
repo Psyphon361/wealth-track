@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-11-05)
+# STATUS — handoff notes (last updated 2026-11-07)
 
 ## Done (all committed on `main`)
 
@@ -60,6 +60,8 @@
 - 2026-11-05: Planned sale for bonds held to an earlier exit date (coupons on the bond's own calendar, estimated sale at face value). SPEC §9.
 - 2026-11-05: MF SIPs and duplicate-holding warnings (uncommitted at time of writing). SIPs: `mf_sips`, `mf_sip_skips` and `mf_transactions.sip_id` (migration `0028`); each instalment is a purchase row, posted at its first NAV on or after the due date, after the 0.005% stamp duty; `post_due` runs at the end of the nightly AMFI import. `/api/sips` (create with a 409 for a duplicate SIP, edit, pause, resume, skip, cancel, delete), `GET /api/holdings/mf/{id}/transactions`, and a `sip` summary on MF holdings. Web: "Start a SIP" tab on `/add/mf`, SIPs view on `/portfolio/mf`, SIP section and transactions on the MF details page (web SIP UI built: SPEC §8a). Duplicate warnings: `POST /api/assets/{type}` returns 409 for a match on the type's key fields; "Add anyway" retries with `confirm_duplicate=true`. SPEC §4 ("Duplicate warnings"), §8a.
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
+- 2026-11-07: Closing holdings done (API committed as `92e417f`, migration `0029` `holding_exits`; web uncommitted at time of writing). Sell for stock, bond, MF, gold and Other, full or part (FIFO cost for a fund with transactions; a full MF sale cancels its SIPs). Settle for matured FD, RD and bonds, to a cash account, a new savings account, a renewed FD or RD, or as spent or moved (not counted). Undo of the latest exit. Matured holdings view: each grid's Active / Closed tab, and Closed sorts newest first. Dashboard card "matured holdings to settle", details page Settle banner and "Sales and settlements" list, row menu Sell and Settle, Coming up marks unsettled matured rows. SPEC §3, §4, §5, §8b, §9.
+- 2026-11-07: "Paid from" on every Add form, uncommitted at time of writing (migration `0030`, `holding_fundings`). An optional account on create takes the holding's price off a Cash & Savings account (balance down; refunded on delete, taken again on restore). Settle and sell money lands in an account; the success step and the details page offer Reinvest buttons that prefill the add form (`wt.reinvest` in sessionStorage). Exits show `reinvested` and `left_in_account`, and undo is refused while money is reinvested. Settle destinations are now a cash account, a new savings account, or spent (renewal removed). SPEC §8b, §8c.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -73,7 +75,7 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Data
 
-- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0028 (0028 mf_sips, mf_sip_skips, mf_transactions.sip_id; 0027 index tuning; 0026 other_holdings; 0025 soft delete; 0024 nps_holdings; 0023 NPS master; 0022 silver; 0021 pf_holdings; 0020 cash_holdings; 0019 gold_holdings; 0018 gold rates; 0017 stock price history; 0016 mf_transactions; 0015 MF invested_amount; 0014 stock_price_latest; 0013 bond invested_amount; 0012 Google sign-in; 0011 FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
+- Neon `dev` branch (2026-10-27): `bond_master` 34,284 rows; active corporate 29,325, government 4,531, sgb 44 (67 incl. matured), tax_free 353; 8,750 with a rating. `fd_issuer_master` 1,379 rows (import 2026-10-28). Migration head 0030 (0030 holding_fundings; 0029 holding_exits; 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id; 0027 index tuning; 0026 other_holdings; 0025 soft delete; 0024 nps_holdings; 0023 NPS master; 0022 silver; 0021 pf_holdings; 0020 cash_holdings; 0019 gold_holdings; 0018 gold rates; 0017 stock price history; 0016 mf_transactions; 0015 MF invested_amount; 0014 stock_price_latest; 0013 bond invested_amount; 0012 Google sign-in; 0011 FD/RD issuer master; 0010 is auth; sign in with an account created by `app.jobs.users create`).
 - Neon `dev` branch: the holdings tables (fixed_deposits, recurring_deposits, stocks, bonds, mutual_funds) were emptied on 2026-10-25 at the user's request; master/market tables (`mf_master`, `mf_nav_latest`, `mf_nav_history`, `stock_master`, `bond_master`) were kept. The user may enter real holdings there again, so never delete or modify rows you didn't create.
 
 ## Known gaps / small follow-ups
@@ -98,6 +100,12 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 - Capital gains (analytics slice 3, step 3): renames the Interest & TDS tab to Tax, before Jan 2027 (tax season).
 
+## Next
+
+- Capital gains report (STCG/LTCG per FY from recorded sales).
+- Buy more for existing holdings.
+- SIP instalments paid from a cash account.
+
 ## Next (planned assets)
 
 - All planned assets are shipped (NPS last, 2026-11-01).
@@ -118,5 +126,4 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 - Pruning of unheld schemes' NAV history (see SPEC §1).
 - Per-transaction entry for manual holdings (each manual holding is one record). CAS imports now store MF transactions (for XIRR; SPEC §8).
 - Full automated test suite (pytest exists in `api/tests`, per-bug tests only).
-- Matured holdings view (pinned for later)
 - Matured bonds list from NSDL (optional source; not built).: matured items are currently listed in grids but excluded from totals.
