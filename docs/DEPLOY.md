@@ -146,6 +146,8 @@ The production database starts empty; your `dev` branch data stays in dev.
 
 `.github/workflows/api-deploy.yml` runs `alembic upgrade head` against the Neon production branch, then triggers the API project's Vercel deploy hook. It runs on pushes to `main` that touch `api/**` (or the workflow file), and manually via **Actions → API migrate and deploy → Run workflow**. `api/vercel.json` sets `git.deploymentEnabled.main = false`, so Vercel no longer auto-deploys the API on push; the hook is the only production deploy path (preview deploys on other branches are unaffected). The web project still auto-deploys.
 
+The deploy runs the API tests first: the `tests` job calls `.github/workflows/ci-api.yml` (SQLite tests, then the `pg` tests against a Postgres service with `REQUIRE_PG=1`). The migration and the deploy hook only run if the tests pass; there is no bypass. A change to `ci-api.yml` on `main` also triggers this workflow. To retry after a failure, fix it and re-run the failed jobs.
+
 One-time setup (you):
 
 1. Vercel → API project → **Settings → Git → Deploy Hooks** → create a hook for branch `main`; copy the URL.

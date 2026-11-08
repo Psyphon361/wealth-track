@@ -1,5 +1,47 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 night (testing Phase 1 committed, unpushed; CI dry run pending)
+
+Status: `main` is ahead of origin by the testing commits (check `git log origin/main..main --oneline`). Nothing pushed; CI has never run on GitHub. Nothing running.
+
+### Commits (local, unpushed)
+- `b56c4a1` real-Postgres harness (`pg` marker, throwaway database, migration tests)
+- `27419e3` CI: `ci-api.yml`, `ci-web.yml`; `api-deploy.yml` `tests` job gates the migrate and deploy
+- `5a963ef` real-Postgres behaviour tests (constraints, search, upserts, FOR UPDATE paths)
+- `cd1e4b7` real concurrency scenarios (34 pass; the strict xfail was a real bug)
+- `35656d0` purge locks the holdings it deletes and re-checks them (fixes the restore vs purge race)
+
+### How to run the pg suite
+- Default, no DB: `cd api && .venv/bin/python -m pytest -q -m "not pg"`
+- Real Postgres: `cd api && scripts/pg_test_cluster.sh start && TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) .venv/bin/python -m pytest -q -m pg`, then `scripts/pg_test_cluster.sh stop`. `REQUIRE_PG=1` makes a missing URL fail (exit 4).
+- Never point `TEST_DATABASE_URL` at Neon. Tests that need Postgres go in `api/tests/pg/`.
+
+### Verified (local only)
+- `-m "not pg"`: 2,407 passed + 1 strict xfail (net worth drift c2).
+- `-m pg`: 149 passed. The 34 concurrency tests looped 20x with no flake.
+- Not verified: anything on GitHub Actions.
+
+### Gates, in order
+1. Dry run of `ci-api.yml` and `ci-web.yml` on a non-main branch. Needs the user's OK to push a branch.
+2. Push `main`, only with the user's OK. A push touching `api/` or `ci-api.yml` starts the prod migrate and deploy, which now waits for the tests.
+3. User setting: limit the GitHub `production` environment to deployments from `main` (a setting, not code).
+
+### Follow-ups (not done)
+- Purge: lock every type's ids first, then delete (rare cross-type deadlock between FK SET NULL on funding rows and a restore of a pf/other holding).
+- Purge: `SET LOCAL lock_timeout` so a stuck lock fails the cron cleanly.
+- Product search has no typo tolerance (tests assert typos return nothing). Product decision, not a bug fix.
+- Coupling: `tests/pg` imports constants from `test_db_constraints.py` and `test_nps_import.py`.
+
+### Roadmap (not built)
+- Phase 2: property-based and stateful money tests (hypothesis); OpenAPI snapshot and generalised message parity tests.
+- Phase 3: web component tests (jsdom + Testing Library); Playwright smoke flows on a throwaway stack; nightly read-only invariant check; coverage and xdist.
+
+### Next steps, in order
+1. Ask the user for the OK to push a non-main branch for the CI dry run.
+2. Watch both runs (`gh run list --repo Psyphon361/wealth-track --limit 5`, `gh run view <id> --log-failed`). Fix through a builder.
+3. Ask the user for the OK to push `main`. Check the `production` environment setting with the user.
+4. Phase 2 only when the user asks.
+
 ## Resume here — 2026-11-08 night (wind-up at 99% usage; gold-rule commit done, nothing running)
 
 Status: everything is committed. 2 commits are ahead of origin/main and unpushed: `3013df2` (net worth gold rule) and `f279662` (wind-up handoff); this docs update will be a 3rd. Everything before them (up to a7d0c22) is pushed. No builders or advisors are running. The working tree is clean (verify with `git status --short`). Usage at wind-up: 5-hour window 99%, resets 2026-11-08 16:40 UTC; weekly 68%.

@@ -69,6 +69,8 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/schemas/analytics_cashflows.py  response models for GET /api/analytics/inflows
   app/routers/analytics_gains.py  GET /api/analytics/capital-gains?fy=: sales (and bond repayments computed from the holdings) in a financial year, gains by tax bucket after set-off and the equity exemption, fixed-rate tax and slab gains, expected bond repayments, tax-free SGB redemptions, bond interest (SPEC §9)
   tests/test_edit_guards.py  PUT edit guards (closed 409, sold-in-part 422) and a check that the web constants match api/app/schemas/assets.py; tests/test_cas_import_guards.py  CAS re-import guards (has_sales, sales refusal, SIP rows kept, future statement date); tests/test_locks.py  lock SQL checks (FOR UPDATE OF on the postgresql dialect) and re-check tests (all under api/tests/; SPEC §4)
+  api/tests/pg/  real-Postgres tests (marker `pg`): harness in conftest.py (throwaway wt_test_<random> database on a local cluster, `alembic upgrade head` from empty), helpers_t2.py, helpers_t3.py; test_harness.py, test_constraints_pg.py, test_search_pg.py, test_upserts_pg.py, test_locking_queries_pg.py, test_concurrency_pg.py (overlapping sessions forced with row locks; 20x loop without a flake)
+  api/scripts/pg_test_cluster.sh  temporary local Postgres 16 cluster for the pg tests (port 5544, trust auth): `start`, `url`, `stop`
   app/services/capital_gains.py  pure capital gains maths: classification, FIFO lots for funds, term and bucket rules (23 Jul 2024 cut-off), set-off, exemption, fixed-rate tax, bond repayments (SPEC §9); tests in api/tests/test_capital_gains.py and test_capital_gains_api.py
   app/schemas/analytics_gains.py  response models for GET /api/analytics/capital-gains
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py); /api/holdings/mf/{id}/transactions: one fund's transactions, 10 a page, with a sip flag; MF rows carry the running `sip` summary
@@ -202,7 +204,9 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/notify.ts         toast helpers — render API message/description only
   lib/auth.ts           server-only: auth cookie names and options, token types, safeNext, apiAuthFetch (replaces lib/session.ts)
 docs/           SPEC.md (behaviour), STATUS.md (progress/open items), HANDOFF.md (session resume notes), DEPLOY.md (Vercel+Neon), PLAN.md (original plan, historical)
-.github/workflows/api-deploy.yml   on push to main touching api/: alembic upgrade head on prod, then Vercel API deploy hook
+.github/workflows/api-deploy.yml   on push to main touching api/: API tests first (`tests` job calls ci-api.yml), then alembic upgrade head on prod (only if the tests pass), then Vercel API deploy hook
+.github/workflows/ci-api.yml   reusable (workflow_call) and on pushes to non-main branches: API tests without Postgres, then `-m pg` against a postgres:16 service with REQUIRE_PG=1
+.github/workflows/ci-web.yml   on pushes and PRs touching web/: next typegen, tsc, lint, vitest (Node 24); report only, not a deploy gate
 .github/workflows/gold-backfill.yml   manual gold and silver rate history backfill, target dev|prod
 .github/workflows/dev-data-refresh.yml   scheduled (and manual) market-data imports (securities, AMFI, NPS, issuers, gold) and the soft-delete purge against the Neon dev branch; secret DEV_DATABASE_URL
 .claude/        Claude Code agents (builder, scout) + orchestrator hook (see CLAUDE.md). `.claude/hooks/block-orchestrator-writes.py` also refuses subagents' (builders') shell edits of project files (sed -i, redirects or tee into project paths, inline Python/Node writes) and git stash, checkout, restore, reset, clean and switch; it fails open on parse errors or uncertainty
@@ -228,7 +232,8 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 
 ## Checks
 
-- API tests: `cd api && .venv/bin/python -m pytest -q` (dev deps: `uv pip install --python .venv/bin/python -r requirements-dev.txt`; no DB needed).
+- API tests (no DB): `cd api && .venv/bin/python -m pytest -q -m "not pg"` (dev deps: `uv pip install --python .venv/bin/python -r requirements-dev.txt`; SQLite).
+- API tests (real Postgres, marker `pg`): `cd api && scripts/pg_test_cluster.sh start && TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) .venv/bin/python -m pytest -q -m pg`, then `scripts/pg_test_cluster.sh stop`. Without `TEST_DATABASE_URL` the pg tests skip; `REQUIRE_PG=1` makes a missing URL a failure (exit 4). The harness creates and drops its own `wt_test_*` database on a local host only, never reads `api/.env`, never touches Neon.
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
@@ -252,6 +257,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 
 ## Gotchas
 
+- **Tests that need Postgres** (locks, real constraints, concurrency, search) go in `api/tests/pg/` with the `pg` marker. Never point `TEST_DATABASE_URL` at Neon; the harness refuses non-local hosts and databases not named `wt_test_`. CI gate: a red or skipped API test run stops the prod migration and deploy (`api-deploy.yml` `needs: tests`), with no bypass; the hotfix path is to fix the failure and re-run the failed jobs. The web (Vercel) deploy is not gated.
 - **Model CheckConstraints** go in the `_checks` tuple (TimestampedMixin hook), because a plain `__table_args__` on a holding model would replace its `user_id`/`deleted_at` index. Add the constraint to the model AND a migration with identical names (the `test_migration_0032` pattern).
 
 - **Next.js 16**: request interception is `proxy.ts`, `cacheComponents: true` is on (no `export const dynamic`; request-time APIs need care), read `web/AGENTS.md` and `web/node_modules/next/dist/docs/`.
