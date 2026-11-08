@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
-from app.models import NpsNavHistory
+from app.models import HoldingExit, NpsNavHistory, Stock
 from app.routers import analytics_returns as returns_router
 from app.services import analytics_benchmark as ab
 from app.services import analytics_returns as ar
@@ -400,6 +400,39 @@ def test_seeded_portfolio(client, seeded, auth_engine):  # noqa: F811
     assert [r["basis"] for r in nps] == ["nav_cagr", "nav_cagr"]
     assert nps[0]["rate_pct"] == pytest.approx((1.5 ** (365 / 1036) - 1) * 100, abs=0.01)
     assert nps[1]["rate_pct"] is None
+
+
+def test_sold_stock_and_its_sale_reach_the_figures(client, seeded, users, auth_engine):  # noqa: F811
+    headers, _ = seeded
+    a_id = users[1]
+    before = {t["key"]: t for t in _get(client, headers)["by_type"]}["stock"]
+    with sessionmaker(bind=auth_engine, expire_on_commit=False)() as session:
+        sold = Stock(
+            user_id=a_id, name="Sold probe", exchange="NSE", master_id=1, quantity=5,
+            avg_buy_price=1000, buy_date=date(2024, 1, 1), closed_on=date(2025, 6, 1),
+        )
+        session.add(sold)
+        session.flush()
+        session.add_all(
+            [
+                # The sale counts; the maturity row (kind "maturity") must not.
+                HoldingExit(
+                    user_id=a_id, asset_type="stock", holding_id=sold.id, kind="sale",
+                    exit_date=date(2025, 6, 1), quantity=5, amount=7000, cost=5000,
+                    destination="none", prev_state={"full": True},
+                ),
+                HoldingExit(
+                    user_id=a_id, asset_type="fd", holding_id=sold.id, kind="maturity",
+                    exit_date=date(2025, 6, 1), amount=9999, cost=1, destination="none",
+                ),
+            ]
+        )
+        session.commit()
+    after = {t["key"]: t for t in _get(client, headers)["by_type"]}["stock"]
+    assert after["holdings"] == before["holdings"] + 1
+    assert after["invested"] == before["invested"] + 5000
+    assert after["current"] == before["current"]
+    assert after["gain"] == before["gain"] + 2000
 
 
 # --- Benchmark ---------------------------------------------------------------------------------

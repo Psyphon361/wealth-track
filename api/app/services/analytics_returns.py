@@ -7,7 +7,7 @@ have no stored flows, so they are excluded from XIRR and listed in `rates` inste
 """
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -108,17 +108,22 @@ def _rd_flows(item: Mapping[str, Any], today: date) -> HoldingFlows:
 
 
 def _mf_flows(
-    item: Mapping[str, Any], today: date, transactions: Sequence[Any]
+    item: Mapping[str, Any],
+    today: date,
+    transactions: Sequence[Any],
+    held_units: Decimal | None = None,
 ) -> HoldingFlows:
     """The stored transactions when their net units match the holding, else the invested amount
-    on the purchase date (the same rule as `valuation.mf_xirr`)."""
+    on the purchase date (the same rule as `valuation.mf_xirr`). `held_units` replaces the
+    holding's stored units in that test (a fully sold fund keeps its units but nets to 0)."""
     current = _dec(item.get("current_value"))
     if transactions:
         net = sum(
             (_dec(t.units) if t.kind == "purchase" else -_dec(t.units) for t in transactions),
             ZERO,
         )
-        if abs(net - _dec(item.get("units"))) <= Decimal("0.01"):
+        expected = _dec(item.get("units")) if held_units is None else held_units
+        if abs(net - expected) <= Decimal("0.01"):
             flows = [
                 (
                     analytics._to_date(t.txn_date),
@@ -131,21 +136,75 @@ def _mf_flows(
     return _single(item, "purchase_date", today)
 
 
+def is_full_sale(exit_row: Any) -> bool:
+    """True for the exit that closed a holding (its cost equals what was left; `prev_state.full`)."""
+    return bool((exit_row.prev_state or {}).get("full"))
+
+
+def original_cost(asset_type: str, item: Mapping[str, Any], exits: Sequence[Any] = ()) -> Decimal:
+    """What the holding cost before any sale: the invested amount it has now plus the cost of its
+    PARTIAL sales. A full sale keeps the holding's invested, so its cost is not added again."""
+    base = item.get("invested_amount") if asset_type == "other" else item.get("invested")
+    return _dec(base) + sum((_dec(e.cost) for e in exits if not is_full_sale(e)), ZERO)
+
+
+def realised_gain(exits: Sequence[Any]) -> Decimal:
+    """Money received from the sales less the cost of what was sold."""
+    return sum((_dec(e.amount) - _dec(e.cost) for e in exits), ZERO)
+
+
 def holding_flows(
-    asset_type: str, item: Mapping[str, Any], today: date, transactions: Sequence[Any] = ()
+    asset_type: str,
+    item: Mapping[str, Any],
+    today: date,
+    transactions: Sequence[Any] = (),
+    exits: Sequence[Any] = (),
 ) -> HoldingFlows:
-    """Flows and basis of one active valued holding; `reason` is set when it is excluded."""
+    """Flows and basis of one valued holding (active, or fully sold with `exits`); `reason` is set
+    when it is excluded. `exits` are its SALE exits: each adds its stored amount (already net of
+    charges) on its date, and the first outflow becomes the original cost. A fully sold holding
+    has no terminal value. A fund on the transactions basis already holds its sales."""
+    sold = item.get("status") == "sold"
     if asset_type in NO_FLOW_TYPES:
         return _excluded("no_flows")
     field = PRICE_FIELD.get(asset_type)
-    if field is not None and item.get(field) is None:
+    if not sold and field is not None and item.get(field) is None:
         return _excluded("at_cost")
+    if asset_type == "other" and (
+        item.get("invested_amount") is None or item.get("acquired_on") is None
+    ):
+        return _excluded("other_without_invested")
+    held_units = None
+    if exits:
+        cost = original_cost(asset_type, item, exits)
+        item = {**item, "invested_amount" if asset_type == "other" else "invested": cost}
+        if asset_type == "mf":
+            held_units = _dec(item.get("units")) - sum(
+                (_dec(e.quantity) for e in exits if is_full_sale(e)), ZERO
+            )
+    if sold:
+        item = {**item, "current_value": ZERO}
+    built = _base_flows(asset_type, item, today, transactions, held_units)
+    if built.reason is not None or not (sold or exits):
+        return built
+    flows = built.flows[:-1] if sold else list(built.flows)  # the last flow is the value today
+    if built.basis != "transactions":
+        flows += [(analytics._to_date(e.exit_date), _dec(e.amount)) for e in exits]
+        flows.sort(key=lambda f: f[0])  # oldest first
+    return HoldingFlows(flows, built.basis)
+
+
+def _base_flows(
+    asset_type: str,
+    item: Mapping[str, Any],
+    today: date,
+    transactions: Sequence[Any],
+    held_units: Decimal | None,
+) -> HoldingFlows:
     if asset_type == "other":
-        if item.get("invested_amount") is None or item.get("acquired_on") is None:
-            return _excluded("other_without_invested")
         return _single({**item, "invested": item["invested_amount"]}, "acquired_on", today)
     if asset_type == "mf":
-        return _mf_flows(item, today, transactions)
+        return _mf_flows(item, today, transactions, held_units)
     if asset_type == "rd":
         return _rd_flows(item, today)
     start_field = {"fd": "start_date", "bond": "purchase_date", "stock": "buy_date"}.get(
@@ -278,6 +337,7 @@ def returns(
     bond_masters: Mapping[Any, Any] | None = None,
     mf_masters: Mapping[Any, Any] | None = None,
     mf_transactions: Mapping[Any, Sequence[Any]] | None = None,
+    sale_exits: Mapping[tuple[str, Any], Sequence[Any]] | None = None,
     nps_start_navs: Mapping[Any, Decimal] | None = None,
     benchmark_loader: Callable[[date | None], analytics_benchmark.BenchmarkNavs | None]
     | None = None,
@@ -288,24 +348,54 @@ def returns(
     the NAV on or before that date) and is only called when some holding has flows;
     `benchmark` is null without a loader, without flows, or when it returns None."""
     mf_transactions = mf_transactions or {}
+    sale_exits = sale_exits or {}
     included: list[dict[str, Any]] = []
     excluded: Counter[str] = Counter()
-    holdings = analytics._active_holdings(
-        groups, stock_masters=stock_masters, bond_masters=bond_masters, mf_masters=mf_masters
-    )
-    for h in holdings:
-        txns = mf_transactions.get(h.id, ()) if h.type == "mf" else ()
-        built = holding_flows(h.type, h.item, today, txns)
-        if built.reason is not None:
-            excluded[built.reason] += 1
+    masters = {
+        "stock_masters": stock_masters, "bond_masters": bond_masters, "mf_masters": mf_masters,
+    }  # fmt: skip
+    holdings = analytics._active_holdings(groups, **masters)
+    # Fully sold holdings are counted here as realised results (the shared active filter leaves
+    # them out of allocation and the other analytics). Matured ones stay out.
+    sold_groups = [
+        {
+            **g,
+            "items": [
+                {**i, "status": "active"} for i in g.get("items", []) if i.get("status") == "sold"
+            ],
+        }
+        for g in groups
+    ]
+    sold = [
+        replace(h, item={**h.item, "status": "sold"})
+        for h in analytics._active_holdings(sold_groups, **masters)
+    ]
+    for h in [*holdings, *sold]:
+        is_sold = h.item.get("status") == "sold"
+        exits = list(sale_exits.get((h.type, h.id), ()))
+        if is_sold and not exits:
             continue
-        if h.type == "other":
-            invested = _dec(h.item.get("invested_amount"))
+        txns = mf_transactions.get(h.id, ()) if h.type == "mf" else ()
+        built = holding_flows(h.type, h.item, today, txns, exits)
+        if built.reason is not None:
+            if not is_sold:
+                excluded[built.reason] += 1
+            continue
+        invested = original_cost(h.type, h.item, exits)
+        if is_sold:
+            current = ZERO
+            unrealised = ZERO
         else:
-            invested = _dec(h.item.get("invested"))
-        current = _dec(h.item.get("current_value"))
-        item_gain = h.item.get("gain")
-        gain = _dec(item_gain) if item_gain is not None else current - invested
+            current = _dec(h.item.get("current_value"))
+            item_gain = h.item.get("gain")
+            unrealised = (
+                _dec(item_gain)
+                if item_gain is not None
+                else current - _dec(
+                    h.item.get("invested_amount" if h.type == "other" else "invested")
+                )
+            )
+        gain = unrealised + realised_gain(exits)
         pct, annualised = return_of(built.flows, invested, gain, today)
         included.append(
             {

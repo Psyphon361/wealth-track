@@ -23,6 +23,7 @@ from app.models import (
     Stock,
 )
 from app.routers.portfolio import build_groups
+from app.services import analytics_benchmark as ab
 from app.services import analytics_returns as ar
 from app.services import valuation
 from app.services.valuation import mf_xirr, xirr
@@ -632,3 +633,194 @@ def test_valuation_xirr_field_on_items_agrees_with_reference():
     v = valuation.value_gold(rec, TODAY, rate=D(7000), rate_date=TODAY)
     flows = [(_d(2023, 1, 1), -D(50000)), (TODAY, D(70000))]
     assert abs(float(v["xirr"]) - flows_ref_pct(flows)) < PP
+
+
+# --- Sales: proceeds are flows, fully sold holdings are realised results (#14) -----------------
+
+
+def ex(day, amount, cost, quantity=None, full=False):
+    """A SALE exit as the router loads it (amount is already net of charges)."""
+    return SimpleNamespace(
+        exit_date=day, amount=D(amount), cost=D(cost),
+        quantity=D(quantity) if quantity is not None else None,
+        prev_state={"full": True} if full else {},
+    )  # fmt: skip
+
+
+def sale_returns(slug, records, exits, *, txns=None, **kw):
+    """returns() over real items, with the sale exits keyed by (slug, holding id)."""
+    return ar.returns(
+        groups_of({slug: records}, **kw), TODAY,
+        mf_transactions=txns or {}, sale_exits={(slug, r.id): exits for r in records},
+    )  # fmt: skip
+
+
+def item_of(slug, record, **kw):
+    for g in groups_of({slug: [record]}, **kw):
+        if g["type"] == slug:
+            return g["items"][0]
+
+
+def test_partly_sold_stock_adds_the_sale_and_the_original_cost():
+    # Bought 10 at 100 on 2024-01-01; sold 4 on 2025-06-01 for 520 (cost 400); 6 left at 150.
+    sale = ex(_d(2025, 6, 1), 520, 400, 4)
+    item = item_of("stock", stock_row(1, qty=6), price=150)
+    built = ar.holding_flows("stock", item, TODAY, exits=[sale])
+    flows = [(_d(2024, 1, 1), D(-1000)), (_d(2025, 6, 1), D(520)), (TODAY, D(900))]
+    assert built.flows == flows
+    out = sale_returns("stock", [stock_row(1, qty=6)], [sale], price=150)
+    overall = out["overall"]
+    # invested = original cost, current = what is left, gain = unrealised (300) + realised (120).
+    assert (overall["invested"], overall["current"], overall["gain"]) == (1000, 900, 420)
+    assert abs(float(overall["return_pct"]) - flows_ref_pct(flows)) < PP
+    assert out["excluded"]["at_cost"] == 0
+
+
+def test_stock_sold_in_two_steps():
+    sales = [ex(_d(2024, 9, 1), 300, 200, 2), ex(_d(2025, 6, 1), 330, 200, 2)]
+    out = sale_returns("stock", [stock_row(1, qty=6)], sales, price=150)
+    flows = [
+        (_d(2024, 1, 1), D(-1000)), (_d(2024, 9, 1), D(300)), (_d(2025, 6, 1), D(330)),
+        (TODAY, D(900)),
+    ]  # fmt: skip
+    overall = out["overall"]
+    assert (overall["invested"], overall["gain"]) == (1000, 300 + 100 + 130)
+    assert abs(float(overall["return_pct"]) - flows_ref_pct(flows)) < PP
+
+
+def test_partly_sold_bond_and_gold_use_original_cost():
+    bond = bond_row(1, invested=6000)
+    bond_sale = ex(_d(2025, 3, 1), 4100, 4000, 4)
+    built = ar.holding_flows("bond", item_of("bond", bond), TODAY, exits=[bond_sale])
+    assert built.flows[0] == (_d(2024, 1, 1), D(-10000))
+    assert built.flows[1] == (_d(2025, 3, 1), D(4100))
+    assert len(built.flows) == 3 and built.basis == "purchase_date"
+    gold = gold_row(1, invested=30000, grams=6)
+    gold_sale = ex(_d(2025, 3, 1), 24000, 20000, 4)
+    built = ar.holding_flows("gold", item_of("gold", gold, rate=7000), TODAY, exits=[gold_sale])
+    assert built.flows == [
+        (_d(2024, 1, 1), D(-50000)), (_d(2025, 3, 1), D(24000)), (TODAY, D(42000)),
+    ]  # fmt: skip
+
+
+def test_partly_sold_other_uses_original_cost():
+    other = other_row(1, current=30000, invested=60000, acquired=_d(2024, 1, 1))
+    sale = ex(_d(2025, 3, 1), 25000, 30000)
+    built = ar.holding_flows("other", item_of("other", other), TODAY, exits=[sale])
+    assert built.flows == [
+        (_d(2024, 1, 1), D(-90000)), (_d(2025, 3, 1), D(25000)), (TODAY, D(30000)),
+    ]  # fmt: skip
+
+
+def test_fully_sold_stock_is_a_realised_result():
+    sale = ex(_d(2025, 6, 1), 1500, 1000, 10, full=True)
+    rec = stock_row(1, qty=10, price=100)
+    rec.closed_on = _d(2025, 6, 1)
+    # No price is given, yet a sold stock still counts (no at-cost exclusion).
+    out = ar.returns(groups_of({"stock": [rec]}), TODAY, sale_exits={("stock", 1): [sale]})
+    flows = [(_d(2024, 1, 1), D(-1000)), (_d(2025, 6, 1), D(1500))]
+    overall = out["overall"]
+    assert (overall["holdings"], overall["invested"], overall["current"]) == (1, 1000, 0)
+    assert overall["gain"] == 500 and overall["annualised"] is True
+    assert abs(float(overall["return_pct"]) - flows_ref_pct(flows)) < PP
+    assert [h["id"] for h in out["best"]] == [1] and out["best"][0]["gain"] == 500
+    assert out["by_type"][0]["key"] == "stock" and out["by_class"][0]["key"] == "equity"
+    assert out["excluded"] == {"at_cost": 0, "no_flows": 0, "other_without_invested": 0}
+
+
+def test_fully_sold_after_a_partial_sale_counts_the_cost_once():
+    rec = stock_row(1, qty=6)  # 600 left when the rest was sold
+    rec.closed_on = _d(2025, 9, 1)
+    sales = [ex(_d(2025, 6, 1), 520, 400, 4), ex(_d(2025, 9, 1), 900, 600, 6, full=True)]
+    out = ar.returns(groups_of({"stock": [rec]}), TODAY, sale_exits={("stock", 1): sales})
+    assert out["overall"]["invested"] == 1000
+    assert out["overall"]["gain"] == 120 + 300
+
+
+def test_sold_holding_without_a_sale_row_is_skipped():
+    rec = stock_row(1)
+    rec.closed_on = _d(2025, 6, 1)
+    assert ar.returns(groups_of({"stock": [rec]}), TODAY)["overall"] is None
+
+
+def test_sold_other_without_invested_stays_excluded_and_with_invested_counts():
+    sale = ex(_d(2025, 6, 1), 120000, 100000, full=True)
+    no_cost = other_row(1)
+    no_cost.closed_on = _d(2025, 6, 1)
+    out = sale_returns("other", [no_cost], [sale])
+    assert out["overall"] is None
+    costed = other_row(2, invested=100000, acquired=_d(2024, 1, 1))
+    costed.closed_on = _d(2025, 6, 1)
+    out = sale_returns("other", [costed], [sale])
+    assert (out["overall"]["invested"], out["overall"]["gain"]) == (100000, 20000)
+    assert out["overall"]["current"] == 0
+
+
+def test_undoing_a_sale_puts_the_old_numbers_back():
+    full_groups = groups_of({"stock": [stock_row(1, qty=10)]}, price=150)
+    before = ar.returns(full_groups, TODAY)
+    sold = ar.returns(
+        groups_of({"stock": [stock_row(1, qty=6)]}, price=150), TODAY,
+        sale_exits={("stock", 1): [ex(_d(2025, 6, 1), 520, 400, 4)]},
+    )  # fmt: skip
+    assert sold["overall"]["current"] == 900 != before["overall"]["current"]
+    assert ar.returns(full_groups, TODAY, sale_exits={}) == before
+
+
+def test_matured_holdings_never_reach_the_sold_path():
+    groups = groups_of({"fd": [fd_row(1)]})
+    groups[0]["items"][0]["status"] = "matured"
+    assert ar.returns(groups, TODAY)["overall"] is None
+
+
+def test_mf_transactions_basis_already_holds_a_manual_sale():
+    txns = [txn(_d(2023, 1, 1), "purchase", 100, 4000), txn(_d(2025, 1, 1), "redemption", 40, 2400)]
+    mf = mf_row(1, units=60, invested=2400, buy=_d(2023, 1, 1))
+    sale = ex(_d(2025, 1, 1), 2400, 1600, 40)
+    out = sale_returns("mf", [mf], [sale], txns={1: txns}, nav=70)
+    built = ar.holding_flows("mf", item_of("mf", mf, nav=70), TODAY, txns, [sale])
+    flows = [(_d(2023, 1, 1), D(-4000)), (_d(2025, 1, 1), D(2400)), (TODAY, D(4200))]
+    assert built.basis == "transactions" and built.flows == flows  # sale not added twice
+    overall = out["overall"]
+    assert (overall["invested"], overall["current"], overall["gain"]) == (4000, 4200, 2600)
+    assert abs(float(overall["return_pct"]) - flows_ref_pct(flows)) < PP
+
+
+def test_mf_single_purchase_basis_adds_the_sale():
+    mf = mf_row(1, units=60, invested=2400, buy=_d(2023, 1, 1))  # no transactions stored
+    sale = ex(_d(2025, 1, 1), 2400, 1600, 40)
+    built = ar.holding_flows("mf", item_of("mf", mf, nav=70), TODAY, (), [sale])
+    assert built.basis == "purchase_date"
+    assert built.flows == [(_d(2023, 1, 1), D(-4000)), (_d(2025, 1, 1), D(2400)), (TODAY, D(4200))]
+
+
+def test_fully_sold_mf_on_both_bases():
+    sale = ex(_d(2025, 1, 1), 5000, 4000, 100, full=True)
+    mf = mf_row(1, units=100, invested=4000, buy=_d(2023, 1, 1))
+    mf.closed_on = _d(2025, 1, 1)
+    txns = [txn(_d(2023, 1, 1), "purchase", 100, 4000), txn(_d(2025, 1, 1), "redemption", 100, 5000)]
+    on_txns = sale_returns("mf", [mf], [sale], txns={1: txns}, nav=70)
+    flows = [(_d(2023, 1, 1), D(-4000)), (_d(2025, 1, 1), D(5000))]
+    assert on_txns["overall"]["basis"] == "transactions"
+    assert (on_txns["overall"]["invested"], on_txns["overall"]["gain"]) == (4000, 1000)
+    assert abs(float(on_txns["overall"]["return_pct"]) - flows_ref_pct(flows)) < PP
+    on_purchase = sale_returns("mf", [mf], [sale], nav=70)
+    assert on_purchase["overall"]["basis"] == "purchase_date"
+    assert on_purchase["overall"]["return_pct"] == on_txns["overall"]["return_pct"]
+
+
+def test_benchmark_replay_handles_a_sale_dated_today():
+    navs = ab.BenchmarkNavs("Index", [(_d(2024, 1, 1), D(100)), (TODAY, D(150))])
+    sale = ex(TODAY, 1800, 1000, 10, full=True)
+    rec = stock_row(1, qty=10, price=100)
+    rec.closed_on = TODAY
+    out = ar.returns(
+        groups_of({"stock": [rec]}), TODAY, sale_exits={("stock", 1): [sale]},
+        benchmark_loader=lambda since: navs, cpi={},
+    )  # fmt: skip
+    assert out["overall"]["gain"] == 800
+    # The sale is skipped like a terminal value: the index units are valued at the latest NAV.
+    days = (TODAY - _d(2024, 1, 1)).days
+    assert float(out["benchmark"]["overall"]["benchmark_pct"]) == pytest.approx(
+        (1.5 ** (365 / days) - 1) * 100, abs=0.01
+    )

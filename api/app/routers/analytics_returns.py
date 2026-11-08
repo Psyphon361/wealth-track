@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db, read_bind
 from app.deps import current_user
+from app.models.holding_exit import HoldingExit
 from app.models.mf_transaction import MFTransaction
 from app.models.mf_master import MFMaster, MFNavHistory, MFNavHistorySync, MFNavLatest
 from app.models.mutual_fund import MutualFund
@@ -53,6 +54,28 @@ def _fetch_mf_transactions(bind: Any, user_id: int) -> dict[int, list[Any]]:
     with Session(bind, autoflush=False, expire_on_commit=False) as session:
         for row in session.execute(stmt):
             out.setdefault(row.mutual_fund_id, []).append(row)
+    return out
+
+
+def _fetch_sale_exits(bind: Any, user_id: int) -> dict[tuple[str, int], list[Any]]:
+    """The user's sales (not maturity settlements) by (asset type, holding id), oldest first."""
+    stmt = (
+        select(
+            HoldingExit.asset_type,
+            HoldingExit.holding_id,
+            HoldingExit.exit_date,
+            HoldingExit.quantity,
+            HoldingExit.amount,
+            HoldingExit.cost,
+            HoldingExit.prev_state,
+        )
+        .where(HoldingExit.user_id == user_id, HoldingExit.kind == "sale")
+        .order_by(HoldingExit.exit_date, HoldingExit.id)
+    )
+    out: dict[tuple[str, int], list[Any]] = {}
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        for row in session.execute(stmt):
+            out.setdefault((row.asset_type, row.holding_id), []).append(row)
     return out
 
 
@@ -168,9 +191,11 @@ def get_returns(db: Session = Depends(get_db), user: User = Depends(current_user
         bonds = pool.submit(_fetch_bond_masters, bind, user.id)
         funds = pool.submit(_fetch_mf_masters, bind, user.id)
         txns = pool.submit(_fetch_mf_transactions, bind, user.id)
+        sales = pool.submit(_fetch_sale_exits, bind, user.id)
         groups = load_groups(db, user.id, today)
         stock_masters, bond_masters = stocks.result(), bonds.result()
         mf_masters, mf_transactions = funds.result(), txns.result()
+        sale_exits = sales.result()
     return analytics_returns.returns(
         groups,
         today,
@@ -178,6 +203,7 @@ def get_returns(db: Session = Depends(get_db), user: User = Depends(current_user
         bond_masters=bond_masters,
         mf_masters=mf_masters,
         mf_transactions=mf_transactions,
+        sale_exits=sale_exits,
         nps_start_navs=_fetch_nps_start_navs(bind, groups),
         benchmark_loader=lambda since: _fetch_benchmark_navs(write_bind, bind, since),
     )
