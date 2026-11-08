@@ -180,7 +180,15 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
     def delete_item(
         item_id: int, db: Session = Depends(get_db), user: User = Depends(current_user)
     ):
-        obj = _get_or_404(db, model, item_id, user.id)
+        # Lock the row, then re-check it is still live: a second delete waits here and then 404s,
+        # so the funding is refunded once.
+        obj = db.scalars(
+            select(model)
+            .where(model.id == item_id, model.user_id == user.id)
+            .with_for_update(of=model)
+        ).first()
+        if obj is None or obj.deleted_at is not None:
+            raise HTTPException(status_code=404, detail="Not found")
         name = _holding_name(obj)
         deleted_label = _label(obj)
         obj.deleted_at = func.now()
@@ -198,9 +206,11 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         obj = db.scalars(
             select(model)
             .where(model.id == item_id, model.user_id == user.id, model.deleted_at.is_not(None))
+            .with_for_update(of=model)
             .execution_options(include_deleted=True)
         ).first()
-        if obj is None:
+        # Locked, and still deleted: a second restore waits here and then 404s (no second debit).
+        if obj is None or obj.deleted_at is None:
             raise HTTPException(status_code=404, detail="Not found")
         try:
             fundings.restore(db, user.id, slug, obj.id)

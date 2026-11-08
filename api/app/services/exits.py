@@ -481,7 +481,7 @@ def _resolve_cash(db: Session, user_id: int, dest: _Destination) -> Cash | None:
     if dest.kind != "cash_existing":
         return None
     cash = db.scalars(
-        sa.select(Cash).where(Cash.id == dest.cash_id, Cash.user_id == user_id).with_for_update()
+        sa.select(Cash).where(Cash.id == dest.cash_id, Cash.user_id == user_id).with_for_update(of=Cash)
     ).first()
     if cash is None:
         raise ExitError(("destination", "cash_id"), CASH_ACCOUNT_ERROR, dest.cash_id)
@@ -773,7 +773,7 @@ def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
         cash = db.scalars(
             sa.select(Cash)
             .where(Cash.id == row.cash_holding_id, Cash.user_id == row.user_id)
-            .with_for_update()
+            .with_for_update(of=Cash)
         ).first()
         if cash is not None:
             cash.balance = max(Decimal(str(cash.balance)) - Decimal(str(row.cash_added)), _ZERO)

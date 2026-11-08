@@ -60,7 +60,7 @@ def _get_holding(db: Session, slug: str, item_id: int, user: User, *, lock: bool
         MODELS[slug].id == item_id, MODELS[slug].user_id == user.id
     )
     if lock:
-        statement = statement.with_for_update()
+        statement = statement.with_for_update(of=MODELS[slug])  # not the joined master (outer join)
     holding = db.scalars(statement).first()
     if holding is None:
         raise _not_found()
@@ -148,6 +148,7 @@ def settle_holding(
 ):
     if slug not in SETTLE_TYPES:
         raise _not_found("Can't be settled")
+    _get_holding(db, slug, item_id, user, lock=True)  # serialises with sell and other settles
     loaded = load_holding(db, slug, user.id, item_id)
     if loaded is None:
         raise _not_found()
@@ -201,14 +202,16 @@ def undo_exit(
 ):
     """Undo a holding's latest sale or settlement."""
     row = db.scalars(
-        sa.select(HoldingExit).where(HoldingExit.id == exit_id, HoldingExit.user_id == user.id)
+        sa.select(HoldingExit)
+        .where(HoldingExit.id == exit_id, HoldingExit.user_id == user.id)
+        .with_for_update()  # serialises with a reinvest from this exit (fundings.plan)
     ).first()
     if row is None:
         raise _not_found("Record not found")
     holding = db.scalars(
         sa.select(MODELS[row.asset_type])
         .where(MODELS[row.asset_type].id == row.holding_id, MODELS[row.asset_type].user_id == user.id)
-        .with_for_update()
+        .with_for_update(of=MODELS[row.asset_type])
     ).first()
     if holding is None:
         raise HTTPException(

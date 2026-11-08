@@ -108,15 +108,16 @@ def plan(
     """
     cash_loc = ("paid_from", "cash_id")
     cash = db.scalars(
-        sa.select(Cash).where(Cash.id == paid.cash_id, Cash.user_id == user_id).with_for_update()
+        sa.select(Cash).where(Cash.id == paid.cash_id, Cash.user_id == user_id).with_for_update(of=Cash)
     ).first()
     if cash is None:
         raise FundingError(cash_loc, CASH_ACCOUNT_ERROR, paid.cash_id)
     if paid.from_exit_id is not None:
+        # Lock the exit so an undo of it and this reinvest serialise.
         found = db.scalar(
-            sa.select(HoldingExit.id).where(
-                HoldingExit.id == paid.from_exit_id, HoldingExit.user_id == user_id
-            )
+            sa.select(HoldingExit.id)
+            .where(HoldingExit.id == paid.from_exit_id, HoldingExit.user_id == user_id)
+            .with_for_update()
         )
         if found is None:
             raise FundingError(
@@ -157,11 +158,12 @@ def _cash_of(db: Session, user_id: int, cash_id: int | None) -> Cash | None:
     if cash_id is None:
         return None
     return db.scalars(
-        sa.select(Cash).where(Cash.id == cash_id, Cash.user_id == user_id).with_for_update()
+        sa.select(Cash).where(Cash.id == cash_id, Cash.user_id == user_id).with_for_update(of=Cash)
     ).first()
 
 
 def _fundings(db: Session, user_id: int, slug: str, holding_id: int, refunded: bool):
+    """The holding's funding rows, locked FOR UPDATE so a concurrent refund/restore waits."""
     return db.scalars(
         sa.select(HoldingFunding)
         .where(
@@ -173,6 +175,7 @@ def _fundings(db: Session, user_id: int, slug: str, holding_id: int, refunded: b
             else HoldingFunding.refunded_at.is_(None),
         )
         .order_by(HoldingFunding.id)
+        .with_for_update()
     ).all()
 
 

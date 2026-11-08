@@ -223,6 +223,8 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
             sa.select(MutualFund).where(
                 MutualFund.id == sip.mutual_fund_id, MutualFund.user_id == sip.user_id
             )
+            .with_for_update(of=MutualFund)  # units and invested must be current (a sale may be in flight)
+            .execution_options(populate_existing=True)
         ).first()
         if holding is None:  # deleted (soft)
             return 0
