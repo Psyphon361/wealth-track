@@ -511,7 +511,7 @@ export interface SellSubject {
   invested: number;
   startDate: string | null;
   source: PriceSource | null;
-  /** A running or paused SIP feeds this fund (a full sale cancels it). */
+  /** A running or paused SIP feeds this fund (a full sale leaves it running). */
   hasSip: boolean;
   /** Bank, broker or platform, used to name a new savings account. */
   suggestedBank: string | null;

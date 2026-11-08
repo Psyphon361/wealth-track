@@ -351,7 +351,7 @@ function SellForm({
       </div>
       {subject.hasSip && all ? (
         <p className="text-[13.2px] text-muted-foreground sm:col-span-2">
-          This also cancels its SIP.
+          Its SIP keeps running; the next instalment starts a new holding.
         </p>
       ) : null}
       <DestinationField

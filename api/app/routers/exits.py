@@ -67,6 +67,21 @@ def _conflict(error: ExitConflict) -> HTTPException:
     )
 
 
+def _is_maturity_duplicate(error: IntegrityError) -> bool:
+    """True when the error is the one-settlement unique index (Postgres names the constraint;
+    SQLite lists the columns of the failed unique index)."""
+    orig = error.orig
+    name = getattr(getattr(orig, "diag", None), "constraint_name", None)
+    if name:
+        return name == "uq_holding_exits_maturity"
+    text = str(orig)
+    return "uq_holding_exits_maturity" in text or (
+        "UNIQUE constraint failed" in text
+        and "holding_exits.asset_type" in text
+        and "holding_exits.holding_id" in text
+    )
+
+
 def _get_holding(db: Session, slug: str, item_id: int, user: User, *, lock: bool = False) -> Any:
     statement = sa.select(MODELS[slug]).where(
         MODELS[slug].id == item_id, MODELS[slug].user_id == user.id
@@ -148,8 +163,6 @@ def sell_holding(
         parts.append(gain)
     if outcome.cash_name:
         parts.append(f"added to {outcome.cash_name}")
-    if outcome.sips_cancelled:
-        parts.append("SIP cancelled" if outcome.sips_cancelled == 1 else "SIPs cancelled")
     return _result(outcome, message, " · ".join(parts))
 
 
@@ -179,10 +192,16 @@ def settle_holding(
     except ExitError as error:
         db.rollback()
         raise _invalid(error) from None
-    except IntegrityError:
-        db.rollback()  # two requests settled the same holding at once
+    except IntegrityError as error:
+        db.rollback()
+        if _is_maturity_duplicate(error):  # two requests settled the same holding at once
+            raise _conflict(
+                ExitConflict(
+                    "Already settled", "Undo the settlement first if you need to change it."
+                )
+            ) from None
         raise _conflict(
-            ExitConflict("Already settled", "Undo the settlement first if you need to change it.")
+            ExitConflict("Couldn't settle", "Something changed while settling. Reload and try again.")
         ) from None
     db.refresh(outcome.row)
 
@@ -253,24 +272,19 @@ def undo_exit(
                 "description": "Delete the holdings paid from it first, then undo.",
             },
         )
-    outcome = exits_service.undo_exit(db, row, holding)
+    try:
+        outcome = exits_service.undo_exit(db, row, holding)
+    except ExitConflict as error:
+        db.rollback()
+        raise _conflict(error) from None
     db.commit()
 
     what = "Sale undone" if outcome.kind == "sale" else "Settlement undone"
     sentences = [f"{outcome.holding_name} is back in your portfolio."]
     if outcome.cash_name and outcome.cash_returned is not None:
-        taken = outcome.cash_returned
-        added = outcome.cash_added if outcome.cash_added is not None else taken
-        name = outcome.cash_name
-        if taken >= added:
-            sentences.append(f"{sip_service.format_inr(taken)} was taken out of {name}.")
-        elif taken > 0:
-            sentences.append(
-                f"{sip_service.format_inr(taken)} was taken out of {name} "
-                f"(it held less than the {sip_service.format_inr(added)} the {'sale' if outcome.kind == 'sale' else 'settlement'} added)."
-            )
-        else:
-            sentences.append(f"Nothing was taken out of {name}: it was already at ₹0.")
+        sentences.append(
+            f"{sip_service.format_inr(outcome.cash_returned)} was taken out of {outcome.cash_name}."
+        )
     if outcome.cash_account_kept:
         sentences.append(
             f"The account {outcome.cash_account_kept} was kept; delete it yourself if you don't want it."

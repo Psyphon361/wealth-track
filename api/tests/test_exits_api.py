@@ -338,26 +338,28 @@ def _undo_with_balance(client, users, auth_engine, balance):
         s.get(Cash, cash_id).balance = Decimal(balance)
         s.commit()
     undone = client.delete(f"/api/exits/{sold['id']}", headers=a)
+    if undone.status_code == 409:
+        return undone, (a, stock_id, cash_id, sold["id"])
     assert undone.status_code == 200, undone.json()
     return undone.json()["description"], asset(client, a, "cash", cash_id)["balance"]
 
 
-def test_undo_when_the_account_holds_less_than_the_sale_added(client, users, auth_engine):
-    text, balance = _undo_with_balance(client, users, auth_engine, "30")
-    assert text == (
-        "Acme Ltd is back in your portfolio. ₹30 was taken out of HDFC Savings "
-        "(it held less than the ₹80 the sale added)."
+@pytest.mark.parametrize(
+    "balance, shortfall", [("30", "₹50"), ("0", "₹80")]
+)
+def test_undo_is_refused_when_the_account_holds_less_than_the_sale_added(
+    client, users, auth_engine, balance, shortfall
+):
+    refused, (a, stock_id, cash_id, exit_id) = _undo_with_balance(
+        client, users, auth_engine, balance
     )
-    assert balance == 0
-
-
-def test_undo_when_the_account_is_already_empty(client, users, auth_engine):
-    text, balance = _undo_with_balance(client, users, auth_engine, "0")
-    assert text == (
-        "Acme Ltd is back in your portfolio. Nothing was taken out of HDFC Savings: "
-        "it was already at ₹0."
-    )
-    assert balance == 0
+    body = refused.json()
+    assert body["message"] == "Not enough in HDFC Savings"
+    assert body["description"] == f"Add {shortfall} to HDFC Savings to undo this sale."
+    assert asset(client, a, "cash", cash_id)["balance"] == Decimal(balance)
+    assert asset(client, a, "stock", stock_id)["quantity"] == 99  # still sold
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.get(HoldingExit, exit_id) is not None
 
 
 def test_undo_when_the_account_holds_exactly_the_sale_amount(client, users, auth_engine):
@@ -582,7 +584,7 @@ def test_fund_sale_costs_the_oldest_units_first(sc, users, auth_engine):  # noqa
     assert fund_item(sc, a, fund_id)["xirr_basis"] == "transactions"
 
 
-def test_selling_every_unit_of_a_fund_closes_it_and_stops_its_sip(sc, users):  # noqa: F811
+def test_selling_every_unit_of_a_fund_closes_it_and_leaves_its_sip_running(sc, users, auth_engine):  # noqa: F811
     a = users[0]
     sip = sc.post("/api/sips", json=SIP_BODY, headers=a).json()
     fund_id = sip["mutual_fund_id"]
@@ -591,18 +593,35 @@ def test_selling_every_unit_of_a_fund_closes_it_and_stops_its_sip(sc, users):  #
     r = sell(sc, a, "mf", fund_id, quantity=299.985, price=60)
     assert r.status_code == 201, r.json()
     body = r.json()
-    assert body["closed"] is True and body["sips_cancelled"] == 1
+    assert body["closed"] is True and body["sips_cancelled"] == 0
     assert body["amount"] == 17999.1 and body["cost"] == 15000
-    assert body["description"] == "Fund A - Direct Growth · 299.985 sold for ₹17,999.10 · gain ₹2,999.10 · SIP cancelled"
-    assert sc.get("/api/sips", headers=a).json()[0]["status"] == "stopped"
+    assert body["description"] == "Fund A - Direct Growth · 299.985 sold for ₹17,999.10 · gain ₹2,999.10"
+    assert sc.get("/api/sips", headers=a).json()[0]["status"] == "active"
 
     row = fund_item(sc, a, fund_id)
     assert row["status"] == "sold" and row["closed_on"] == SELL_DAY
     assert row["xirr_basis"] == "transactions" and row["xirr"] is not None
-    assert row["sip"] is None  # a stopped SIP is not shown on the holding
     assert group(sc, a, "mf")["count"] == 0
 
     undone = sc.delete(f"/api/exits/{body['id']}", headers=a).json()
+    assert undone["description"] == "Fund A - Direct Growth is back in your portfolio."
+    assert sc.get("/api/sips", headers=a).json()[0]["status"] == "active"
+
+
+def test_undo_still_restores_sips_stopped_by_an_older_sale(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    sip = sc.post("/api/sips", json=SIP_BODY, headers=a).json()
+    fund_id = sip["mutual_fund_id"]
+    r = sell(sc, a, "mf", fund_id, quantity=299.985, price=60)
+    assert r.status_code == 201, r.json()
+    with sessionmaker(bind=auth_engine)() as s:  # make it look like an old exit
+        from app.models import MfSip
+
+        s.get(MfSip, sip["id"]).status = "stopped"
+        exit_row = s.get(HoldingExit, r.json()["id"])
+        exit_row.prev_state = {**exit_row.prev_state, "stopped_sips": [{"id": sip["id"], "status": "active"}]}
+        s.commit()
+    undone = sc.delete(f"/api/exits/{r.json()['id']}", headers=a).json()
     assert undone["description"] == (
         "Fund A - Direct Growth is back in your portfolio. "
         "Its SIP was left paused; resume it if you still want it."
@@ -764,7 +783,9 @@ def test_settle_into_an_existing_or_new_cash_account_and_undo(client, users):
     )
 
 
-def test_undo_of_a_settlement_when_the_account_holds_less_than_it_added(client, users, auth_engine):
+def test_undo_of_a_settlement_is_refused_when_the_account_holds_less_than_it_added(
+    client, users, auth_engine
+):
     a = users[0]
     cash_id = add(client, a, "cash", CASH)
     fd_id = add(client, a, "fd", FD)
@@ -773,13 +794,40 @@ def test_undo_of_a_settlement_when_the_account_holds_less_than_it_added(client, 
     with sessionmaker(bind=auth_engine)() as s:
         s.get(Cash, cash_id).balance = Decimal("50")
         s.commit()
-    undone = client.delete(f"/api/exits/{r.json()['id']}", headers=a).json()
-    assert undone["message"] == "Settlement undone"
-    assert undone["description"] == (
-        "Old Bank is back in your portfolio. ₹50 was taken out of HDFC Savings "
-        "(it held less than the ₹1,08,243.22 the settlement added)."
+    undone = client.delete(f"/api/exits/{r.json()['id']}", headers=a)
+    assert undone.status_code == 409
+    assert undone.json()["message"] == "Not enough in HDFC Savings"
+    assert undone.json()["description"] == (
+        "Add ₹1,08,193.22 to HDFC Savings to undo this settlement."
     )
-    assert asset(client, a, "cash", cash_id)["balance"] == 0
+    assert asset(client, a, "cash", cash_id)["balance"] == 50
+    assert item(client, a, "fd", fd_id)["settled"] is True
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.get(HoldingExit, r.json()["id"]) is not None
+
+
+def test_settle_integrity_errors_are_told_apart(client, users, monkeypatch):
+    from sqlalchemy.exc import IntegrityError
+
+    a = users[0]
+    fd_id = add(client, a, "fd", FD)
+
+    def failing(constraint):
+        def boom(*args, **kwargs):
+            orig = SimpleNamespace(diag=SimpleNamespace(constraint_name=constraint))
+            raise IntegrityError("insert", {}, orig)
+
+        return boom
+
+    monkeypatch.setattr(exits_service, "record_settlement", failing("uq_holding_exits_maturity"))
+    dup = settle(client, a, "fd", fd_id)
+    assert dup.status_code == 409 and dup.json()["message"] == "Already settled"
+
+    monkeypatch.setattr(exits_service, "record_settlement", failing("ck_holding_exits_amount"))
+    other = settle(client, a, "fd", fd_id)
+    assert other.status_code == 409
+    assert other.json()["message"] == "Couldn't settle"
+    assert other.json()["description"] == "Something changed while settling. Reload and try again."
 
 
 def test_renewed_is_no_longer_a_settle_destination(client, users):
@@ -901,3 +949,92 @@ def test_stock_close_404_when_nothing_is_near(prices, users):
     future = (date.today() + timedelta(days=1)).isoformat()
     assert prices.get(f"/api/master/stock/7/close?date={future}", headers=a).status_code == 422
     assert prices.get("/api/master/stock/7/close?date=2026-01-14").status_code == 401
+
+
+def test_undo_refusal_for_a_soft_deleted_account_says_to_restore_it(client, users, auth_engine):
+    a = users[0]
+    stock_id = add(client, a, "stock", STOCK)
+    cash_id = add(client, a, "cash", CASH)
+    dest = {"kind": "cash_existing", "cash_id": cash_id}
+    sold = sell(client, a, "stock", stock_id, quantity=1, price=80, destination=dest).json()
+    with sessionmaker(bind=auth_engine)() as s:
+        cash = s.get(Cash, cash_id)
+        cash.balance = Decimal("30")
+        cash.deleted_at = datetime.now(timezone.utc)
+        s.commit()
+    undone = client.delete(f"/api/exits/{sold['id']}", headers=a)
+    assert undone.status_code == 409
+    assert undone.json()["message"] == "Not enough in HDFC Savings"
+    assert undone.json()["description"] == (
+        "Restore HDFC Savings from Recently deleted and add ₹50 to it to undo this sale."
+    )
+
+
+def test_undo_does_not_restore_a_sip_moved_to_another_fund(sc, users, auth_engine):  # noqa: F811
+    from app.models import MfSip
+
+    a = users[0]
+    sip = sc.post("/api/sips", json=SIP_BODY, headers=a).json()
+    fund_id = sip["mutual_fund_id"]
+    other_id = add(sc, a, "mf", {**FUND, "scheme_name": "Fund A other", "platform": "Kuvera"})
+    r = sell(sc, a, "mf", fund_id, quantity=299.985, price=60)
+    assert r.status_code == 201, r.json()
+    with sessionmaker(bind=auth_engine)() as s:
+        moved = s.get(MfSip, sip["id"])
+        moved.status = "stopped"
+        moved.mutual_fund_id = other_id
+        exit_row = s.get(HoldingExit, r.json()["id"])
+        exit_row.prev_state = {**exit_row.prev_state, "stopped_sips": [{"id": sip["id"], "status": "active"}]}
+        s.commit()
+    assert sc.delete(f"/api/exits/{r.json()['id']}", headers=a).status_code == 200
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.get(MfSip, sip["id"]).status == "stopped"
+
+
+def test_a_real_duplicate_maturity_row_is_recognised(client, users, auth_engine):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.routers.exits import _is_maturity_duplicate
+
+    def make():
+        return HoldingExit(
+            user_id=1, asset_type="fd", holding_id=1, kind="maturity", exit_date=date(2026, 1, 1),
+            amount=Decimal("10"), cost=Decimal("10"), destination="none",
+        )  # fmt: skip
+
+    with sessionmaker(bind=auth_engine)() as s:
+        s.add(make())
+        s.commit()
+        s.add(make())
+        with pytest.raises(IntegrityError) as caught:
+            s.commit()
+        assert _is_maturity_duplicate(caught.value)
+        s.rollback()
+
+
+def test_a_refused_undo_of_a_full_fund_sale_changes_nothing(sc, users, auth_engine):  # noqa: F811
+    from app.models import MfSip
+
+    a = users[0]
+    sip = sc.post("/api/sips", json=SIP_BODY, headers=a).json()
+    fund_id = sip["mutual_fund_id"]
+    cash_id = add(sc, a, "cash", CASH)
+    dest = {"kind": "cash_existing", "cash_id": cash_id}
+    r = sell(sc, a, "mf", fund_id, quantity=299.985, price=60, destination=dest)
+    assert r.status_code == 201, r.json()
+    exit_id = r.json()["id"]
+    with sessionmaker(bind=auth_engine)() as s:
+        s.get(Cash, cash_id).balance = Decimal("10")
+        s.get(MfSip, sip["id"]).status = "stopped"
+        exit_row = s.get(HoldingExit, exit_id)
+        exit_row.prev_state = {**exit_row.prev_state, "stopped_sips": [{"id": sip["id"], "status": "active"}]}
+        s.commit()
+        redemption_id = s.get(HoldingExit, exit_id).mf_transaction_id
+    assert redemption_id is not None
+    assert sc.delete(f"/api/exits/{exit_id}", headers=a).status_code == 409
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.get(MFTransaction, redemption_id) is not None
+        assert s.get(HoldingExit, exit_id) is not None
+        assert s.get(MutualFund, fund_id).closed_on is not None
+        assert s.get(MfSip, sip["id"]).status == "stopped"
+        assert s.get(Cash, cash_id).balance == 10

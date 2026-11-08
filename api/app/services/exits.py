@@ -605,7 +605,6 @@ def record_sale(
         check_remainder(slug, held, invested, plan.quantity, cost)
 
     remaining = None
-    sips_cancelled = 0
     if plan.full:
         holding.closed_on = body.date
     else:
@@ -632,18 +631,6 @@ def record_sale(
             units=plan.quantity,
         )
         db.add(redemption)
-        if plan.full:
-            running = db.scalars(
-                sa.select(MfSip).where(
-                    MfSip.mutual_fund_id == holding.id,
-                    MfSip.user_id == user_id,
-                    MfSip.status.in_([sip_service.ACTIVE, sip_service.PAUSED]),
-                )
-            ).all()
-            prev["stopped_sips"] = [{"id": s.id, "status": s.status} for s in running]
-            for sip in running:
-                sip.status = sip_service.STOPPED
-            sips_cancelled = len(running)
 
     paid_into = _pay_into_cash(db, user_id, body.destination, cash, plan.amount, body.date, prev)
     row = HoldingExit(
@@ -672,7 +659,6 @@ def record_sale(
         holding_name=duplicates.holding_name(holding),
         remaining=remaining,
         cash_name=paid_into.name if paid_into is not None else None,
-        sips_cancelled=sips_cancelled,
         prev=prev,
     )
 
@@ -772,6 +758,29 @@ def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
     slug = row.asset_type
     out = UndoOutcome(kind=row.kind, holding_name=duplicates.holding_name(holding))
 
+    # Check the account first so a refusal changes nothing.
+    cash = None
+    if row.cash_holding_id is not None and row.cash_added is not None:
+        cash = db.scalars(
+            sa.select(Cash)
+            .where(Cash.id == row.cash_holding_id, Cash.user_id == row.user_id)
+            .with_for_update(of=Cash)
+            .execution_options(include_deleted=True)  # a soft-deleted account is still debited
+        ).first()
+        if cash is not None:
+            shortfall = Decimal(str(row.cash_added)) - Decimal(str(cash.balance))
+            if shortfall > _ZERO:
+                what = "sale" if row.kind == "sale" else "settlement"
+                amount = sip_service.format_inr(shortfall)
+                if cash.deleted_at is not None:  # can't be topped up until restored
+                    description = (
+                        f"Restore {cash.name} from Recently deleted and add {amount} to it "
+                        f"to undo this {what}."
+                    )
+                else:
+                    description = f"Add {amount} to {cash.name} to undo this {what}."
+                raise ExitConflict(f"Not enough in {cash.name}", description)
+
     if row.kind == "sale":
         if _was_full_sale(row, holding):
             holding.closed_on = None  # a full sale never reduced the quantity
@@ -797,34 +806,31 @@ def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
                         )
         for entry in prev.get("stopped_sips", []):
             sip = db.get(MfSip, entry["id"])
-            if sip is not None and sip.status == sip_service.STOPPED:
+            if (
+                sip is not None
+                and sip.user_id == row.user_id
+                and sip.mutual_fund_id in (holding.id, None)
+                and sip.status == sip_service.STOPPED
+            ):
                 # Paused, not running: missed instalments are not backfilled; the user resumes it.
                 sip.status = sip_service.PAUSED
                 out.sips_paused += 1
         if row.mf_transaction_id is not None:
             db.execute(sa.delete(MFTransaction).where(MFTransaction.id == row.mf_transaction_id))
 
-    if row.cash_holding_id is not None and row.cash_added is not None:
-        cash = db.scalars(
-            sa.select(Cash)
-            .where(Cash.id == row.cash_holding_id, Cash.user_id == row.user_id)
-            .with_for_update(of=Cash)
-        ).first()
-        if cash is not None:
-            balance_before = Decimal(str(cash.balance))
-            added = Decimal(str(row.cash_added))
-            taken = max(min(balance_before, added), _ZERO)
-            cash.balance = balance_before - taken
-            if (
-                prev.get("cash_balance_date")
-                and prev.get("cash_date_set") == cash.balance_date.isoformat()
-            ):
-                cash.balance_date = date.fromisoformat(prev["cash_balance_date"])
-            out.cash_name = cash.name
-            out.cash_returned = taken  # what was really taken out, never more than the account held
-            out.cash_added = added
-            if prev.get("cash_created"):
-                out.cash_account_kept = cash.name
+    if cash is not None:
+        added = Decimal(str(row.cash_added))
+        cash.balance = max(Decimal(str(cash.balance)) - added, _ZERO)
+        if (
+            prev.get("cash_balance_date")
+            and prev.get("cash_date_set") == cash.balance_date.isoformat()
+        ):
+            cash.balance_date = date.fromisoformat(prev["cash_balance_date"])
+        out.cash_name = cash.name
+        out.cash_returned = added
+        out.cash_added = added
+        if prev.get("cash_created"):
+            out.cash_account_kept = cash.name
 
     db.delete(row)
     return out
