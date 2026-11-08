@@ -298,8 +298,9 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
         # until then).
         holding = _active_target(session, sip)
 
-    # Re-read under lock (fund first, then SIP, like a sale): a concurrent full sale may have
-    # stopped this SIP since the caller loaded it.
+    # Re-read under lock (fund first, then SIP, like a sale): a concurrent pause, stop,
+    # or another posting run may have changed this SIP since the caller loaded it (a full sale
+    # does not stop a SIP).
     sip = session.scalars(
         sa.select(MfSip)
         .where(MfSip.id == sip.id)

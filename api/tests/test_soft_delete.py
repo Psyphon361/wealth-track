@@ -177,6 +177,27 @@ def test_purge_removes_only_rows_deleted_over_30_days_ago(session):
     assert list(session.scalars(left)) == ["live", "recent"]
 
 
+def test_purge_skips_a_holding_restored_before_its_lock(session, monkeypatch):
+    session.add_all([_cash_row(1, "restored", 40), _cash_row(1, "old", 40)])
+    session.commit()
+    restored_id = session.scalars(select(Cash.id).where(Cash.name == "restored").execution_options(include_deleted=True)).one()
+    real = purge.lock_purgeable_ids
+
+    def restore_then_lock(sess, model, cutoff):
+        if model is Cash:  # a restore commits just before the purge locks its candidates
+            sess.execute(update(Cash).where(Cash.id == restored_id).values(deleted_at=None).execution_options(include_deleted=True))
+            sess.commit()
+        return real(sess, model, cutoff)
+
+    monkeypatch.setattr(purge, "lock_purgeable_ids", restore_then_lock)
+
+    counts = purge.purge_deleted(session)
+
+    assert counts["cash"] == 1
+    left = select(Cash.name).order_by(Cash.id).execution_options(include_deleted=True)
+    assert list(session.scalars(left)) == ["restored"]
+
+
 def test_purge_removes_the_exit_rows_of_purged_holdings_only(session):
     def stock(name, deleted_days_ago):
         return Stock(

@@ -45,6 +45,24 @@ def purge_statement(model, cutoff: datetime) -> Delete:
     return delete(model).where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
 
 
+def lock_purgeable_ids(session: Session, model, cutoff: datetime) -> list[int]:
+    """Lock (FOR UPDATE, holding first) the holdings past retention and return their ids.
+
+    A row locked by someone else (a restore in flight) is waited for; Postgres then re-evaluates
+    the deleted_at condition on the committed row, so a row restored meanwhile drops out before
+    any child row is touched.
+    """
+    return list(
+        session.scalars(
+            select(model.id)
+            .where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
+            .order_by(model.id)
+            .with_for_update(of=model)
+            .execution_options(include_deleted=True)
+        )
+    )
+
+
 def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> dict[str, int]:
     """Hard-delete holdings (all users) soft-deleted more than `older_than_days` ago.
 
@@ -58,13 +76,7 @@ def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> di
     exits_removed = 0
     fundings_removed = 0
     for slug, model in HOLDING_MODELS.items():
-        ids = list(
-            session.scalars(
-                select(model.id)
-                .where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
-                .execution_options(include_deleted=True)
-            )
-        )
+        ids = lock_purgeable_ids(session, model, cutoff)
         if ids:
             if slug in EXIT_SLUGS:
                 exits_removed += session.execute(
@@ -77,8 +89,15 @@ def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> di
                     HoldingFunding.asset_type == slug, HoldingFunding.holding_id.in_(ids)
                 )
             ).rowcount
-        result = session.execute(purge_statement(model, cutoff).execution_options(include_deleted=True))
-        counts[slug] = result.rowcount
+        if ids:
+            result = session.execute(
+                purge_statement(model, cutoff)
+                .where(model.id.in_(ids))
+                .execution_options(include_deleted=True)
+            )
+            counts[slug] = result.rowcount
+        else:
+            counts[slug] = 0
     counts["exits"] = exits_removed
     counts["fundings"] = fundings_removed
     session.commit()

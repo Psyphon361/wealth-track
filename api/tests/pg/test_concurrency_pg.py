@@ -654,16 +654,6 @@ def run_purge(world):
         return purge.purge_deleted(s)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "REAL BUG: services/purge.py purge_deleted() collects ids WITHOUT a lock, deletes their "
-        "holding_fundings/holding_exits rows (no refunded_at / deleted_at condition), then deletes "
-        "the holdings with deleted_at < cutoff. A restore that commits in between (restore locks "
-        "the holding and its funding rows) leaves a live holding whose funding row was purged "
-        "while its cash stays debited: cash no longer matches the funding records."
-    ),
-)
 def test_restore_held_then_purge_must_not_strip_the_restored_holding(world, monkeypatch):
     cash, stock = deleted_long_ago(world)
     gate = hold_after(monkeypatch, fundings, "restore")
