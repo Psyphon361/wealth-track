@@ -8,6 +8,7 @@ import {
   type PaginationState,
   type SortingState,
 } from "@tanstack/react-table";
+import { Loader2 } from "lucide-react";
 import { TopProgress } from "@/components/analytics/top-progress";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -109,8 +110,11 @@ export function HoldingsGrid<TRow extends HoldingRow>({
   onPage,
   onEdit,
   onDelete,
+  pendingIds,
 }: {
   config: GridConfig<TRow>;
+  /** Rows whose delete request is in flight: dimmed, inert, "Deleting…". */
+  pendingIds: ReadonlySet<number>;
   data: HoldingsResponse<TRow>;
   filters: HoldingsFilters;
   fetching: boolean;
@@ -281,17 +285,31 @@ export function HoldingsGrid<TRow extends HoldingRow>({
                 </TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => {
-                    return (
-                      <TableCell key={cell.id}>
-                        <table.FlexRender cell={cell} />
-                      </TableCell>
-                    );
-                  })}
-                </TableRow>
-              ))
+              rows.map((row) => {
+                const pending = pendingIds.has(row.original.id);
+                return (
+                  <TableRow
+                    key={row.id}
+                    aria-busy={pending || undefined}
+                    className={cn(pending && "pointer-events-none opacity-50")}
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      return (
+                        <TableCell key={cell.id}>
+                          {pending && cell.column.id === "actions" ? (
+                            <div className="flex items-center justify-end gap-1.5 text-xs text-muted-foreground">
+                              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                              Deleting…
+                            </div>
+                          ) : (
+                            <table.FlexRender cell={cell} />
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

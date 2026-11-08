@@ -37,6 +37,7 @@ import {
 } from "@/lib/exits";
 import { formatDate } from "@/lib/format";
 import { markHoldingsChanged } from "@/lib/holdings-cache";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import { amountText } from "@/lib/sip";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
@@ -89,6 +90,7 @@ function TypedDetail<TRow extends HoldingRow>({
   const { data, error, refetch, retry } = useHoldingDetail<TRow>(config.type, id);
   const [editing, setEditing] = useState<TRow | null>(null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const [deletePending, setDeletePending] = useState(false);
   const [selling, setSelling] = useState(false);
   // The dashboard links here with ?settle=1 to open the settle dialog straight away.
   const [settling, setSettling] = useState(searchParams.get("settle") === "1");
@@ -155,14 +157,20 @@ function TypedDetail<TRow extends HoldingRow>({
   }
 
   function handleDelete(target: DeleteTarget) {
-    setDeleting(null);
+    setDeletePending(true);
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
+        invalidateNetWorth();
         markHoldingsChanged(target.type, !!target.paidFrom);
         notify.success(res);
+        // The dialog stays pending (open) while the page navigates away.
         router.push(backHref);
       })
-      .catch((err: unknown) => notify.error(err));
+      .catch((err: unknown) => {
+        setDeletePending(false);
+        setDeleting(null);
+        notify.error(err);
+      });
   }
 
   return (
@@ -293,6 +301,7 @@ function TypedDetail<TRow extends HoldingRow>({
       />
       <DeleteDialog
         target={deleting}
+        pending={deletePending}
         onClose={() => setDeleting(null)}
         onConfirm={handleDelete}
       />

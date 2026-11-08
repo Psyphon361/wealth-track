@@ -149,9 +149,11 @@ function TypedPortfolio<TRow extends HoldingRow>({
   config: GridConfig<TRow>;
 }) {
   const q = useHoldingsQuery(config);
-  const { refetch, removeItem } = q;
-  const [editing, setEditing] = useState<TRow | null>(null);
+  const { refetch, removeItem } = q;  const [editing, setEditing] = useState<TRow | null>(null);
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
+  const [pendingIds, setPendingIds] = useState<ReadonlySet<number>>(
+    () => new Set<number>(),
+  );
   const addLabel = addLabelFor(config.type);
   const count = q.data
     ? q.data.summary.count + q.data.summary.closed_count
@@ -178,20 +180,33 @@ function TypedPortfolio<TRow extends HoldingRow>({
     refetch();
   }
 
+  function setPending(id: number, on: boolean) {
+    setPendingIds((prev) => {
+      if (prev.has(id) === on) return prev;
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
   function handleDelete(target: DeleteTarget) {
     setDeleting(null);
-    const restore = removeItem(target.id);
+    // The row stays (dimmed) until the API answers; only then does it leave the list.
+    setPending(target.id, true);
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
+        removeItem(target.id);
+        setPending(target.id, false);
         invalidateNetWorth();
         // Marking stale makes the grid's subscriber refetch (once).
         markHoldingsChanged(target.type, !!target.paidFrom);
         notify.success(res);
       })
       .catch((err: unknown) => {
-        restore();
+        // Only this row returns to normal; other deletes in flight are untouched.
+        setPending(target.id, false);
         notify.error(err);
-        refetch();
       });
   }
 
@@ -292,6 +307,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
           onPage={q.setPage}
           onEdit={onEdit}
           onDelete={onDelete}
+          pendingIds={pendingIds}
         />
 
         <EditDialog
