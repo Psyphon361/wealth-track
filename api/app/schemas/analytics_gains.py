@@ -9,7 +9,10 @@ from app.schemas.assets import Number
 Amount = Annotated[Decimal, Number]
 
 Term = Literal["short", "long", "flat"]
-Flag = Literal["grandfathering", "no_purchase_date", "guessed_class", "old_rules", "multi_asset"]
+Flag = Literal[
+    "grandfathering", "no_purchase_date", "guessed_class", "old_rules", "multi_asset", "estimated"
+]
+Source = Literal["sale", "maturity", "planned_sale"]
 
 
 class GainsFy(BaseModel):
@@ -55,7 +58,9 @@ class GainsLot(BaseModel):
 
 
 class GainsSale(BaseModel):
-    exit_id: int
+    exit_id: int | None = None
+    source: Source
+    estimated: bool
     asset_type: Literal["stock", "bond", "mf", "gold", "other"]
     holding_id: int
     name: str
@@ -68,13 +73,14 @@ class GainsSale(BaseModel):
 
 
 class GainsTaxFreeItem(BaseModel):
-    exit_id: int
+    exit_id: int | None = None
     holding_id: int
     name: str
     settled_on: date
     amount: Amount
     cost: Amount
     gain: Amount
+    estimated: bool
 
 
 class GainsTaxFree(BaseModel):
@@ -83,9 +89,16 @@ class GainsTaxFree(BaseModel):
 
 
 class GainsExcluded(BaseModel):
-    bond_settlements: int
+    bonds_no_face: int
     no_purchase_date: int
     old_rules: int
+
+
+class GainsBondInterest(BaseModel):
+    interest_to_date: Amount
+    interest_projected: Amount
+    tds_estimate: Amount
+    holdings_count: int
 
 
 class AnalyticsGains(BaseModel):
@@ -98,5 +111,8 @@ class AnalyticsGains(BaseModel):
     summary: GainsSummary
     buckets: list[GainsBucket]
     sales: list[GainsSale]
+    expected: list[GainsSale]
+    expected_gain: Amount
     tax_free: GainsTaxFree
+    bond_interest: GainsBondInterest | None = None
     excluded: GainsExcluded

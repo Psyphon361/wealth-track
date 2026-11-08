@@ -50,6 +50,8 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+from app.services import bond_schedule
+from app.services.analytics import _field, _to_date
 from app.services.analytics_tax import current_fy_start_year, fy_label
 
 _ZERO = Decimal(0)
@@ -153,7 +155,7 @@ class MfTxn:
 
 @dataclass
 class SaleInput:
-    exit_id: int
+    exit_id: int | None  # None for a bond repayment computed from the holding
     asset_type: str  # stock | bond | mf | gold | other
     holding_id: int
     name: str
@@ -172,6 +174,9 @@ class SaleInput:
     # mutual funds
     mf_txns: Sequence[MfTxn] = field(default_factory=tuple)
     mf_transaction_id: int | None = None
+    # where the sale comes from: a recorded Sell, or a bond repayment computed from the holding
+    source: str = "sale"  # sale | maturity | planned_sale
+    estimated: bool = False
 
 
 # --- Dates -------------------------------------------------------------------------------------
@@ -189,10 +194,14 @@ def add_months(d: date, months: int) -> date:
     return date(year, month, min(d.day, monthrange(year, month)[1]))
 
 
-def available_fys(today: date, exit_dates: Iterable[date] = ()) -> list[dict[str, Any]]:
-    """The current financial year plus every one containing an exit date, newest first."""
+def available_fys(
+    today: date, exit_dates: Iterable[date] = (), repayment_dates: Iterable[date] = ()
+) -> list[dict[str, Any]]:
+    """The current financial year plus every one containing an exit date, or a bond repayment date
+    on or before the end of the current financial year, newest first."""
     current = current_fy_start_year(today)
     years = {current} | {fy_start_year_of(d) for d in exit_dates}
+    years |= {fy_start_year_of(d) for d in repayment_dates if fy_start_year_of(d) <= current}
     return [
         {"start_year": y, "label": fy_label(y), "is_current": y == current}
         for y in sorted(years, reverse=True)
@@ -372,8 +381,12 @@ def build_sale(sale: SaleInput) -> dict[str, Any]:
                 "bucket": bucket,
             }
         )
+    if sale.estimated and "estimated" not in flags:
+        flags.append("estimated")
     return {
         "exit_id": sale.exit_id,
+        "source": sale.source,
+        "estimated": sale.estimated,
         "asset_type": sale.asset_type,
         "holding_id": sale.holding_id,
         "name": sale.name,
@@ -488,14 +501,113 @@ def fy_totals(sales: Sequence[Mapping[str, Any]], start_year: int) -> dict[str, 
     return {"buckets": buckets, "summary": summary}
 
 
+def sale_order(sale: Mapping[str, Any]) -> tuple[date, int, int]:
+    """Sort key of a built sale: date, then exit id (computed repayments have none), then holding."""
+    return (sale["sold_on"], sale["exit_id"] or 0, sale["holding_id"])
+
+
 def capital_gains(
-    inputs: Sequence[SaleInput], start_year: int
+    inputs: Sequence[SaleInput], start_year: int, today: date | None = None
 ) -> dict[str, Any]:
     """Sales sold within the financial year `start_year`, built and totalled:
-    {"buckets": [...], "sales": [...], "summary": {...}}."""
+    {"buckets": [...], "sales": [...], "expected": [...], "expected_gain": x, "summary": {...}}.
+    With `today`, a computed bond repayment (source not "sale") dated after today is expected,
+    not a sale: it is listed in "expected" and stays out of the buckets and the summary."""
     first = date(start_year, 4, 1)
     last = date(start_year + 1, 3, 31)
-    sales = [build_sale(s) for s in inputs if first <= s.sold_on <= last]
-    sales.sort(key=lambda s: (s["sold_on"], s["exit_id"]))
+    sales: list[dict[str, Any]] = []
+    expected: list[dict[str, Any]] = []
+    for s in inputs:
+        if not first <= s.sold_on <= last:
+            continue
+        built = build_sale(s)
+        if today is not None and s.source != "sale" and s.sold_on > today:
+            expected.append(built)
+        else:
+            sales.append(built)
+    sales.sort(key=sale_order)
+    expected.sort(key=sale_order)
     totals = fy_totals(sales, start_year)
-    return {"buckets": totals["buckets"], "sales": sales, "summary": totals["summary"]}
+    return {
+        "buckets": totals["buckets"],
+        "sales": sales,
+        "expected": expected,
+        "expected_gain": sum((s["gain"] for s in expected), _ZERO),
+        "summary": totals["summary"],
+    }
+
+
+# --- Bond repayments ---------------------------------------------------------------------------
+
+
+def bond_repayment(
+    bond: Any, master: Any, settled: Mapping[str, Any] | None = None
+) -> tuple[str, Any]:
+    """What a bond's repayment at the holding's maturity_date means for capital gains. The amounts
+    come from the holding, never from a settlement (which may include the last coupon).
+
+    Returns ("sale", SaleInput): face value x current quantity (SGB planned sale: issue price x
+    grams) against the invested amount, source "maturity" or "planned_sale", estimated;
+    ("tax_free", item dict): an SGB maturity (exempt), amount = the settled amount when `settled`
+    ({"id", "amount", "cost", "date"}) is given, else issue price x grams, estimated;
+    ("no_face", None): no face value (SGB: no issue price) to work with."""
+    sgb = bond_schedule.is_sgb(bond, master)
+    planned = bond_schedule.is_planned_sale(bond, master)
+    maturity = _to_date(_field(bond, "maturity_date"))
+    quantity = _dec(_field(bond, "quantity"))
+    cost = money(_dec(_field(bond, "invested_amount")))
+    if sgb:
+        issue_price = _field(master, "issue_price")
+        if not issue_price:
+            if not planned and settled is not None:
+                return "tax_free", {
+                    "exit_id": settled["id"],
+                    "holding_id": _field(bond, "id"),
+                    "name": _field(bond, "name"),
+                    "settled_on": settled["date"],
+                    "amount": money(settled["amount"]),
+                    "cost": money(settled["cost"]),
+                    "gain": money(settled["amount"]) - money(settled["cost"]),
+                    "estimated": False,
+                }
+            return "no_face", None
+        face = _dec(issue_price)
+    else:
+        face_value = _field(bond, "face_value") or _field(master, "face_value")
+        if not face_value:
+            return "no_face", None
+        face = _dec(face_value)
+    proceeds = money(face * quantity)
+    if sgb and not planned:
+        if settled is not None:
+            amount, base, exit_id, when, estimated = (
+                money(settled["amount"]), money(settled["cost"]), settled["id"], settled["date"], False,
+            )  # fmt: skip
+        else:
+            amount, base, exit_id, when, estimated = proceeds, cost, None, maturity, True
+        return "tax_free", {
+            "exit_id": exit_id,
+            "holding_id": _field(bond, "id"),
+            "name": _field(bond, "name"),
+            "settled_on": when,
+            "amount": amount,
+            "cost": base,
+            "gain": amount - base,
+            "estimated": estimated,
+        }
+    master_type = _field(master, "bond_type")
+    return "sale", SaleInput(
+        exit_id=None,
+        asset_type="bond",
+        holding_id=_field(bond, "id"),
+        name=_field(bond, "name"),
+        sold_on=maturity,
+        quantity=quantity,
+        proceeds=proceeds,
+        cost=cost,
+        bought_on=_to_date(_field(bond, "purchase_date")),
+        bond_type=master_type or _field(bond, "bond_type"),
+        bond_has_master=master is not None,
+        source="planned_sale" if planned else "maturity",
+        estimated=True,
+    )

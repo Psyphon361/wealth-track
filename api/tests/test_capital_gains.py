@@ -31,6 +31,24 @@ def test_available_fys():
     assert out[1]["is_current"] is False
 
 
+def test_available_fys_with_bond_repayment_dates():
+    out = cg.available_fys(date(2026, 11, 8), [], [date(2023, 9, 1), date(2027, 1, 1), date(2027, 4, 1)])
+    assert [i["start_year"] for i in out] == [2026, 2023]  # 2027-04-01 is after this FY
+
+
+def test_computed_repayment_after_today_is_expected_not_totalled():
+    past = sale(exit_id=None, asset_type="bond", sold_on=date(2026, 6, 1), source="maturity", estimated=True)
+    later = sale(
+        exit_id=None, asset_type="bond", holding_id=2, sold_on=date(2027, 1, 1),
+        source="planned_sale", estimated=True, proceeds=D(1500), cost=D(1000),
+    )  # fmt: skip
+    out = cg.capital_gains([past, later], 2026, date(2026, 11, 8))
+    assert [s["sold_on"] for s in out["sales"]] == [date(2026, 6, 1)]
+    assert [s["sold_on"] for s in out["expected"]] == [date(2027, 1, 1)]
+    assert out["expected_gain"] == D(500) and out["summary"]["sales_count"] == 1
+    assert "estimated" in out["expected"][0]["flags"]
+
+
 def test_add_months_clamps():
     assert cg.add_months(date(2023, 1, 31), 1) == date(2023, 2, 28)
     assert cg.add_months(date(2024, 2, 29), 12) == date(2025, 2, 28)
