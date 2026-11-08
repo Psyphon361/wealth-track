@@ -39,9 +39,17 @@ def test_bad_kind():
     assert CASH_KIND_ERROR == "Choose an account type"
 
 
-def test_balance_must_be_positive():
-    assert _errors(balance="0") == {"balance": "Must be greater than 0"}
-    assert _errors(balance="-5") == {"balance": "Must be greater than 0"}
+def test_balance_zero_allowed_negative_rejected():
+    assert CashCreate(**{**VALID, "balance": "0"}).balance == Decimal("0")
+    assert CashCreate(**{**VALID, "balance": "0.01"}).balance == Decimal("0.01")
+    assert _errors(balance="-5") == {"balance": "Can't be negative"}
+    assert _errors(balance="-0.01") == {"balance": "Can't be negative"}
+
+
+def test_zero_balance_valuation_is_zero():
+    out = valuation.value_cash(make_cash(balance=Decimal("0")), date(2026, 10, 24))
+    assert out["invested"] == out["current_value"] == Decimal("0.00")
+    assert out["gain"] == Decimal("0.00") and out["gain_pct"] == Decimal("0.00")
 
 
 def test_rate_above_15_rejected():

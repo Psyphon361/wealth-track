@@ -36,6 +36,8 @@ export const SYMBOL_ERROR =
   "Symbol: letters, digits, & or -, up to 20 characters";
 export const PAYOUT_FREQUENCY_ERROR = "Choose a payout frequency";
 export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
+/** Shared verbatim with the API (SIP_HOLDING_SOLD_ERROR). */
+export const SIP_HOLDING_SOLD_ERROR = "This holding has been sold";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
 export const ISSUER_REQUIRED_ERROR = "Select a bank or issuer from the list";
@@ -256,6 +258,12 @@ export const moneyNumber = positiveNumber.refine(
   (n) => n <= MAX_MONEY,
   MAX_MONEY_ERROR,
 );
+
+/** Cash balance: 0 is allowed, never negative, at most ₹100 crore. */
+export const CASH_BALANCE_NEGATIVE_ERROR = "Can't be negative";
+export const cashBalanceNumber = numberString
+  .refine((n) => n >= 0, CASH_BALANCE_NEGATIVE_ERROR)
+  .refine((n) => n <= MAX_MONEY, MAX_MONEY_ERROR);
 
 /** Percentage rate: > 0, at most `max`, at most 2 decimals. */
 export function rateNumber(max: number, message: string) {

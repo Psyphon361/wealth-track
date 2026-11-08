@@ -18,10 +18,10 @@ import {
   toOptions,
 } from "./fields";
 import {
+  cashBalanceNumber,
   cashKindEnum,
   FD_RATE_ERROR,
   maxFutureDateISO,
-  moneyNumber,
   notesText,
   optionalRate,
   requiredText,
@@ -35,7 +35,7 @@ import type { ReinvestPrefill } from "@/lib/reinvest";
 const schema = z.object({
   name: requiredText,
   kind: cashKindEnum,
-  balance: moneyNumber,
+  balance: cashBalanceNumber,
   balance_date: startDateString,
   interest_rate: optionalRate(15, FD_RATE_ERROR),
   notes: notesText,

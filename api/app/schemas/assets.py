@@ -37,6 +37,15 @@ def _positive(value):
     return value
 
 
+CASH_BALANCE_NEGATIVE_ERROR = "Can't be negative"
+
+
+def _not_negative_balance(value):
+    if value < 0:
+        raise _error(CASH_BALANCE_NEGATIVE_ERROR)
+    return value
+
+
 def _max_money(value: Decimal) -> Decimal:
     if value > MAX_MONEY:
         raise _error("Must be at most ₹100 crore")
@@ -126,6 +135,14 @@ Dec = Annotated[Decimal, Number]
 Money = Annotated[
     Decimal,
     AfterValidator(_positive),
+    AfterValidator(_decimals(2)),
+    AfterValidator(_max_money),
+    Number,
+]
+# Cash balance: 0 is allowed (Paid From and undo can take an account to 0).
+CashBalance = Annotated[
+    Decimal,
+    AfterValidator(_not_negative_balance),
     AfterValidator(_decimals(2)),
     AfterValidator(_max_money),
     Number,
@@ -558,7 +575,7 @@ class CashBase(BaseModel):
 
 class CashCreate(_Create, CashBase):
     kind: CashKind
-    balance: Money
+    balance: CashBalance
     interest_rate: FdRate | None = None
     balance_date: TradeDate
 
