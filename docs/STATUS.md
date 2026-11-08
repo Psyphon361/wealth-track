@@ -1,4 +1,4 @@
-# STATUS — handoff notes (last updated 2026-11-07)
+# STATUS — handoff notes (last updated 2026-11-08)
 
 ## Done (all committed on `main`)
 
@@ -62,6 +62,9 @@
 - Holding details page (uncommitted): eye icon opens `/portfolio/{type}/{id}` with a shared layout for all five types (header with Edit/Delete, KPI strip, tenure bar, Holding/Instrument/Notes sections); `GET /api/holdings/{type}/{id}`. SPEC §4, §5.
 - 2026-11-07: Closing holdings done (API committed as `92e417f`, migration `0029` `holding_exits`; web uncommitted at time of writing). Sell for stock, bond, MF, gold and Other, full or part (FIFO cost for a fund with transactions; a full MF sale cancels its SIPs). Settle for matured FD, RD and bonds, to a cash account, a new savings account, a renewed FD or RD, or as spent or moved (not counted). Undo of the latest exit. Matured holdings view: each grid's Active / Closed tab, and Closed sorts newest first. Dashboard card "matured holdings to settle", details page Settle banner and "Sales and settlements" list, row menu Sell and Settle, Coming up marks unsettled matured rows. SPEC §3, §4, §5, §8b, §9.
 - 2026-11-07: "Paid from" on every Add form, uncommitted at time of writing (migration `0030`, `holding_fundings`). An optional account on create takes the holding's price off a Cash & Savings account (balance down; refunded on delete, taken again on restore). Settle and sell money lands in an account; the success step and the details page offer Reinvest buttons that prefill the add form (`wt.reinvest` in sessionStorage). Exits show `reinvested` and `left_in_account`, and undo is refused while money is reinvested. Settle destinations are now a cash account, a new savings account, or spent (renewal removed). SPEC §8b, §8c.
+- 2026-11-08: Capital gains report done, committed and pushed (API `772b7e4`, `b471bc3`, `2ddef3b`; web `ac37191`, `378e8da`). `GET /api/analytics/capital-gains?fy=` and the Capital Gains tab `/analytics/gains`: sales per financial year classified (equity, debt fund, bond, listed other, other, crypto; name guesses flagged), MF sales split into FIFO lots, short or long term with the 23 Jul 2024 cut-off, set-off, the equity long-term exemption (₹1.25 lakh from FY 2024-25), fixed-rate tax and slab gains, estimated tax at the chosen slab plus 4% cess. Bonds count without a Sell: a maturity or planned sale is a sale at face value × quantity against the invested amount (estimated, settled or not), later ones are listed as expected, SGB maturities are tax-free. SPEC §9. Not done: carry-forward losses, grandfathering maths, non-equity sales before 23 Jul 2024.
+- 2026-11-08: Loading and empty states, pushed (`e332c9c`): skeleton rows on Active / Closed switch, no empty message while loading, dimmed rows under a progress bar on refetch, the empty message inside the table (grids, SIPs, Recently deleted), loading cues in Money coming in, the net worth chart, search pickers, sales and settlements, cash account choices and SIP reloads. SPEC §5.
+- 2026-11-08: Full name and initials, pushed (`004d1c5`, `ab31f12`; migration `0031` `users.full_name`, up to 80 characters; the prod migration runs through the deploy workflow). `PATCH /api/auth/me` (web `/api/me`), optional name at sign-up, Google fills an empty name, avatar initials, name in the account menu and an Edit Name dialog. SPEC §5, §7.
 
 Verified in the browser: add (FD, stock), edit (stock), delete, dashboard numbers, date picker + year dropdown, comma grouping/caret, payout form relabel, API-sourced toasts.
 Verified only via API/curl or build: RD/bond/MF save through the UI, per-field validation messages in the forms, edit dialog date picker layering, 500 handler.
@@ -102,7 +105,6 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next
 
-- Capital gains report (STCG/LTCG per FY from recorded sales).
 - Buy more for existing holdings.
 - SIP instalments paid from a cash account.
 

@@ -15,8 +15,8 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/main.py           app, CORS, X-API-Key dependency, error handlers (message/description)
   app/config.py         settings from api/.env (DATABASE_URL, CORS_ORIGINS, API_KEY, CRON_SECRET, JWT_SECRET, ALLOWED_EMAILS, OWNER_EMAIL, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)
   app/deps.py           current_user: Bearer access token → active user, else 401
-  app/models/user.py, refresh_token.py, login_attempt.py  auth tables (users, refresh_tokens, login_attempts)
-  app/routers/auth.py   /api/auth: signup, login, google, refresh, logout, me (SPEC §7)
+  app/models/user.py, refresh_token.py, login_attempt.py  auth tables (users, refresh_tokens, login_attempts); users has an optional full_name (≤ 80, migration 0031)
+  app/routers/auth.py   /api/auth: signup (optional full_name), login, google, refresh, logout, me (GET), PATCH me (save the name; clean_name holds the name rules) (SPEC §7)
   app/services/auth.py  argon2id passwords, HS256 access JWTs, rotating refresh tokens, login rate limit
   app/services/google_auth.py  Sign in with Google: code exchange (PKCE verifier), ID token verification (Google JWKS), sign-in / link / create (SPEC §7)
   app/jobs/users.py     CLI: `python -m app.jobs.users create|set-password|deactivate|list --email …`
@@ -67,6 +67,9 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/services/cashflows.py  money coming in: dated bond, FD and RD inflow events split into interest and principal, by month (SPEC §9); tests in api/tests/test_cashflows.py
   app/schemas/analytics_tax.py  response models for GET /api/analytics/tax and bond-schedule
   app/schemas/analytics_cashflows.py  response models for GET /api/analytics/inflows
+  app/routers/analytics_gains.py  GET /api/analytics/capital-gains?fy=: sales (and bond repayments computed from the holdings) in a financial year, gains by tax bucket after set-off and the equity exemption, fixed-rate tax and slab gains, expected bond repayments, tax-free SGB redemptions, bond interest (SPEC §9)
+  app/services/capital_gains.py  pure capital gains maths: classification, FIFO lots for funds, term and bucket rules (23 Jul 2024 cut-off), set-off, exemption, fixed-rate tax, bond repayments (SPEC §9); tests in api/tests/test_capital_gains.py and test_capital_gains_api.py
+  app/schemas/analytics_gains.py  response models for GET /api/analytics/capital-gains
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py); /api/holdings/mf/{id}/transactions: one fund's transactions, 10 a page, with a sip flag; MF rows carry the running `sip` summary
   app/models/stock_master.py, bond_master.py, mf_master.py, fd_issuer_master.py  master tables (one per asset class, never merged); app/schemas/market_master.py read models
   app/routers/master.py  /api/master/mf: active MF scheme search (trigram) and lookup by scheme_code; /api/master/stock, /stock/{id}, /bond, /bond/{id}: securities search and lookup; /api/master/nps, /nps/{scheme_id}: NPS scheme search (scheme or PFM name, with latest NAV) and lookup; /api/master/fd-issuer, /fd-issuer/{id}: FD/RD bank and issuer search and lookup; /api/master/gold/rate?metal&purity&date: IBJA gold or silver rate on or up to 7 days before a date (gold form auto-fill); /api/master/other/categories: the user's Other categories, most used first (category field suggestions)
@@ -100,7 +103,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/jobs/nps_import.py  CLI: `python -m app.jobs.nps_import` runs the NPS NAV import
   app/jobs/nsdl_convert.py  local CLI (dev deps only): `python -m app.jobs.nsdl_convert <xlsx> [--as-of]` turns the NSDL "List of Securities" export into api/data/nsdl_securities.csv
   data/                 committed seed and NSDL CSVs read by the bond import: sgb_tranches.csv, tax_free_bonds.csv, nsdl_securities.csv; FD/RD issuer seeds: fd_issuer_bank_aliases.csv, fd_issuers_nbfc_hfc.csv
-  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches), 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id, 0029 holding_exits (sales and settlements; SPEC §8b), 0030 holding_fundings ("Paid from"; SPEC §8c)
+  alembic/versions/     0001 initial, 0002 bond face_value, 0003 MF avg_nav Numeric(14,4), 0004 mf_schemes + mf_nav_latest (mf_schemes renamed mf_master in 0007), 0005 mf_nav_history + mf_nav_history_sync, 0006 stock_master + bond_master + master_id, 0007 mf_schemes → mf_master, 0008 bond_master enrichment (issue date/price, rating, sources), 0009 bond_master NSDL fields (coupon type, frequency, issue size, ownership, mode, perpetual, status), 0010 users + refresh_tokens + login_attempts, user_id on holdings, 0011 fd_issuer_master + issuer_id on FD/RD, 0012 users.google_sub, 0013 bonds.invested_amount, 0014 stock_price_latest, 0015 mutual_funds.invested_amount, 0016 mf_transactions, 0017 stock_price_history, 0018 gold_rate_latest + gold_rate_history, 0019 gold_holdings, 0020 cash_holdings, 0021 pf_holdings, 0022 silver: metal on gold holdings and rates, 0023 NPS master and NAV tables, 0024 nps_holdings, 0025 soft delete (deleted_at on the holding tables), 0026 other_holdings, 0027 index tuning (drops the redundant (user_id) holding indexes; multi-column trigram GIN indexes for the stock, bond and MF master searches), 0028 mf_sips, mf_sip_skips, mf_transactions.sip_id, 0029 holding_exits (sales and settlements; SPEC §8b), 0030 holding_fundings ("Paid from"; SPEC §8c), 0031 users.full_name
   vercel.json, .python-version, .vercelignore   Vercel (FastAPI zero-config, region iad1)
 web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flavour)
   AGENTS.md             Next.js 16 warning (auto-generated by next dev) — read it
@@ -142,14 +145,16 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/restore-holding.ts  restoreHolding (used by the Recently deleted page)
   lib/search/  global search logic: normalize, rank (tiers and tie-breaks), static-entries (pages and actions), recents (localStorage wt.search.recent), types
   components/search/  global search UI in the top bar: global-search (trigger, shortcuts, dialog / mobile sheet), search-panel, search-rows, search-model, search-store (in-memory index, preload and refresh), use-browser
-  components/user-menu.tsx  top-bar account menu right of "Add asset": email-initial avatar, "Signed in as <email>", Log out (fetches GET /api/me)
+  components/user-menu.tsx  top-bar account menu right of "Add asset": avatar with initials (email initial without a name), name over email (or "Signed in as <email>"), Edit Name, Log out (fetches GET /api/me)
+  components/edit-name-dialog.tsx  Your Name dialog: Full Name field with the shared rules, PATCH /api/me through apiPatch (SPEC §7)
+  lib/profile.ts  name rules and messages (shared with the API's clean_name) and the avatar initials rule (vitest tests in profile.test.ts)
   components/portfolio/ asset tabs (pills; order and groups from lib/asset-catalog.ts); per-type grid configs (grid/configs/{fd,rd,stock,bond,mf,nps,gold,cash,pf,other}.tsx + shared.tsx, each with a `detail` block for the details page); generic grid (grid/: TanStack Table v9 in manual mode, toolbar, filters, pagination, row actions); edit-dialog.tsx (shared by the grid and the details page); optimistic delete
   components/holding-detail/ holding details page: shared layout for all ten types (header, KPI strip, tenure bar, sections)
   components/asset-type-icon.tsx  shared tinted asset-type icon (details page and add form)
   components/breadcrumb-label.tsx  breadcrumb label context: BreadcrumbLabelProvider (in the (app) layout) and useBreadcrumbLabel (sets the last crumb while mounted)
   components/dashboard/ hero card with net worth and stats (summary-cards.tsx), net worth chart (net-worth-chart.tsx; shadcn chart in components/ui/chart.tsx), allocation donut (allocation-card.tsx) and holdings-by-type table
   components/ui/        shadcn components (calendar.tsx has a custom inline month/year dropdown)
-  lib/api.ts            fetch helpers, ApiError; base URL is same-origin /api
+  lib/api.ts            fetch helpers (apiGet, apiPost, apiPut, apiPatch, apiDelete), ApiError; base URL is same-origin /api
   lib/holding-amounts.ts  bond + MF quantity / price / total helper (vitest tests in holding-amounts.test.ts)
   lib/holdings-cache.ts  version counters bumped on holding create, update, delete or CAS import (markHoldingsStale); the grid, dashboard and details page reload on the next reveal after a change
   lib/allocation.ts  dashboard donut slices: top 5 by value plus "More" when more than 6 types (allocation.test.ts)
@@ -157,7 +162,11 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/dashboard-groups.ts  groups dashboard rows into Deposits, Market-linked, Other with subtotals; hides types with no holdings (dashboard-groups.test.ts)
   app/(app)/analytics/  /analytics page (sidebar "Analytics"); renders components/analytics/analytics.tsx
   components/analytics/ analytics cards: analytics.tsx (container, states, "Prices as of" footer), allocation-card, liquidity-card (style reference), bank-safety-card, coming-up-card, concentration-card, data-health-strip
-  app/(app)/analytics/layout.tsx  analytics layout with the Overview · Performance · Interest & TDS tabs (components/analytics/analytics-tabs.tsx)
+  app/(app)/analytics/layout.tsx  analytics layout with the Overview · Performance · Interest & TDS · Capital Gains tabs (components/analytics/analytics-tabs.tsx)
+  app/(app)/analytics/gains/page.tsx  /analytics/gains: renders components/analytics/gains.tsx (Capital Gains tab)
+  components/analytics/gains.tsx  Capital Gains tab: toolbar (financial year and slab Selects), states, empty year, tax-free SGB card, footnotes
+  components/analytics/gains-summary.tsx, gains-bond-interest.tsx, gains-buckets-card.tsx, gains-sales-card.tsx, gains-expected-card.tsx  Capital Gains cards: summary with estimated tax, bond interest line, gains by type of tax, sales with lots and flags, bonds expected later this year
+  lib/capital-gains.ts  capital gains types, estimated tax (slab and 4% cess), holding period, term, source and flag text, bucket notes, footnotes (vitest tests in capital-gains.test.ts)
   app/(app)/analytics/performance/page.tsx  /analytics/performance: renders components/analytics/performance.tsx (two columns: growth, then returns)
   components/analytics/performance.tsx  Performance tab: growth and returns cards together
   components/analytics/growth-change-card.tsx, growth-months-card.tsx  growth cards: change in net worth split into new money and growth, and the last 12 months
@@ -215,7 +224,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - Web: `cd web && npm run lint && npm run build`
 - Web unit tests: `cd web && npm test` (vitest)
 - API: start on a spare port (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and curl it; stop it afterwards.
-- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0030`).
+- Migrations: `cd api && .venv/bin/alembic upgrade head` / `alembic current` (head = `0031`).
 - UI: click through in a browser against `npm run dev`.
 
 ## Non-negotiable rules (user-decided)
@@ -231,6 +240,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 9. **Numerical code needs passing unit tests before commit**: the analytics, portfolio and dashboard APIs (valuation, aggregation, classification, windows, thresholds). Keep the tests up to date whenever a calculation changes.
 10. **Analytics UI uses the modern minimal card style**, with `web/components/analytics/liquidity-card.tsx` as the reference: small uppercase label, headline figure and subline, one compact visual, legend rows, linked hover across visual and rows, and a themed Select (not chips) for any view switch.
 11. **Dropdown and menu option labels use Title Case** ("By Asset Class", "This Month"); form options go through `titleCase` in `components/forms/fields.tsx`.
+12. **Empty grids keep their toolbar and headers and show the message inside the table; never an empty message while loading.**
 
 ## Gotchas
 

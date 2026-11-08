@@ -1,4 +1,36 @@
-# HANDOFF — session resume notes (2026-11-03)
+# HANDOFF — session resume notes (2026-11-08)
+
+## Resume notes (2026-11-08)
+
+### Where things stand
+- Shipped and pushed today (`origin/main` was at `ab31f12` before this docs commit):
+  - Capital gains report (SPEC §9): `GET /api/analytics/capital-gains?fy=` (`services/capital_gains.py`, `routers/analytics_gains.py`) and the Capital Gains tab `/analytics/gains`. Sales are classified, MF sales split into FIFO lots, taxed by term and bucket, set off within the year, with the equity long-term exemption and an estimated tax at the slab chosen in the browser (plus 4% cess). Bonds count without a Sell (maturities and planned sales at face value × quantity against the invested amount, estimated; later ones under `expected`; SGB maturities tax-free), and the tab shows a bond interest line from the Interest & TDS maths.
+  - Loading and empty states (SPEC §5): skeleton rows on Active / Closed switch, dimmed rows under a progress bar on refetch, the empty message inside the table, never while loading. New rule 12 in AGENTS.md.
+  - Full name and initials (SPEC §7): `users.full_name` (migration `0031`), `PATCH /api/auth/me`, optional name at sign-up, Google fills an empty name, avatar initials and an Edit Name dialog.
+- Migration head is 0031. The prod migration runs through the deploy workflow on push.
+
+### Small loose ends
+- Name-based classification: debt and index funds with an unknown MF category, and ETFs, are judged by words in the name (`guessed_class`); check the flagged sales.
+- Multi-asset hybrids are treated as non-equity (`multi_asset` flag); their real tax depends on the equity share.
+- Non-equity sales before 23 Jul 2024 with a long-term holding are listed but not computed (`old_rules`, indexation not modelled).
+- Bonds that repay principal in instalments (amortising) are treated as fully repaid at maturity.
+- Carry-forward of losses to later years is not tracked; grandfathering (pre-1 Feb 2018 equity) is flagged, not computed.
+- `models/holding_exit.py` and the 0029 CHECK constraint still allow destination "renewed", which nothing writes any more. A later migration can drop it.
+- The SPEC §8c gallery note is now documented (the 2026-11-07 loose end is closed).
+- Stock sell-price auto-fill works only for dates with a stored close. Other dates ask the user to enter the price.
+
+### Next items, in order
+1. **Buy more** for existing holdings (an MF lump sum into a held fund, more shares of a held stock). Today each holding is one lot; MF has transactions. Needs a design first; show the user the plan.
+2. **SIP instalments paid from a cash account** (a monthly debit when a SIP posts).
+3. Parked by the user: mobile/PWA, password reset, stock import.
+
+### Working rules for the next session
+- Orchestrator mode: the main agent plans, reviews and commits; builders (Sonnet, **medium** effort per the global rules) edit; scouts and Haiku do lookups and chores. Never Opus.
+- At most 3 builders in parallel, and only after file ownership is split.
+- Builders never git stash, checkout or reset, and never delete web/.next.
+- The user checks UI in their browser (the agent's browser pane isn't signed in).
+- Live API probes use the probe account (credentials in ~/.config/wealth-track/probe.env) on port 8010; rows are named zz-probe-…; delete only those rows.
+- UX first: layman wording; spell out the net worth effect (never a vague "Not tracking"); Title Case options; amber for attention (never red).
 
 ## Resume notes (2026-11-07)
 
