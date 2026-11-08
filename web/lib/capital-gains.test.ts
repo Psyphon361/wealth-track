@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { leftToPay } from "./tax";
 import {
-  bucketShares,
+  bondInterestLeftToPay,
+  sourceText,
+  type CapitalGainsSale,
+  bucketNotes,
   capitalGainsPath,
   estimatedTax,
   flagText,
@@ -119,6 +123,27 @@ describe("flagText", () => {
     expect(flagText("guessed_class")).toBe("Tax type guessed from the name. Check it.");
     expect(flagText("old_rules")).toContain("23 Jul 2024");
     expect(flagText("multi_asset")).toContain("Treated as non-equity.");
+    expect(flagText("estimated")).toBe("Estimated: counted at face value on the repayment date.");
+  });
+});
+
+describe("sourceText", () => {
+  it("labels each source", () => {
+    expect(sourceText("maturity")).toBe("Repaid At Maturity");
+    expect(sourceText("planned_sale")).toBe("Planned Sale");
+    expect(sourceText("sale")).toBe("Sold");
+  });
+});
+
+describe("bondInterestLeftToPay", () => {
+  const bi = { interest_projected: 10000, tds_estimate: 1000 };
+  it("matches the Interest & TDS tab: tax at slab with cess minus TDS", () => {
+    expect(bondInterestLeftToPay(bi, 30)).toBe(leftToPay(10000, 1000, 30));
+    expect(bondInterestLeftToPay(bi, 30)).toBe(2120);
+  });
+  it("is negative for a refund and null without a slab", () => {
+    expect(bondInterestLeftToPay({ interest_projected: 10000, tds_estimate: 2000 }, 5)).toBe(-1480);
+    expect(bondInterestLeftToPay(bi, null)).toBeNull();
   });
 });
 
@@ -130,20 +155,45 @@ describe("rateText", () => {
   });
 });
 
-describe("bucketShares", () => {
-  it("scales positive nets against the largest; others are 0", () => {
-    expect(bucketShares([{ net: 200 }, { net: 50 }, { net: -30 }, { net: 0 }])).toEqual([
-      100, 25, 0, 0,
-    ]);
+describe("bucketNotes", () => {
+  it("is empty with no exemption or set-off", () => {
+    expect(bucketNotes({ set_off: 0, exemption: 0 }, 2025)).toEqual({ short: "", long: "" });
   });
-  it("is all zero when nothing is positive", () => {
-    expect(bucketShares([{ net: -5 }, { net: 0 }])).toEqual([0, 0]);
-    expect(bucketShares([])).toEqual([]);
+  it("explains the exemption with the limit for the year", () => {
+    expect(bucketNotes({ set_off: 0, exemption: 485 }, 2025).short).toBe("₹485 tax-free");
+    expect(bucketNotes({ set_off: 0, exemption: 485 }, 2025).long).toBe(
+      "₹485 of this is tax-free: under Section 112A, the first ₹1.25 lakh of equity long-term gains each year is exempt, in both the old and new tax regimes.",
+    );
+    expect(bucketNotes({ set_off: 0, exemption: 485 }, 2023).long).toContain("₹1 lakh");
+  });
+  it("explains set-off", () => {
+    expect(bucketNotes({ set_off: 1000, exemption: 485 }, 2025).short).toBe(
+      "₹485 tax-free · ₹1,000 offset by losses",
+    );
   });
 });
 
 describe("footnotes", () => {
-  const base = { excluded: { bond_settlements: 0, no_purchase_date: 0, old_rules: 0 }, tax_free: { total: 0, items: [] } };
+  const base = {
+    excluded: { bonds_no_face: 0, no_purchase_date: 0, old_rules: 0 },
+    tax_free: { total: 0, items: [] },
+    sales: [] as CapitalGainsSale[],
+    expected: [] as CapitalGainsSale[],
+  };
+  const sale = (source: CapitalGainsSale["source"]): CapitalGainsSale => ({
+    exit_id: null,
+    source,
+    estimated: source !== "sale",
+    asset_type: "bond",
+    holding_id: 1,
+    name: "B",
+    sold_on: "2026-12-01",
+    proceeds: 100,
+    cost: 90,
+    gain: 10,
+    flags: [],
+    lots: [],
+  });
   it("always has the two standing sentences", () => {
     expect(footnotes(base)).toEqual([
       "Losses are set off within the year only; carrying them forward isn't tracked.",
@@ -153,22 +203,24 @@ describe("footnotes", () => {
   it("adds exclusions with correct singular and plural", () => {
     const one = footnotes({
       ...base,
-      excluded: { bond_settlements: 1, no_purchase_date: 1, old_rules: 1 },
+      excluded: { bonds_no_face: 1, no_purchase_date: 1, old_rules: 1 },
     });
-    expect(one).toContain(
-      "1 bond settlement isn't included (the amount may include the last coupon).",
-    );
+    expect(one).toContain("1 bond without a face value isn't included.");
     expect(one).toContain("1 sale isn't counted: no purchase date.");
     expect(one.some((s) => s.startsWith("1 sale isn't counted: sold before"))).toBe(true);
     const many = footnotes({
       ...base,
-      excluded: { bond_settlements: 3, no_purchase_date: 2, old_rules: 0 },
+      excluded: { bonds_no_face: 3, no_purchase_date: 2, old_rules: 0 },
     });
-    expect(many).toContain(
-      "3 bond settlements aren't included (the amount may include the last coupon).",
-    );
+    expect(many).toContain("3 bonds without a face value aren't included.");
     expect(many).toContain("2 sales aren't counted: no purchase date.");
     expect(many).toHaveLength(4);
+  });
+  it("adds the face value sentence only for maturity or planned sales", () => {
+    const text = "Bonds are counted at face value when they're repaid or sold as planned";
+    expect(footnotes({ ...base, sales: [sale("sale")] }).some((s) => s.startsWith(text))).toBe(false);
+    expect(footnotes({ ...base, sales: [sale("maturity")] }).some((s) => s.startsWith(text))).toBe(true);
+    expect(footnotes({ ...base, expected: [sale("planned_sale")] }).some((s) => s.startsWith(text))).toBe(true);
   });
   it("adds the tax-free sentence in Indian formatting", () => {
     const notes = footnotes({ ...base, tax_free: { total: 260970, items: [] } });

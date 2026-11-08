@@ -8,6 +8,7 @@ const TABS = [
   { href: "/analytics", label: "Overview" },
   { href: "/analytics/performance", label: "Performance" },
   { href: "/analytics/interest", label: "Interest & TDS" },
+  { href: "/analytics/gains", label: "Capital Gains" },
 ];
 
 /** Pill bar linking the analytics sub-pages. */

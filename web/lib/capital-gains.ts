@@ -1,5 +1,5 @@
 import { formatINRWhole } from "./format";
-import { CESS_RATE } from "./tax";
+import { CESS_RATE, leftToPay } from "./tax";
 
 export type CapitalGainsTerm = "short" | "long" | "flat";
 
@@ -17,7 +17,10 @@ export type CapitalGainsFlag =
   | "no_purchase_date"
   | "guessed_class"
   | "old_rules"
-  | "multi_asset";
+  | "multi_asset"
+  | "estimated";
+
+export type CapitalGainsSource = "sale" | "maturity" | "planned_sale";
 
 export interface CapitalGainsFyOption {
   start_year: number;
@@ -62,7 +65,9 @@ export interface CapitalGainsLot {
 }
 
 export interface CapitalGainsSale {
-  exit_id: number;
+  exit_id: number | null;
+  source: CapitalGainsSource;
+  estimated: boolean;
   asset_type: "stock" | "bond" | "mf" | "gold" | "other";
   holding_id: number;
   name: string;
@@ -75,13 +80,21 @@ export interface CapitalGainsSale {
 }
 
 export interface CapitalGainsTaxFreeItem {
-  exit_id: number;
+  exit_id: number | null;
   holding_id: number;
   name: string;
+  estimated: boolean;
   settled_on: string;
   amount: number;
   cost: number;
   gain: number;
+}
+
+export interface CapitalGainsBondInterest {
+  interest_to_date: number;
+  interest_projected: number;
+  tds_estimate: number;
+  holdings_count: number;
 }
 
 export interface CapitalGains {
@@ -94,8 +107,11 @@ export interface CapitalGains {
   summary: CapitalGainsSummary;
   buckets: CapitalGainsBucket[];
   sales: CapitalGainsSale[];
+  expected: CapitalGainsSale[];
+  expected_gain: number;
+  bond_interest: CapitalGainsBondInterest | null;
   tax_free: { total: number; items: CapitalGainsTaxFreeItem[] };
-  excluded: { bond_settlements: number; no_purchase_date: number; old_rules: number };
+  excluded: { bonds_no_face: number; no_purchase_date: number; old_rules: number };
 }
 
 export const CAPITAL_GAINS_PATH = "/analytics/capital-gains";
@@ -185,10 +201,29 @@ const FLAG_TEXT: Record<CapitalGainsFlag, string> = {
   old_rules: "Sold before 23 Jul 2024, under the old rules with indexation. Not counted in the tax.",
   multi_asset:
     "Multi-asset fund: its tax depends on its equity share. Treated as non-equity.",
+  estimated: "Estimated: counted at face value on the repayment date.",
 };
 
 export function flagText(code: CapitalGainsFlag): string {
   return FLAG_TEXT[code];
+}
+
+export function sourceText(source: CapitalGainsSource): string {
+  if (source === "maturity") return "Repaid At Maturity";
+  if (source === "planned_sale") return "Planned Sale";
+  return "Sold";
+}
+
+/**
+ * Bond interest left to pay at the slab, from the same figures as the Interest & TDS tab
+ * (projected interest, estimated TDS, tax at slab with cess). Null without a slab;
+ * negative means a refund is due.
+ */
+export function bondInterestLeftToPay(
+  bi: Pick<CapitalGainsBondInterest, "interest_projected" | "tds_estimate">,
+  slabPct: number | null,
+): number | null {
+  return slabPct === null ? null : leftToPay(bi.interest_projected, bi.tds_estimate, slabPct);
 }
 
 /** "Your Slab", or the rate: "20%", "12.5%". */
@@ -196,24 +231,50 @@ export function rateText(bucket: Pick<CapitalGainsBucket, "rate">): string {
   return bucket.rate === null ? "Your Slab" : `${bucket.rate}%`;
 }
 
-/** Bar fill (0-100) per bucket: its positive net against the largest positive net; 0 otherwise. */
-export function bucketShares(buckets: Pick<CapitalGainsBucket, "net">[]): number[] {
-  const max = buckets.reduce((m, b) => (b.net > m ? b.net : m), 0);
-  return buckets.map((b) => (max > 0 && b.net > 0 ? (b.net / max) * 100 : 0));
+/** Equity long-term exemption per year: ₹1.25 lakh from FY 2024-25, ₹1 lakh before. */
+export function exemptionLimitText(fyStartYear: number): string {
+  return fyStartYear >= 2024 ? "₹1.25 lakh" : "₹1 lakh";
+}
+
+/** Plain-words notes for a bucket: a short line, and the full reason for the info popover. */
+export function bucketNotes(
+  bucket: Pick<CapitalGainsBucket, "set_off" | "exemption">,
+  fyStartYear: number,
+): { short: string; long: string } {
+  const short: string[] = [];
+  const long: string[] = [];
+  if (bucket.exemption > 0) {
+    short.push(`${formatINRWhole(bucket.exemption)} tax-free`);
+    long.push(
+      `${formatINRWhole(bucket.exemption)} of this is tax-free: under Section 112A, the first ${exemptionLimitText(fyStartYear)} of equity long-term gains each year is exempt, in both the old and new tax regimes.`,
+    );
+  }
+  if (bucket.set_off > 0) {
+    short.push(`${formatINRWhole(bucket.set_off)} offset by losses`);
+    long.push(
+      `${formatINRWhole(bucket.set_off)} of this gain was offset by losses from other sales this year, so it is not taxed.`,
+    );
+  }
+  return { short: short.join(" · "), long: long.join(" ") };
 }
 
 /** Plain-sentence notes under the page. */
 export function footnotes(
-  data: Pick<CapitalGains, "excluded" | "tax_free">,
+  data: Pick<CapitalGains, "excluded" | "tax_free" | "sales" | "expected">,
 ): string[] {
   const out = [
     "Losses are set off within the year only; carrying them forward isn't tracked.",
     "Surcharge and the 87A rebate are ignored; 4% cess is added.",
   ];
-  const { bond_settlements: bonds, no_purchase_date: noDate, old_rules: old } = data.excluded;
-  if (bonds > 0) {
+  const { bonds_no_face: noFace, no_purchase_date: noDate, old_rules: old } = data.excluded;
+  if (noFace > 0) {
     out.push(
-      `${bonds} bond ${bonds === 1 ? "settlement isn't" : "settlements aren't"} included (the amount may include the last coupon).`,
+      `${noFace} ${noFace === 1 ? "bond without a face value isn't" : "bonds without a face value aren't"} included.`,
+    );
+  }
+  if ([...data.sales, ...data.expected].some((x) => x.source !== "sale")) {
+    out.push(
+      "Bonds are counted at face value when they're repaid or sold as planned, whether or not you've settled them. Bonds that repay principal in instalments are treated as repaid in full at maturity.",
     );
   }
   if (noDate > 0) {
