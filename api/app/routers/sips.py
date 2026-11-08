@@ -18,6 +18,7 @@ from app.schemas.messages import Outcome
 from app.schemas.sip import (
     SIP_END_BEFORE_START_ERROR,
     SIP_HOLDING_MISMATCH_ERROR,
+    SIP_HOLDING_SOLD_ERROR,
     SIP_INACTIVE_SCHEME_ERROR,
     SIP_NO_INSTALMENT_ERROR,
     SIP_SKIP_NOT_UPCOMING_ERROR,
@@ -144,12 +145,15 @@ def create_sip(
             )
         if holding.scheme_code != body.scheme_code:
             raise _invalid("mutual_fund_id", SIP_HOLDING_MISMATCH_ERROR, body.mutual_fund_id)
+        if holding.closed_on is not None:
+            raise _invalid("mutual_fund_id", SIP_HOLDING_SOLD_ERROR, body.mutual_fund_id)
         holding_id = holding.id
     else:
         matches = db.scalars(
             sa.select(MutualFund.id).where(
                 MutualFund.user_id == user.id,
                 MutualFund.scheme_code == body.scheme_code,
+                MutualFund.closed_on.is_(None),  # a sold holding never takes units
                 sa.func.lower(sa.func.trim(MutualFund.platform)) == body.platform.lower(),
             )
         ).all()

@@ -86,6 +86,94 @@ def test_update_of_a_fund_with_sales_is_refused_and_saves_nothing(mf_client, use
     assert mf_client.get(f"/api/assets/mf/{mine['id']}", headers=a).json()["units"] == 20
 
 
+def test_chosen_holdings_are_locked_together_in_id_order(mf_client, users, auth_engine):  # noqa: F811
+    import sqlalchemy as sa
+    from sqlalchemy import event
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.orm import Session
+
+    a = users[0]
+    low = add_fund(mf_client, a)
+    high = mf_client.post(
+        "/api/assets/mf?confirm_duplicate=true", headers=a,
+        json=dict(
+            scheme_name="Fund A - Direct Growth", scheme_code=100, category="equity", units=10,
+            avg_nav=100, invested_amount=1000, purchase_date="2024-01-01",
+        ),
+    ).json()  # fmt: skip
+    record_sale(auth_engine, low["id"])
+    seen: list[str] = []
+
+    def listener(state):
+        if isinstance(state.statement, sa.Select):
+            sql = str(state.statement.compile(dialect=postgresql.dialect()))
+            if "FOR UPDATE" in sql and "FROM mutual_funds" in sql:
+                seen.append(sql)
+
+    event.listen(Session, "do_orm_execute", listener)
+    try:  # request order [high, low]; the sold one comes second
+        r = commit(
+            mf_client, a,
+            [
+                commit_row(action="update", holding_id=high["id"], units=20, avg_nav=50),
+                commit_row(action="update", holding_id=low["id"], units=20, avg_nav=50),
+            ],
+        )  # fmt: skip
+    finally:
+        event.remove(Session, "do_orm_execute", listener)
+    assert r.status_code == 422 and "Sales are recorded" in r.json()["description"]
+    assert " IN (" in seen[0] and "ORDER BY mutual_funds.id" in seen[0]  # one id-ordered lock first
+
+
+def test_sold_holdings_are_refused_without_being_locked(mf_client, users, auth_engine):  # noqa: F811
+    """A SIP posting run locks a sold fund before the active one; the import must not lock it."""
+    import sqlalchemy as sa
+    from sqlalchemy import event
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.orm import Session
+
+    a = users[0]
+    low = add_fund(mf_client, a)
+    high = mf_client.post(
+        "/api/assets/mf?confirm_duplicate=true", headers=a,
+        json=dict(
+            scheme_name="Fund A - Direct Growth", scheme_code=100, category="equity", units=10,
+            avg_nav=100, invested_amount=1000, purchase_date="2024-01-01",
+        ),
+    ).json()  # fmt: skip
+    record_sale(auth_engine, low["id"])
+    seen: list[str] = []
+
+    def listener(state):
+        if isinstance(state.statement, sa.Select):
+            sql = str(
+                state.statement.compile(
+                    dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}
+                )
+            )
+            if "FOR UPDATE" in sql and "FROM mutual_funds" in sql:
+                seen.append(sql)
+
+    event.listen(Session, "do_orm_execute", listener)
+    try:
+        r = commit(
+            mf_client, a,
+            [
+                commit_row(action="update", holding_id=high["id"], units=20, avg_nav=50),
+                commit_row(action="update", holding_id=low["id"], units=20, avg_nav=50),
+            ],
+        )  # fmt: skip
+    finally:
+        event.remove(Session, "do_orm_execute", listener)
+    assert r.status_code == 422 and "Sales are recorded" in r.json()["description"]
+    first = seen[0]
+    assert f"IN ({high['id']})" in first and "ORDER BY mutual_funds.id" in first
+    assert not any(
+        f"mutual_funds.id = {low['id']}" in sql or f"IN ({low['id']}" in sql or f", {low['id']}" in sql
+        for sql in seen
+    )
+
+
 def seed_sip_fund(client, headers, engine):
     mine = add_fund(client, headers)
     hid = mine["id"]

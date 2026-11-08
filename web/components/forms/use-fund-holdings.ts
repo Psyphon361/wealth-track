@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { apiGet } from "@/lib/api";
 import { holdingsVersion } from "@/lib/holdings-cache";
+import { isSoldHolding } from "@/lib/sip";
 import type { HoldingsResponse, MutualFundItem } from "@/lib/types";
 
 /** The few fields of an MF holding the SIP form needs to offer "Add to". */
@@ -28,6 +29,7 @@ async function fetchAll(): Promise<FundHolding[]> {
     const res = await apiGet<HoldingsResponse<MutualFundItem>>(`/holdings/mf?page=${page}`);
     pageCount = res.page_count;
     for (const r of res.items) {
+      if (isSoldHolding(r)) continue; // "Add to" never offers a sold holding
       out.push({
         id: r.id,
         scheme_code: r.scheme_code ?? null,

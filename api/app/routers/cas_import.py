@@ -90,6 +90,20 @@ def commit(
         raise _reject(422, title, cas_import.FUTURE_STATEMENT_DATE)
     prepared = []
     seen_holdings: set[int] = set()
+    # Lock the chosen holdings in ascending id order first, so the order of the request can't
+    # cause a deadlock. A SIP posting run locks a sold fund first, then the active holding of the
+    # same fund (ascending ids), so sold holdings are never locked here: they are found on an
+    # unlocked read and refused (below) before any lock, and only the others are locked.
+    wanted = sorted({r.holding_id for r in body.rows if r.action == "update" and r.holding_id is not None})
+    sold_before = cas_import.sold_holding_ids(db, user.id, wanted)
+    to_lock = [i for i in wanted if i not in sold_before]
+    if to_lock:
+        db.scalars(
+            select(MutualFund.id)
+            .where(MutualFund.id.in_(to_lock), MutualFund.user_id == user.id)
+            .order_by(MutualFund.id)
+            .with_for_update(of=MutualFund)
+        ).all()
     for row in body.rows:
         name = row.scheme_name
         try:
@@ -110,6 +124,8 @@ def commit(
 
         holding = None
         if row.action == "update":
+            if row.holding_id in sold_before:  # refused without taking its lock
+                raise _reject(422, title, cas_import.sales_error(name))
             if row.holding_id is not None and row.holding_id not in seen_holdings:
                 holding = db.scalars(
                     select(MutualFund)

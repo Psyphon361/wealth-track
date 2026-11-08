@@ -266,6 +266,23 @@ def test_due_date_older_than_stored_history_takes_the_first_nav(sdb):
     assert sip_service.nav_for_due(sdb, CODE, date(2026, 1, 5)) == (date(2026, 6, 1), D("50"))
 
 
+def test_without_a_fetch_a_nav_needs_history_that_covers_the_due_date(sdb):
+    sdb.add(MFNavHistory(scheme_code=CODE, nav_date=date(2026, 2, 2), nav=D("50")))
+    sdb.commit()
+    due = date(2026, 1, 31)
+    # NAV rows but no sync row (history never loaded or its fetch failed): not trusted.
+    assert sip_service.nav_for_due(sdb, CODE, due, fetch=False) is None
+    # Once the stored history covers the due date, the NAV within the gap is used.
+    sdb.add(
+        MFNavHistorySync(
+            scheme_code=CODE, first_date=date(2026, 1, 1), last_date=date(2026, 2, 2),
+            fetched_at=datetime.now(timezone.utc),
+        )
+    )  # fmt: skip
+    sdb.commit()
+    assert sip_service.nav_for_due(sdb, CODE, due, fetch=False) == (date(2026, 2, 2), D("50"))
+
+
 def test_a_nav_far_after_the_due_date_is_a_gap_not_a_holiday(sdb):
     add_nav(sdb, CODE, date(2026, 1, 2))
     add_nav(sdb, CODE, date(2026, 3, 5))  # nothing for six weeks in between
@@ -376,15 +393,63 @@ def test_deleted_holding_is_skipped(sdb):
     sdb.commit()
     add_nav(sdb, CODE, date(2026, 1, 5))
     sip = new_sip(sdb, mutual_fund_id=holding.id)
-    assert post_due(sdb, date(2026, 1, 10)) == {sip.id: 0}
-    assert sdb.scalar(select(func.count()).select_from(MFTransaction)) == 0
-    assert sdb.scalar(select(func.count()).select_from(MutualFund).execution_options(include_deleted=True)) == 1
+    assert post_due(sdb, date(2026, 1, 10)) == {sip.id: 1}
+    sdb.refresh(sip)
+    assert sip.mutual_fund_id != holding.id  # moved to a fresh holding
+    assert len(txns_of(sdb, holding.id)) == 0  # the deleted row is untouched
+    deleted = sdb.scalars(
+        select(MutualFund).where(MutualFund.id == holding.id).execution_options(include_deleted=True)
+    ).one()
+    assert (deleted.units, deleted.invested_amount) == (D("100"), D("4000"))
+    assert deleted.deleted_at is not None
+    assert len(txns_of(sdb, sip.mutual_fund_id)) == 1
+    assert sdb.scalar(select(func.count()).select_from(MutualFund)) == 1  # active ones only
 
 
-def test_purged_holding_does_not_come_back(sdb):
+def test_deleted_holding_posts_into_the_existing_active_one(sdb):
+    deleted = MutualFund(
+        user_id=USER, scheme_name="Fund A", scheme_code=CODE, platform="Groww", category="equity",
+        units=D("100"), avg_nav=D("40"), invested_amount=D("4000"), purchase_date=date(2025, 6, 1),
+        deleted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )  # fmt: skip
+    active = MutualFund(
+        user_id=USER, scheme_name="Fund A", scheme_code=CODE, platform=" groww ", category="equity",
+        units=D("10"), avg_nav=D("40"), invested_amount=D("400"), purchase_date=date(2025, 7, 1),
+    )  # fmt: skip
+    sdb.add_all([deleted, active])
+    sdb.commit()
+    add_nav(sdb, CODE, date(2026, 1, 5))
+    sip = new_sip(sdb, mutual_fund_id=deleted.id)
+    assert post_due(sdb, date(2026, 1, 10)) == {sip.id: 1}
+    sdb.refresh(sip)
+    assert sip.mutual_fund_id == active.id
+    assert len(txns_of(sdb, deleted.id)) == 0
+
+
+def test_purged_holding_keeps_running(sdb):
     add_nav(sdb, CODE, date(2026, 2, 5))
     sip = new_sip(sdb, mutual_fund_id=None, last_posted_on=date(2026, 1, 5))
-    assert post_due(sdb, date(2026, 2, 10)) == {sip.id: 0}
+    assert post_due(sdb, date(2026, 2, 10)) == {sip.id: 1}
+    sdb.refresh(sip)
+    assert sip.mutual_fund_id is not None
+    assert sip.last_posted_on == date(2026, 2, 5)
+    assert sdb.scalar(select(func.count()).select_from(MutualFund)) == 1
+    assert post_due(sdb, date(2026, 2, 10)) == {sip.id: 0}  # idempotent
+    assert len(txns_of(sdb, sip.mutual_fund_id)) == 1
+
+
+def test_paused_sip_with_deleted_holding_posts_nothing(sdb):
+    holding = MutualFund(
+        user_id=USER, scheme_name="Fund A", scheme_code=CODE, platform="Groww", category="equity",
+        units=D("100"), avg_nav=D("40"), invested_amount=D("4000"), purchase_date=date(2025, 6, 1),
+        deleted_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )  # fmt: skip
+    sdb.add(holding)
+    sdb.commit()
+    add_nav(sdb, CODE, date(2026, 1, 5))
+    sip = new_sip(sdb, mutual_fund_id=holding.id, status="paused")
+    assert post_due(sdb, date(2026, 1, 10)) == {}
+    assert sdb.scalar(select(func.count()).select_from(MFTransaction)) == 0
     assert sdb.scalar(select(func.count()).select_from(MutualFund)) == 0
 
 
@@ -421,10 +486,10 @@ def test_one_failing_sip_does_not_stop_the_others(sdb, monkeypatch):
     good = new_sip(sdb, scheme_code=101)
     real = sip_service.nav_for_due
 
-    def flaky(session, scheme_code, due):
+    def flaky(session, scheme_code, due, fetch=True):
         if scheme_code == CODE:
             raise RuntimeError("boom")
-        return real(session, scheme_code, due)
+        return real(session, scheme_code, due, fetch)
 
     monkeypatch.setattr(sip_service, "nav_for_due", flaky)
     assert post_due(sdb, date(2026, 1, 10)) == {bad.id: 0, good.id: 1}

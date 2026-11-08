@@ -31,6 +31,7 @@ SIP_INACTIVE_SCHEME_ERROR = "This scheme is no longer active"
 SIP_SKIP_NOT_UPCOMING_ERROR = "Pick an upcoming instalment date"
 SIP_NO_INSTALMENT_ERROR = "There is no upcoming instalment to skip"
 SIP_HOLDING_MISMATCH_ERROR = "This holding is a different fund"
+SIP_HOLDING_SOLD_ERROR = "This holding has been sold"
 # Amount above the limit and dates before 1990 reuse the shared messages in schemas/assets.py:
 # "Must be at most ₹100 crore" and "Date must be on or after 1 Jan 1990".
 

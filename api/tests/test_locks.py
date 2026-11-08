@@ -287,3 +287,194 @@ def test_sip_posting_locks_the_fund_row(sdb, locked_statements):  # noqa: F811
     locked_statements.clear()
     post_due(sdb, date(2026, 3, 10))
     assert "mutual_funds" in locked_tables(locked_statements)
+
+
+def test_sip_posting_loads_nav_history_before_any_lock_and_commits_once_after(sdb, monkeypatch):  # noqa: F811
+    """A history fetch commits; inside the locked loop that would drop the locks."""
+    from datetime import datetime, timezone
+
+    from app.models import MFNavHistory, MFNavHistorySync
+    from app.services import sip as sip_service
+
+    log: list[str] = []
+
+    def fake_fetch(session, code):
+        log.append("fetch")
+        for day in (date(2026, 1, 5), date(2026, 2, 5)):
+            session.add(MFNavHistory(scheme_code=code, nav_date=day, nav=Decimal("50")))
+        session.add(
+            MFNavHistorySync(
+                scheme_code=code, first_date=date(2025, 1, 1), last_date=date(2026, 2, 5),
+                fetched_at=datetime.now(timezone.utc),
+            )
+        )  # fmt: skip
+        session.commit()  # what store_history does
+
+    def on_execute(state):
+        statement = state.statement
+        if isinstance(statement, sa.Select) and "FOR UPDATE" in str(
+            statement.compile(dialect=postgresql.dialect())
+        ):
+            log.append("lock")
+
+    def on_commit(_session):
+        log.append("commit")
+
+    def on_rollback(_session):
+        log.append("rollback")
+
+    monkeypatch.setattr(sip_service, "ensure_history", fake_fetch)
+    sip = new_sip(sdb, start_date=date(2026, 1, 5), post_from=date(2026, 1, 5))
+    log.clear()
+    event.listen(Session, "do_orm_execute", on_execute)
+    event.listen(Session, "after_commit", on_commit)
+    event.listen(Session, "after_rollback", on_rollback)
+    try:
+        assert post_due(sdb, date(2026, 2, 10)) == {sip.id: 2}
+    finally:
+        event.remove(Session, "do_orm_execute", on_execute)
+        event.remove(Session, "after_commit", on_commit)
+        event.remove(Session, "after_rollback", on_rollback)
+
+    assert log.count("fetch") == 1
+    first_lock = log.index("lock")
+    assert log.index("fetch") < first_lock
+    assert log[first_lock:].count("commit") == 1 and log[-1] == "commit"
+    assert "rollback" not in log[first_lock:]
+
+
+def test_a_sip_paused_after_it_was_loaded_posts_nothing(sdb, monkeypatch):  # noqa: F811
+    from app.services import sip as sip_service
+
+    add_nav(sdb, CODE, date(2026, 3, 5))
+    sip = new_sip(sdb, start_date=date(2026, 3, 5), post_from=date(2026, 3, 5))
+    real = sip_service._prefetch_history
+
+    def pause_meanwhile(session, loaded, today):
+        real(session, loaded, today)
+        session.execute(  # a pause committed by another request after post_due loaded the SIP
+            sa.update(MfSip.__table__).where(MfSip.__table__.c.id == loaded.id).values(status="paused")
+        )
+
+    monkeypatch.setattr(sip_service, "_prefetch_history", pause_meanwhile)
+    assert post_due(sdb, date(2026, 3, 10)) == {sip.id: 0}
+    sdb.expire_all()
+    assert sdb.get(MfSip, sip.id).last_posted_on is None
+    assert sdb.scalar(sa.select(sa.func.count()).select_from(MutualFund)) == 0
+
+
+def test_a_sip_linked_by_another_run_meanwhile_posts_nothing_and_makes_no_second_holding(  # noqa: F811
+    sdb, monkeypatch
+):
+    from app.models import MFTransaction
+    from app.services import sip as sip_service
+
+    add_nav(sdb, CODE, date(2026, 3, 5))
+    other = MutualFund(
+        user_id=USER, scheme_name="Fund A - Direct Growth", scheme_code=CODE, platform="Other",
+        category="equity", units=Decimal("10"), avg_nav=Decimal("40"),
+        invested_amount=Decimal("400"), purchase_date=date(2025, 6, 1),
+    )  # fmt: skip
+    sdb.add(other)
+    sdb.commit()
+    sip = new_sip(sdb, start_date=date(2026, 3, 5), post_from=date(2026, 3, 5))  # no holding linked
+    real = sip_service._active_target
+
+    def linked_meanwhile(session, loaded):
+        found = real(session, loaded)  # the choice is made while the SIP has no holding
+        session.execute(  # ... then another run links the SIP and commits
+            sa.update(MfSip.__table__)
+            .where(MfSip.__table__.c.id == loaded.id)
+            .values(mutual_fund_id=other.id)
+        )
+        session.commit()
+        return found
+
+    monkeypatch.setattr(sip_service, "_active_target", linked_meanwhile)
+    assert post_due(sdb, date(2026, 3, 10)) == {sip.id: 0}
+    sdb.expire_all()
+    assert sdb.scalar(sa.select(sa.func.count()).select_from(MutualFund)) == 1
+    assert sdb.scalar(sa.select(sa.func.count()).select_from(MFTransaction)) == 0
+    assert sdb.get(MfSip, sip.id).last_posted_on is None
+
+
+def test_every_early_exit_after_the_locks_ends_the_transaction(sdb, monkeypatch):  # noqa: F811
+    """No fund or SIP row lock may stay open while the next SIP's history is fetched."""
+    from app.services import sip as sip_service
+
+    add_nav(sdb, CODE, date(2026, 3, 5))
+    cases = {
+        "paused": dict(start_date=date(2026, 3, 5), post_from=date(2026, 3, 5)),
+        "nothing due": dict(start_date=date(2026, 4, 5), post_from=date(2026, 4, 5)),
+    }
+    for name, fields in cases.items():
+        sip = new_sip(sdb, **fields)
+        if name == "paused":
+            sdb.execute(
+                sa.update(MfSip.__table__).where(MfSip.__table__.c.id == sip.id).values(status="paused")
+            )
+        log: list[str] = []
+
+        def on_execute(state, log=log):
+            statement = state.statement
+            if isinstance(statement, sa.Select) and "FOR UPDATE" in str(
+                statement.compile(dialect=postgresql.dialect())
+            ):
+                log.append("lock")
+
+        def on_commit(_s, log=log):
+            log.append("commit")
+
+        def on_rollback(_s, log=log):
+            log.append("rollback")
+
+        event.listen(Session, "do_orm_execute", on_execute)
+        event.listen(Session, "after_commit", on_commit)
+        event.listen(Session, "after_rollback", on_rollback)
+        try:
+            assert sip_service._post_one(sdb, sip, date(2026, 3, 10)) == 0
+        finally:
+            event.remove(Session, "do_orm_execute", on_execute)
+            event.remove(Session, "after_commit", on_commit)
+            event.remove(Session, "after_rollback", on_rollback)
+        tail = log[log.index("lock"):]
+        assert tail[-1] == "rollback", (name, log)
+        assert "commit" not in tail, (name, log)
+        sdb.execute(sa.delete(MfSip.__table__))
+        sdb.commit()
+
+
+def test_two_matching_holdings_after_a_sale_make_one_fresh_holding(sdb):  # noqa: F811
+    from app.models import MFTransaction
+
+    add_nav(sdb, CODE, date(2026, 1, 5))
+    add_nav(sdb, CODE, date(2026, 2, 5))
+
+    def fund(**kw):
+        fields = dict(
+            user_id=USER, scheme_name="Fund A - Direct Growth", scheme_code=CODE, platform="Groww",
+            category="equity", units=Decimal("10"), avg_nav=Decimal("40"),
+            invested_amount=Decimal("400"), purchase_date=date(2025, 6, 1),
+        )  # fmt: skip
+        fields.update(kw)
+        row = MutualFund(**fields)
+        sdb.add(row)
+        sdb.commit()
+        return row
+
+    sold = fund(closed_on=date(2025, 12, 1))
+    fund()
+    fund()
+    sip = new_sip(sdb, mutual_fund_id=sold.id, start_date=date(2026, 1, 5), post_from=date(2026, 1, 5))
+    assert post_due(sdb, date(2026, 2, 10)) == {sip.id: 2}
+    sdb.expire_all()
+    assert sdb.scalar(sa.select(sa.func.count()).select_from(MutualFund)) == 4
+    fresh_id = sdb.get(MfSip, sip.id).mutual_fund_id
+    assert fresh_id != sold.id
+    fresh = sdb.get(MutualFund, fresh_id)
+    assert fresh.closed_on is None and fresh.units > Decimal("100")
+    assert sdb.scalar(
+        sa.select(sa.func.count())
+        .select_from(MFTransaction)
+        .where(MFTransaction.mutual_fund_id == fresh_id)
+    ) == 2

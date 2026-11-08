@@ -375,5 +375,10 @@ export function showMoreLabel(total: number, loaded: number, pageSize = 10): str
   return left <= pageSize ? `Show ${left} more` : `Show ${pageSize} more · ${left} left`;
 }
 
+/** A sold holding keeps its old units as a closed record; a SIP never adds to it. */
+export function isSoldHolding(h: { closed_on?: string | null; status?: string }): boolean {
+  return Boolean(h.closed_on) || h.status === "sold";
+}
+
 export const SIPS_VIEW_HREF = "/portfolio/mf?view=sips";
 export const ADD_SIP_HREF = "/add/mf?tab=sip";

@@ -160,11 +160,16 @@ def ensure_history(session: Session, scheme_code: int) -> None:
         logger.warning("SIP NAV history fetch failed for scheme %s", scheme_code, exc_info=True)
 
 
-def nav_for_due(session: Session, scheme_code: int, due: date) -> tuple[date, Decimal] | None:
+def nav_for_due(
+    session: Session, scheme_code: int, due: date, fetch: bool = True
+) -> tuple[date, Decimal] | None:
     """(nav_date, nav) of the first NAV dated on or after `due`, or None when not published yet.
 
     Never falls back to the latest NAV for a past date (that is what nav_history.resolve_nav does,
     which is wrong for an instalment dated before the latest NAV).
+
+    `fetch=False` reads stored history only: no network, no commit, no rollback (used while
+    row locks are held, since a commit would release them).
     """
     latest = session.get(MFNavLatest, scheme_code)
     if latest is not None and latest.nav_date == due:
@@ -174,16 +179,23 @@ def nav_for_due(session: Session, scheme_code: int, due: date) -> tuple[date, De
     covered = sync is not None and sync.first_date is not None and sync.first_date <= due
     if found is not None and covered and found[0] - due <= MAX_NAV_GAP:
         return found
-    ensure_history(session, scheme_code)
+    if fetch:
+        ensure_history(session, scheme_code)
     found = _first_nav_on_or_after(session, scheme_code, due)
     if found is None:
         return None
+    sync = session.get(MFNavHistorySync, scheme_code)
+    older_than_history = sync is not None and sync.first_date is not None and sync.first_date > due
+    covered = sync is not None and sync.first_date is not None and sync.first_date <= due
     if found[0] - due <= MAX_NAV_GAP:
-        return found
+        # Without a fetch, only trust stored history that covers the due date (or predates it
+        # for good): a prefetch that failed or saw other dates must not post at a guessed NAV.
+        if fetch or covered or older_than_history:
+            return found
+        return None
     # A NAV far after the due date means the history has a gap, not a holiday: wait for it to
     # fill. The exception is a due date older than the stored history, which can't improve.
-    sync = session.get(MFNavHistorySync, scheme_code)
-    if sync is not None and sync.first_date is not None and sync.first_date > due:
+    if older_than_history:
         return found
     return None
 
@@ -219,9 +231,56 @@ def ensure_opening_transaction(session: Session, holding: MutualFund) -> MFTrans
     return opening
 
 
+def _active_target(session: Session, sip: MfSip) -> MutualFund | None:
+    """The one active holding of the SIP's fund and platform (locked), or None.
+
+    Platform is compared ignoring case and spaces, as the create-time match does. With none or
+    several matches the caller makes a new holding rather than guess or mix platforms.
+    """
+    matches = session.scalars(
+        sa.select(MutualFund)
+        .where(
+            MutualFund.user_id == sip.user_id,
+            MutualFund.scheme_code == sip.scheme_code,
+            MutualFund.closed_on.is_(None),
+            sa.func.lower(sa.func.trim(MutualFund.platform)) == sip.platform.strip().lower(),
+        )
+        .order_by(MutualFund.id)
+        .with_for_update(of=MutualFund)
+        .execution_options(populate_existing=True)
+    ).all()
+    return matches[0] if len(matches) == 1 else None
+
+
+def _prefetch_history(session: Session, sip: MfSip, today: date) -> None:
+    """Load NAV history for the SIP's due dates BEFORE any lock is taken.
+
+    The history fetch commits (and rolls back on failure), which would release row locks and
+    discard posted instalments, so it must never run inside the locked loop.
+    """
+    if sip.status != ACTIVE:
+        return
+    skipped = set(session.scalars(sa.select(MfSipSkip.due_date).where(MfSipSkip.sip_id == sip.id)))
+    scheme_code = sip.scheme_code
+    dues = due_dates(
+        sip.day_of_month, sip.post_from, today, sip.end_date, skipped, sip.last_posted_on
+    )
+    for due in dues:
+        if nav_for_due(session, scheme_code, due, fetch=True) is None:
+            break
+    session.commit()  # end the read transaction; nothing is locked yet
+
+
 def _post_one(session: Session, sip: MfSip, today: date) -> int:
     """Post every due, unskipped instalment of one SIP (stops at the first missing NAV)."""
+    sip_id = sip.id
+    _prefetch_history(session, sip, today)
+    sip = session.get(MfSip, sip_id)
+    if sip is None:
+        session.rollback()
+        return 0
     holding = None
+    linked_fund_id = sip.mutual_fund_id  # what the holding choice below is based on
     if sip.mutual_fund_id is not None:
         holding = session.scalars(
             sa.select(MutualFund).where(
@@ -230,10 +289,14 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
             .with_for_update(of=MutualFund)  # units and invested must be current (a sale may be in flight)
             .execution_options(populate_existing=True)
         ).first()
-        if holding is None:  # deleted (soft)
-            return 0
-    elif sip.last_posted_on is not None:
-        return 0  # its holding was purged for good: don't quietly create a new one
+        # None here means soft-deleted (the soft-delete criteria hide the row; a deleted row is
+        # never posted into and is left untouched).
+    if holding is None or holding.closed_on is not None:
+        # Missing (soft-deleted, or purged so mutual_fund_id is NULL) or sold: the SIP keeps
+        # running. Move to the user's one active holding of the same fund and platform (locked,
+        # like the fund above), or start a new one at the first instalment (holding stays None
+        # until then).
+        holding = _active_target(session, sip)
 
     # Re-read under lock (fund first, then SIP, like a sale): a concurrent full sale may have
     # stopped this SIP since the caller loaded it.
@@ -243,7 +306,11 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
         .with_for_update(of=MfSip)
         .execution_options(populate_existing=True)
     ).first()
-    if sip is None or sip.status != ACTIVE:
+    if sip is None or sip.status != ACTIVE or sip.mutual_fund_id != linked_fund_id:
+        # Stale, paused, stopped, or another run linked the SIP to a holding since the holding
+        # choice above was made (it would otherwise start a second holding). Release the locks
+        # (no network I/O may run while they are held); the next run picks it up.
+        session.rollback()
         return 0
 
     skipped = set(session.scalars(sa.select(MfSipSkip.due_date).where(MfSipSkip.sip_id == sip.id)))
@@ -251,14 +318,16 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
         sip.day_of_month, sip.post_from, today, sip.end_date, skipped, sip.last_posted_on
     )
     if not dues:
+        session.rollback()
         return 0
 
     if holding is not None:
+        sip.mutual_fund_id = holding.id  # no-op unless it moved off a sold holding
         ensure_opening_transaction(session, holding)
 
     posted = 0
     for due in dues:
-        found = nav_for_due(session, sip.scheme_code, due)
+        found = nav_for_due(session, sip.scheme_code, due, fetch=False)  # history loaded before locks
         if found is None:
             break
         nav_date, nav = found

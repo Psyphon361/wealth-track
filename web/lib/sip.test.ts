@@ -7,6 +7,7 @@ import {
   dayOptionLabel,
   filterSips,
   instalmentsText,
+  isSoldHolding,
   monthlyTotal,
   platformLabel,
   shortDate,
@@ -350,5 +351,13 @@ describe("actions", () => {
     expect(actionPath(sip(), "pause")).toBe("/sips/1/pause");
     expect(actionPath(sip(), "skip")).toBe("/sips/1/skip");
     expect(actionPath(sip(), "undo")).toBe("/sips/1/skip/2026-12-05");
+  });
+});
+
+describe("isSoldHolding", () => {
+  it("is true for a closed or sold holding only", () => {
+    expect(isSoldHolding({ closed_on: "2026-03-01", status: "sold" })).toBe(true);
+    expect(isSoldHolding({ closed_on: "2026-03-01" })).toBe(true);
+    expect(isSoldHolding({ closed_on: null, status: "active" })).toBe(false);
   });
 });
