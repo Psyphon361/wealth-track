@@ -1,10 +1,10 @@
 # HANDOFF — session resume notes (2026-11-08)
 
-## Resume here — 2026-11-08 night (testing Phase 1 committed, unpushed; CI dry run pending)
+## Resume here — 2026-11-08 night (testing Phase 1 pushed, CI gate verified green)
 
-Status: `main` is ahead of origin by the testing commits (check `git log origin/main..main --oneline`). Nothing pushed; CI has never run on GitHub. Nothing running.
+Status: testing Phase 1 is pushed to `origin/main` (2f53abd..69d3de2). The first real CI run on GitHub is green: API deploy run `42505519437` and CI Web run `42505519175`. One local commit is unpushed: the `actions/setup-node` bump to `@v7` in `ci-web.yml`. Nothing running.
 
-### Commits (local, unpushed)
+### Commits (pushed)
 - `b56c4a1` real-Postgres harness (`pg` marker, throwaway database, migration tests)
 - `27419e3` CI: `ci-api.yml`, `ci-web.yml`; `api-deploy.yml` `tests` job gates the migrate and deploy
 - `5a963ef` real-Postgres behaviour tests (constraints, search, upserts, FOR UPDATE paths)
@@ -19,12 +19,13 @@ Status: `main` is ahead of origin by the testing commits (check `git log origin/
 ### Verified (local only)
 - `-m "not pg"`: 2,407 passed + 1 strict xfail (net worth drift c2).
 - `-m pg`: 149 passed. The 34 concurrency tests looped 20x with no flake.
-- Not verified: anything on GitHub Actions.
+- GitHub Actions (2026-11-08, after the push of `main`): API deploy run `42505519437` ran the tests without Postgres, then with Postgres (service container `postgres:16`), then migrate (a no-op) and deploy. CI Web run `42505519175` passed (next typegen, tsc, lint, vitest on Node 24, 1m31s).
+- GitHub warned that `actions/setup-node@v4` targets the deprecated Node 20 runtime. Bumped to `@v7` in `ci-web.yml` (v7.1.0), committed locally, NOT pushed yet.
 
 ### Gates, in order
-1. Dry run of `ci-api.yml` and `ci-web.yml` on a non-main branch. Needs the user's OK to push a branch.
-2. Push `main`, only with the user's OK. A push touching `api/` or `ci-api.yml` starts the prod migrate and deploy, which now waits for the tests.
-3. User setting: limit the GitHub `production` environment to deployments from `main` (a setting, not code).
+1. Dry run on a non-main branch: not done. The user chose to push `main` directly.
+2. Push `main`: done 2026-11-08 (2f53abd..69d3de2). Pushing the `setup-node` bump is a separate push and needs the user's OK. A push touching `api/` or `ci-api.yml` starts the prod migrate and deploy, which waits for the tests.
+3. Open, user setting: limit the GitHub `production` environment to deployments from `main` (a setting, not code).
 
 ### Follow-ups (not done)
 - Purge: lock every type's ids first, then delete (rare cross-type deadlock between FK SET NULL on funding rows and a restore of a pf/other holding).
@@ -37,10 +38,8 @@ Status: `main` is ahead of origin by the testing commits (check `git log origin/
 - Phase 3: web component tests (jsdom + Testing Library); Playwright smoke flows on a throwaway stack; nightly read-only invariant check; coverage and xdist.
 
 ### Next steps, in order
-1. Ask the user for the OK to push a non-main branch for the CI dry run.
-2. Watch both runs (`gh run list --repo Psyphon361/wealth-track --limit 5`, `gh run view <id> --log-failed`). Fix through a builder.
-3. Ask the user for the OK to push `main`. Check the `production` environment setting with the user.
-4. Phase 2 only when the user asks.
+1. Ask the user for the production environment setting (gate 3), and the OK to push the `setup-node@v7` commit.
+2. Phase 2 only when the user asks.
 
 ## Resume here — 2026-11-08 night (wind-up at 99% usage; gold-rule commit done, nothing running)
 
