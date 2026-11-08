@@ -26,6 +26,9 @@ class MfSip(Base):
         Index("ix_mf_sips_user_id", "user_id"),
         CheckConstraint("day_of_month BETWEEN 1 AND 28", name="ck_mf_sips_day_of_month"),
         CheckConstraint("amount > 0", name="ck_mf_sips_amount_positive"),
+        CheckConstraint(
+            "end_date IS NULL OR end_date >= start_date", name="ck_mf_sips_end_after_start"
+        ),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

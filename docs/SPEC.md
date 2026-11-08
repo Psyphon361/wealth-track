@@ -157,7 +157,7 @@ No minimum amounts beyond > 0 (user decision). Cross-field errors are attached t
 
 ### Database constraints (migration 0032)
 
-Backstop under the API rules above: 36 named CHECK constraints (`ck_<table>_<rule>`) plus one partial unique index. Declared on the models too (via the `_checks` hook of `TimestampedMixin`, which keeps `ix_<table>_user_id_deleted_at`), so the SQLite tests enforce them. `tests/test_migration_0032.py` checks that the model names and expressions match the migration's `CHECKS`; `tests/test_db_constraints.py` checks each rule rejects a bad row. Plain validated constraints in one transaction.
+Backstop under the API rules above: 37 named CHECK constraints (`ck_<table>_<rule>`) plus one partial unique index. Declared on the models too (via the `_checks` hook of `TimestampedMixin`, which keeps `ix_<table>_user_id_deleted_at`), so the SQLite tests enforce them. `tests/test_migration_0032.py` checks that the model names and expressions match the migration's `CHECKS`; `tests/test_db_constraints.py` checks each rule rejects a bad row. Plain validated constraints in one transaction.
 
 Strictness rule: `> 0` where the API requires it; `>= 0` where sale or undo maths can legitimately reach 0 (`invested_amount`, MF `avg_nav` after a partial sale, exit `cost`, cash `balance`, Other `current_value`).
 
@@ -173,7 +173,7 @@ Strictness rule: `> 0` where the API requires it; `>= 0` where sale or undo math
 - `other_holdings`: `value_nonnegative` (current_value >= 0), `invested_nonnegative` (null or >= 0), `acquired_before_value` (acquired_on null or <= value_date).
 - `holding_exits`: `quantity_positive` (null or > 0), `amount_nonnegative`, `cost_nonnegative`, `charges_nonnegative`.
 - `holding_fundings`: `amount_positive`; unique index `uq_holding_fundings_active` on (`asset_type`, `holding_id`) WHERE `refunded_at IS NULL` (one active funding per holding).
-- `mf_sips`: `amount_positive`.
+- `mf_sips`: `amount_positive`, `end_after_start` (end_date null or >= start_date). `POST /api/sips` takes no end date (new SIPs have none), so only PUT can set one and it already enforces the rule.
 - `mf_transactions`: `amount_positive`, `units_positive`.
 
 Rollout: a violating row fails the migration atomically, and `api-deploy.yml` runs alembic before the Vercel deploy hook, so the deploy stops with the old code live. Before pushing, run the SELECT-only `api/scripts/preflight_0032.sql` on prod: every count must be 0. Likeliest failure: `mf_transactions` rows with 0 amount or units from older CAS imports.
@@ -182,7 +182,6 @@ Deliberately not done:
 - FK on `holding_exits.holding_id` / `holding_fundings.holding_id`: polymorphic over 10 tables; purge deletes exits and fundings first; audit found 0 dangling rows.
 - "One sale per holding": wrong premise, partial sales are several rows by design (one settlement is already a partial unique index).
 - "One active SIP per fund": `POST /api/sips` allows duplicates with `confirm_duplicate=true` by design.
-- `mf_sips.end_date >= start_date`: `POST /api/sips` does not validate it (only PUT does); needs an API change and user approval.
 - `pf_holdings.opened_on <= balance_date`: no API rule; needs an API and form change and approval.
 - `ondelete` on `mf_sips.scheme_code` and `nps_holdings.scheme_id`: masters are never deleted.
 - Extra exits checks (`(destination = 'cash') = (cash_added IS NOT NULL)`, maturity implies quantity null), `mf_transactions` `sip_id` implies purchase kind, same-user composite FKs on the cash links (needs Postgres 15 `SET NULL (col)`), dropping the unused `renewed` destination.
@@ -554,7 +553,7 @@ A SIP adds one purchase a month to a mutual fund holding. Each instalment is a `
 - `amount`: at least ₹100 ("Must be at least ₹100"), at most 2 dp ("Up to 2 decimal places allowed"), at most ₹100 crore ("Must be at most ₹100 crore").
 - `day_of_month`: a whole number ("Must be a whole number") from 1 to 28 ("Day must be between 1 and 28"). Days 29 to 31 are rejected, so every month has the day.
 - `start_date`: on or after 1 Jan 1990 ("Date must be on or after 1 Jan 1990") and at most 366 days after today ("Date can be at most 1 year in the future").
-- `end_date` (PUT only, optional): on or after 1 Jan 1990, and not before the SIP's start date ("End date must be on or after the start date").
+- `end_date` (PUT only, optional; `POST` has no end date field, so a new SIP never has one; the DB check `ck_mf_sips_end_after_start` backs the rule): on or after 1 Jan 1990, and not before the SIP's start date ("End date must be on or after the start date").
 - `include_past` (boolean, default false): see Due dates.
 - `mutual_fund_id` (optional): a holding of yours that isn't deleted (else 404 "Holding not found" / "It may have been deleted, or it belongs to another account."), of the same scheme ("This holding is a different fund", on `mutual_fund_id`).
 

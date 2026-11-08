@@ -138,6 +138,7 @@ VIOLATIONS = [
     ("ck_holding_exits_charges_nonnegative", HoldingExit, dict(charges=D("-1"))),
     ("ck_holding_fundings_amount_positive", HoldingFunding, dict(amount=D("0"))),
     ("ck_mf_sips_amount_positive", MfSip, dict(amount=D("0"))),
+    ("ck_mf_sips_end_after_start", MfSip, dict(end_date=date(2024, 12, 31))),
     ("ck_mf_transactions_amount_positive", MFTransaction, dict(amount=D("0"))),
     ("ck_mf_transactions_units_positive", MFTransaction, dict(units=D("0"))),
 ]

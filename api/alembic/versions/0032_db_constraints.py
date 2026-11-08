@@ -85,6 +85,7 @@ CHECKS: tuple[tuple[str, str, str], ...] = (
     ("holding_exits", "ck_holding_exits_charges_nonnegative", "charges >= 0"),
     ("holding_fundings", "ck_holding_fundings_amount_positive", "amount > 0"),
     ("mf_sips", "ck_mf_sips_amount_positive", "amount > 0"),
+    ("mf_sips", "ck_mf_sips_end_after_start", "end_date IS NULL OR end_date >= start_date"),
     ("mf_transactions", "ck_mf_transactions_amount_positive", "amount > 0"),
     ("mf_transactions", "ck_mf_transactions_units_positive", "units > 0"),
 )

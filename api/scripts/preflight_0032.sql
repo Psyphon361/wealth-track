@@ -37,6 +37,7 @@ UNION ALL SELECT 'ck_holding_exits_cost_nonnegative', count(*) FROM holding_exit
 UNION ALL SELECT 'ck_holding_exits_charges_nonnegative', count(*) FROM holding_exits WHERE NOT COALESCE((charges >= 0), true)
 UNION ALL SELECT 'ck_holding_fundings_amount_positive', count(*) FROM holding_fundings WHERE NOT COALESCE((amount > 0), true)
 UNION ALL SELECT 'ck_mf_sips_amount_positive', count(*) FROM mf_sips WHERE NOT COALESCE((amount > 0), true)
+UNION ALL SELECT 'ck_mf_sips_end_after_start', count(*) FROM mf_sips WHERE NOT COALESCE((end_date IS NULL OR end_date >= start_date), true)
 UNION ALL SELECT 'ck_mf_transactions_amount_positive', count(*) FROM mf_transactions WHERE NOT COALESCE((amount > 0), true)
 UNION ALL SELECT 'ck_mf_transactions_units_positive', count(*) FROM mf_transactions WHERE NOT COALESCE((units > 0), true)
 UNION ALL SELECT 'uq_holding_fundings_active', count(*) FROM (SELECT 1 FROM holding_fundings WHERE refunded_at IS NULL GROUP BY asset_type, holding_id HAVING count(*) > 1) t;
