@@ -1,5 +1,17 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 night (audit batch 3 committed, unpushed)
+
+Committed on `main`, NOT pushed (4 commits ahead of origin): `1149f2d` (cash balance 0 allowed), `e325fa7` (SIPs keep running for sold, deleted or purged holdings; NAV fetched before row locks), `4fa8036` (short undo refused 409; full sale keeps SIPs; Settle errors accurate), `fd786ad` (net worth today-point tests).
+
+- Suites: API 2,381 passed + 2 strict xfail, web 394 passed, tsc and lint clean.
+- Browser-verified (probe account): short undo refused with the API toast, holding and sale unchanged; cash account at ₹0 saves in Edit; SIP form "Add to" hides the sold holding. Not verified: SIP posting after a sale or delete (unit tested), the sell dialog's new note, the Settle error toasts.
+- Decisions (user, 2026-11-08): block a short undo; allow cash 0; a full sale does not stop SIPs (a SIP is independent of its holding record; it posts into the user's one active holding of the same scheme and platform, else a fresh holding); creating a SIP for a sold fund is allowed; explicit sold holding id on create is 422 "This holding has been sold"; undo after a SIP moved is allowed (two active holdings, no auto-merge); #15 test first, no behaviour change.
+- Open: net worth drift (SPEC §5: gold rate older than 7 days; stock price with no matching history close) needs the user's decision; audit items 16, 17, 18, 19, 21, 23, 25, 26, PF `opened_on` <= `balance_date`; drop `sips_cancelled`; observations (slow details pages on dev, sold bond details page). Full list in STATUS "Audit batch 3".
+- Next, in priority: (1) ask the user about the net worth gold-age rule (recommendation: same rule in history and dashboard, or flag a stale rate); (2) 25, 26, 16, 23; (3) security 17, 18; (4) parked CI tests and lint (19).
+- Push gate: ask the user first (API commits trigger the prod deploy). Run `git log origin/main..HEAD --oneline` and count before reporting the number.
+- User rule (saved in memory): never ask the user to sign in to test accounts; use the persistent probe account.
+
 ## Resume here — 2026-11-08 late (audit batch 2 committed)
 
 Committed on `main`, NOT pushed (8 commits ahead of origin: `152a51b`, `8d1f618`, `62fe16d`, `b5c2f3f`, `ec4fb80`, `2eca602`, `40f7846`, `78896fb`): `2eca602` (#11 refuse a partial sale that leaves no cost; #9 undo reports what was really taken out), `40f7846` (#14 returns XIRR counts sale proceeds and fully sold holdings), `78896fb` (#27 delete pending states). Docs: SPEC §5, §8b, §9; STATUS.
