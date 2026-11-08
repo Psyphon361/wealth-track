@@ -1,8 +1,19 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 late (audit batch 2 committed)
+
+Committed on `main`, NOT pushed (8 commits ahead of origin: `152a51b`, `8d1f618`, `62fe16d`, `b5c2f3f`, `ec4fb80`, `2eca602`, `40f7846`, `78896fb`): `2eca602` (#11 refuse a partial sale that leaves no cost; #9 undo reports what was really taken out), `40f7846` (#14 returns XIRR counts sale proceeds and fully sold holdings), `78896fb` (#27 delete pending states). Docs: SPEC §5, §8b, §9; STATUS.
+
+- Suites: API 2,349 passed, web 393 passed, tsc and lint clean.
+- Browser-verified (probe account): grid delete pending, details-page delete pending, undo message for a short balance, Returns tab numbers. Not verified: the #11 refusal toast, the dialog fade-out title fix.
+- Gate: migration `0032` waits on the user running `api/scripts/preflight_0032.sql` on prod. Nothing pushed; push only on the user's explicit OK (API commits trigger the prod deploy).
+- Open audit items: 10, 12, 13, 15, 16, 17, 18, 19, 21, 23, 25, 26, PF `opened_on` <= `balance_date`. Details and the new findings (a)-(d) are in STATUS ("Audit batch 2").
+- Next: pick from the open audit items by priority, 10, 12, 13, 15 first.
+- User rule (saved in memory): never ask the user to sign in to test accounts; use the persistent probe account.
+
 ## Resume here — 2026-11-08 night (DB constraints committed, gated)
 
-Committed on `main`, NOT pushed, NOT applied to prod (applied to the Neon dev DB on 2026-11-08, see gate 1): `152a51b` (CHECKs declared on the models, SIP first-instalment fix, CAS zero amount/units rejection, no opening row when invested <= 0) and `8d1f618` (migration `0032`: 37 CHECKs + `uq_holding_fundings_active`). Full API suite 2,321 passed. Docs: SPEC §2 "Database constraints", §8, §8a; STATUS; AGENTS.md.
+Committed on `main`, NOT pushed, NOT applied to prod (applied to the Neon dev DB on 2026-11-08, see gate 1): `152a51b` (CHECKs declared on the models, SIP first-instalment fix, CAS zero amount/units rejection, no opening row when invested <= 0) and `8d1f618` (migration `0032`: 37 CHECKs + `uq_holding_fundings_active`). Full API suite 2,322 passed at the time (2,349 now). Docs: SPEC §2 "Database constraints", §8, §8a; STATUS; AGENTS.md.
 
 Gates (both need the user):
 1. DONE (2026-11-08): 0032 applied to the Neon dev DB after a preflight with 0 violating rows; 37 of 37 constraints and the unique partial index verified; `downgrade -1` and `upgrade head` round trip OK; row counts unchanged; dev left at 0032.
