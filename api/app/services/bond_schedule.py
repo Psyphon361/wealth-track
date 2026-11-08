@@ -17,6 +17,9 @@ event is a "sale" of face value x quantity (SGB: issue price x grams) on the exi
 with no TDS. An on-maturity bond sold early pays no coupon, only the sale. Without a master
 maturity date, or when it is not later than the holding's, nothing changes.
 
+Fully sold (Sell, closed_on set, not a maturity settlement): only coupons dated on or before the
+sale date remain and the closing entry is dropped; the same cut-off as the Interest & TDS tab.
+
 Amounts are unrounded Decimals; callers round for display.
 """
 
@@ -76,7 +79,29 @@ def _payment(when: date, kind: str, gross: Decimal, tds: Decimal, **extra: Any) 
     }
 
 
+def sold_on(bond: Any) -> date | None:
+    """The date a bond was fully sold (a Sell, not a Settle at maturity), else None."""
+    closed = _to_date(_field(bond, "closed_on"))
+    if closed is None or _field(bond, "settled"):
+        return None
+    exit_ = _field(bond, "exit")
+    if exit_ and _field(exit_, "kind") == "maturity":
+        return None
+    return closed
+
+
 def payments(bond: Any, master: Any) -> list[dict[str, Any]] | None:
+    """Every estimated payment of one bond (see `_payments`). A bond fully sold before its end
+    keeps only the coupons dated on or before the sale date: nothing after it was earned, and
+    there is no redemption or sale entry. A settled bond is unchanged."""
+    schedule = _payments(bond, master)
+    sold = sold_on(bond)
+    if schedule is None or sold is None:
+        return schedule
+    return [p for p in schedule if p["kind"] == "coupon" and p["date"] <= sold]
+
+
+def _payments(bond: Any, master: Any) -> list[dict[str, Any]] | None:
     """Every estimated payment of one bond, oldest first, or None when its schedule can't be
     worked out (no linked master, no coupon rate, frequency none / irregular / unknown, missing
     dates or quantity). Each payment: date, kind (coupon | redemption | sale), gross, tds, net, fy;
