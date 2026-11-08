@@ -2,7 +2,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Numeric, func, text
+from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -28,6 +28,12 @@ class HoldingExit(Base):
             postgresql_where=text("kind = 'maturity'"),
             sqlite_where=text("kind = 'maturity'"),
         ),
+        CheckConstraint(
+            "quantity IS NULL OR quantity > 0", name="ck_holding_exits_quantity_positive"
+        ),
+        CheckConstraint("amount >= 0", name="ck_holding_exits_amount_nonnegative"),
+        CheckConstraint("cost >= 0", name="ck_holding_exits_cost_nonnegative"),
+        CheckConstraint("charges >= 0", name="ck_holding_exits_charges_nonnegative"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

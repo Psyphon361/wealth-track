@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -11,6 +11,10 @@ from app.models.nps_master import NpsMaster
 
 class Nps(TimestampedMixin, Base):
     __tablename__ = "nps_holdings"
+    _checks = (
+        CheckConstraint("units > 0", name="ck_nps_holdings_units_positive"),
+        CheckConstraint("contributed >= 0", name="ck_nps_holdings_contributed_nonnegative"),
+    )
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     scheme_id: Mapped[str] = mapped_column(String(20), ForeignKey("nps_master.scheme_id"))

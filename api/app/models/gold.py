@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -12,6 +12,10 @@ class Gold(TimestampedMixin, Base):
     """Gold or silver holding (metal gold|silver); table name kept as gold_holdings."""
 
     __tablename__ = "gold_holdings"
+    _checks = (
+        CheckConstraint("weight_grams > 0", name="ck_gold_holdings_weight_positive"),
+        CheckConstraint("invested_amount >= 0", name="ck_gold_holdings_invested_nonnegative"),
+    )
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))

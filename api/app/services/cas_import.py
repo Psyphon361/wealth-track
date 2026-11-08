@@ -235,9 +235,10 @@ def transaction_error(transactions: list, today: date | None = None) -> str | No
     for txn in transactions:
         if txn.date > today:
             return "Transaction date can't be in the future"
-        if txn.amount <= 0:
+        # Checked after rounding to what is stored (2 dp, 3 dp): a tiny value must not reach the DB as 0.
+        if Decimal(txn.amount).quantize(MONEY_DP) <= 0:
             return "Transaction amount must be greater than 0"
-        if txn.units <= 0:
+        if Decimal(txn.units).quantize(UNITS_DP) <= 0:
             return "Transaction units must be greater than 0"
     return None
 

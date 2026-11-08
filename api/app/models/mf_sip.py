@@ -25,6 +25,7 @@ class MfSip(Base):
     __table_args__ = (
         Index("ix_mf_sips_user_id", "user_id"),
         CheckConstraint("day_of_month BETWEEN 1 AND 28", name="ck_mf_sips_day_of_month"),
+        CheckConstraint("amount > 0", name="ck_mf_sips_amount_positive"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)

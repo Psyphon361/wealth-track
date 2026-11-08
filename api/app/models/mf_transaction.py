@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -12,7 +12,11 @@ class MFTransaction(Base):
     """A purchase or redemption of a mutual fund holding, stored from a CAS import."""
 
     __tablename__ = "mf_transactions"
-    __table_args__ = (UniqueConstraint("sip_id", "txn_date", name="uq_mf_transactions_sip_date"),)
+    __table_args__ = (
+        UniqueConstraint("sip_id", "txn_date", name="uq_mf_transactions_sip_date"),
+        CheckConstraint("amount > 0", name="ck_mf_transactions_amount_positive"),
+        CheckConstraint("units > 0", name="ck_mf_transactions_units_positive"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     mutual_fund_id: Mapped[int] = mapped_column(

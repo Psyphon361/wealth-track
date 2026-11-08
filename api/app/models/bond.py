@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -10,6 +10,15 @@ from app.models.base import TimestampedMixin, str_enum
 
 class Bond(TimestampedMixin, Base):
     __tablename__ = "bonds"
+    _checks = (
+        CheckConstraint("quantity > 0", name="ck_bonds_quantity_positive"),
+        CheckConstraint("purchase_price > 0", name="ck_bonds_purchase_price_positive"),
+        CheckConstraint("invested_amount >= 0", name="ck_bonds_invested_nonnegative"),
+        CheckConstraint(
+            "face_value IS NULL OR face_value > 0", name="ck_bonds_face_value_positive"
+        ),
+        CheckConstraint("maturity_date > purchase_date", name="ck_bonds_maturity_after_purchase"),
+    )
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(200))

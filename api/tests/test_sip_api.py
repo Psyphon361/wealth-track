@@ -583,14 +583,14 @@ def test_transactions_are_scoped_and_404(sc, users):
     assert sc.get(url).status_code == 401
 
 
-def test_transaction_nav_without_units_is_null(sc, users, auth_engine):
+def test_transaction_nav_is_amount_over_units(sc, users, auth_engine):
     a = users[0]
     held = sc.post("/api/assets/mf", json=HOLDING, headers=a).json()
     with sessionmaker(bind=auth_engine)() as s:
         s.add(
             MFTransaction(
                 mutual_fund_id=held["id"], txn_date=date(2025, 6, 1), kind="purchase",
-                amount=Decimal("0"), units=Decimal("0"),
+                amount=Decimal("1200"), units=Decimal("20"),
             )
         )  # fmt: skip
         s.add(
@@ -602,5 +602,5 @@ def test_transaction_nav_without_units_is_null(sc, users, auth_engine):
         s.commit()
     items = sc.get(f"/api/holdings/mf/{held['id']}/transactions", headers=a).json()["items"]
     assert [(t["kind"], t["nav"], t["sip"]) for t in items] == [
-        ("redemption", 50.0, False), ("purchase", None, False),
+        ("redemption", 50.0, False), ("purchase", 60.0, False),
     ]  # fmt: skip

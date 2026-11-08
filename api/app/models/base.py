@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, Index, Text, event, func
+from sqlalchemy import CheckConstraint, DateTime, Enum, Index, Text, event, func
 from sqlalchemy.orm import (
     Mapped,
     ORMExecuteState,
@@ -30,10 +30,17 @@ class TimestampedMixin:
     # Soft delete: set when the holding is deleted; rows are purged after 30 days.
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Models list their CheckConstraints here; a plain __table_args__ on a model would replace the
+    # index below.
+    _checks: tuple[CheckConstraint, ...] = ()
+
     @declared_attr.directive
     def __table_args__(cls) -> tuple:
         # Every holding query filters by user and (via the soft-delete criteria) deleted_at.
-        return (Index(f"ix_{cls.__tablename__}_user_id_deleted_at", "user_id", "deleted_at"),)
+        return (
+            Index(f"ix_{cls.__tablename__}_user_id_deleted_at", "user_id", "deleted_at"),
+            *cls._checks,
+        )
 
 
 @event.listens_for(Session, "do_orm_execute")

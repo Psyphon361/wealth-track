@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, String
+from sqlalchemy import CheckConstraint, ForeignKey, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -10,6 +10,11 @@ from app.models.base import TimestampedMixin, str_enum
 
 class MutualFund(TimestampedMixin, Base):
     __tablename__ = "mutual_funds"
+    _checks = (
+        CheckConstraint("units > 0", name="ck_mutual_funds_units_positive"),
+        CheckConstraint("avg_nav >= 0", name="ck_mutual_funds_avg_nav_nonnegative"),
+        CheckConstraint("invested_amount >= 0", name="ck_mutual_funds_invested_nonnegative"),
+    )
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
     scheme_name: Mapped[str] = mapped_column(String(200))

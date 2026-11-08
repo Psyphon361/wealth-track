@@ -202,7 +202,11 @@ def ensure_opening_transaction(session: Session, holding: MutualFund) -> MFTrans
         .select_from(MFTransaction)
         .where(MFTransaction.mutual_fund_id == holding.id)
     )
-    if has_transactions or Decimal(str(holding.units)) <= 0:
+    if (
+        has_transactions
+        or Decimal(str(holding.units)) <= 0
+        or Decimal(str(holding.invested_amount)) <= 0  # a transaction's amount must be positive
+    ):
         return None
     opening = MFTransaction(
         mutual_fund_id=holding.id,
@@ -260,17 +264,19 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
         nav_date, nav = found
         units = units_for(Decimal(str(sip.amount)), nav)
         amount = Decimal(str(sip.amount))
+        new_holding = holding is None
         if holding is None:
             master = session.get(MFMaster, sip.scheme_code)
+            # Built from the first instalment, so the row is valid (units > 0) when first flushed.
             holding = MutualFund(
                 user_id=sip.user_id,
                 scheme_name=master.name[:200],
                 scheme_code=sip.scheme_code,
                 platform=sip.platform,
                 category=master.category,
-                units=Decimal("0"),
-                avg_nav=Decimal("0"),
-                invested_amount=Decimal("0"),
+                units=units,
+                avg_nav=(amount / units).quantize(NAV_DP, rounding=ROUND_HALF_UP),
+                invested_amount=amount,
                 purchase_date=nav_date,
             )
             session.add(holding)
@@ -286,11 +292,14 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
                 sip_id=sip.id,
             )
         )
-        total_units = Decimal(str(holding.units)) + units
-        total_invested = Decimal(str(holding.invested_amount)) + amount
-        holding.units = total_units
-        holding.invested_amount = total_invested
-        holding.avg_nav = (total_invested / total_units).quantize(NAV_DP, rounding=ROUND_HALF_UP)
+        if not new_holding:
+            total_units = Decimal(str(holding.units)) + units
+            total_invested = Decimal(str(holding.invested_amount)) + amount
+            holding.units = total_units
+            holding.invested_amount = total_invested
+            holding.avg_nav = (total_invested / total_units).quantize(
+                NAV_DP, rounding=ROUND_HALF_UP
+            )
         sip.last_posted_on = due
         posted += 1
     session.commit()

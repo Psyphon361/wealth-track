@@ -205,6 +205,13 @@ def test_commit_rejects_bad_transactions(txn_client, users, auth_engine, bad):  
     assert holding_ids(auth_engine) == []
 
 
+def test_transaction_error_rejects_values_that_round_to_zero():
+    tiny_units = CasTransaction(date=date(2024, 1, 1), type="purchase", amount=D(1), units=D("0.0004"))
+    tiny_amount = CasTransaction(date=date(2024, 1, 1), type="purchase", amount=D("0.004"), units=D(1))
+    assert cas_import.transaction_error([tiny_units]) == "Transaction units must be greater than 0"
+    assert cas_import.transaction_error([tiny_amount]) == "Transaction amount must be greater than 0"
+
+
 def test_transaction_error_limit():
     ok = CasTransaction(date=date(2024, 1, 1), type="purchase", amount=D(1), units=D(1))
     assert cas_import.transaction_error([ok] * cas_import.MAX_TRANSACTIONS) is None

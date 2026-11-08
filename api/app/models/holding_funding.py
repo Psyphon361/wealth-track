@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Numeric, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -20,6 +20,16 @@ class HoldingFunding(Base):
     __tablename__ = "holding_fundings"
     __table_args__ = (
         Index("ix_holding_fundings_user_type_holding", "user_id", "asset_type", "holding_id"),
+        # A holding is paid for from one account at a time (refunded rows stay as history).
+        Index(
+            "uq_holding_fundings_active",
+            "asset_type",
+            "holding_id",
+            unique=True,
+            postgresql_where=text("refunded_at IS NULL"),
+            sqlite_where=text("refunded_at IS NULL"),
+        ),
+        CheckConstraint("amount > 0", name="ck_holding_fundings_amount_positive"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
