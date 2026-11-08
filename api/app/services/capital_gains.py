@@ -329,14 +329,23 @@ def split_lots(sale: SaleInput) -> list[dict[str, Any]]:
         return single
     lots: list[dict[str, Any]] = []
     given = _ZERO
+    cost_given = _ZERO
     for i, (bought, units, lot_cost) in enumerate(taken):
         if i == len(taken) - 1:
             share = proceeds - given
+            lot_cost_out = cost - cost_given
         else:
             share = money(proceeds * units / total_units)
+            lot_cost_out = money(lot_cost)
         given += share
+        cost_given += lot_cost_out
         lots.append(
-            {"bought_on": bought, "quantity": units, "cost": money(lot_cost), "proceeds": share}
+            {
+                "bought_on": bought,
+                "quantity": units.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP),
+                "cost": lot_cost_out,
+                "proceeds": share,
+            }
         )
     return lots
 

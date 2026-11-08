@@ -212,6 +212,20 @@ def test_mf_rounding_remainder_on_last_lot():
     assert [l["proceeds"] for l in lots] == [D("33.33"), D("33.33"), D("33.34")]
 
 
+def test_mf_lot_gains_sum_to_sale_gain():
+    txns = [
+        MfTxn(1, date(2023, 1, 1), "purchase", D(1), D("100.01")),
+        MfTxn(2, date(2023, 1, 2), "purchase", D(1), D("100.01")),
+        MfTxn(3, date(2023, 1, 3), "purchase", D(1), D("100.01")),
+        MfTxn(9, date(2023, 6, 1), "redemption", D(3), D(400)),
+    ]
+    s = mf_sale(cost="300.20", proceeds="411.11", txns=txns)
+    lots = cg.split_lots(s)
+    assert len(lots) == 3
+    assert sum(l["cost"] for l in lots) == D("300.20")
+    assert sum(l["proceeds"] - l["cost"] for l in lots) == D("411.11") - D("300.20")
+
+
 def test_mf_fifo_mismatch_falls_back():
     s = mf_sale(cost="2500", proceeds="4500")  # FIFO says 2000
     lots = cg.build_sale(s)["lots"]
