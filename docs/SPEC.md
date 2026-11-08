@@ -155,6 +155,38 @@ FD/RD issuer picker: the form requires an issuer in picker mode (rule 20); "Not 
 
 No minimum amounts beyond > 0 (user decision). Cross-field errors are attached to a field: tenure → `tenure_years`, payout frequency → `compounding`, invested total → `invested_amount`, maturity rules → `maturity_date`. Read models accept existing rows even if they'd fail new create-time rules.
 
+### Database constraints (migration 0032)
+
+Backstop under the API rules above: 36 named CHECK constraints (`ck_<table>_<rule>`) plus one partial unique index. Declared on the models too (via the `_checks` hook of `TimestampedMixin`, which keeps `ix_<table>_user_id_deleted_at`), so the SQLite tests enforce them. `tests/test_migration_0032.py` checks that the model names and expressions match the migration's `CHECKS`; `tests/test_db_constraints.py` checks each rule rejects a bad row. Plain validated constraints in one transaction.
+
+Strictness rule: `> 0` where the API requires it; `>= 0` where sale or undo maths can legitimately reach 0 (`invested_amount`, MF `avg_nav` after a partial sale, exit `cost`, cash `balance`, Other `current_value`).
+
+- `fixed_deposits`: `principal_positive` (principal > 0), `rate_range` (0–100), `tenure_positive` (years + months + days > 0).
+- `recurring_deposits`: `instalment_positive` (monthly_instalment > 0), `rate_range`, `tenure_positive`.
+- `stocks`: `quantity_positive`, `avg_buy_price_positive`.
+- `bonds`: `quantity_positive`, `purchase_price_positive`, `invested_nonnegative`, `face_value_positive` (null or > 0), `maturity_after_purchase` (maturity_date > purchase_date).
+- `mutual_funds`: `units_positive`, `avg_nav_nonnegative`, `invested_nonnegative`.
+- `nps_holdings`: `units_positive`, `contributed_nonnegative`.
+- `gold_holdings`: `weight_positive` (weight_grams > 0), `invested_nonnegative`.
+- `cash_holdings`: `balance_nonnegative`, `rate_range` (null or 0–100).
+- `pf_holdings`: `balance_nonnegative`, `rate_range` (0–100), `contributed_nonnegative` (null or >= 0).
+- `other_holdings`: `value_nonnegative` (current_value >= 0), `invested_nonnegative` (null or >= 0), `acquired_before_value` (acquired_on null or <= value_date).
+- `holding_exits`: `quantity_positive` (null or > 0), `amount_nonnegative`, `cost_nonnegative`, `charges_nonnegative`.
+- `holding_fundings`: `amount_positive`; unique index `uq_holding_fundings_active` on (`asset_type`, `holding_id`) WHERE `refunded_at IS NULL` (one active funding per holding).
+- `mf_sips`: `amount_positive`.
+- `mf_transactions`: `amount_positive`, `units_positive`.
+
+Rollout: a violating row fails the migration atomically, and `api-deploy.yml` runs alembic before the Vercel deploy hook, so the deploy stops with the old code live. Before pushing, run the SELECT-only `api/scripts/preflight_0032.sql` on prod: every count must be 0. Likeliest failure: `mf_transactions` rows with 0 amount or units from older CAS imports.
+
+Deliberately not done:
+- FK on `holding_exits.holding_id` / `holding_fundings.holding_id`: polymorphic over 10 tables; purge deletes exits and fundings first; audit found 0 dangling rows.
+- "One sale per holding": wrong premise, partial sales are several rows by design (one settlement is already a partial unique index).
+- "One active SIP per fund": `POST /api/sips` allows duplicates with `confirm_duplicate=true` by design.
+- `mf_sips.end_date >= start_date`: `POST /api/sips` does not validate it (only PUT does); needs an API change and user approval.
+- `pf_holdings.opened_on <= balance_date`: no API rule; needs an API and form change and approval.
+- `ondelete` on `mf_sips.scheme_code` and `nps_holdings.scheme_id`: masters are never deleted.
+- Extra exits checks (`(destination = 'cash') = (cash_added IS NOT NULL)`, maturity implies quantity null), `mf_transactions` `sip_id` implies purchase kind, same-user composite FKs on the cash links (needs Postgres 15 `SET NULL (col)`), dropping the unused `renewed` destination.
+
 ## 3. Valuation (server side, `valuation.py`)
 
 Year fraction = (365 per whole calendar year from the start date, plus the days left after the last anniversary) / 365, so a leap day never inflates a full year (`_effective_days`; a 29 Feb start has its anniversary clamped to 28 Feb in a non-leap year; a span with no leap day is the plain day count). Rates are percent. Periods/yr: monthly 12, quarterly 4, half_yearly 2, yearly 1.
@@ -505,6 +537,8 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - "Transaction amount must be greater than 0"
   - "Transaction units must be greater than 0"
   - "Transactions: at most 2000 per fund"
+  - An amount or units that round to 0 (2 dp / 3 dp) are rejected with the same two messages ("Transaction amount must be greater than 0" / "Transaction units must be greater than 0"); the DB also enforces both (§2 "Database constraints").
+  - No opening transaction is written when the holding's `invested_amount` is <= 0 (`ensure_opening_transaction`).
 - 200 → `message` "Imported N funds" ("Imported 1 fund" for one), `description` "X added, Y updated.", `created`, `updated`.
 
 ## 8a. Mutual fund SIPs
@@ -534,7 +568,7 @@ The web form uses the same wording (rule 3).
 - Pause stops posting. Resume moves `post_from` to the next due date on or after today, so the paused months are never added later.
 - **NAV rule.** An instalment uses the first NAV dated on or after its due date, so a weekend or holiday moves to the next trading day's NAV. The latest NAV is used only when its date is the due date itself; a past date never takes the latest NAV. When the stored history has no NAV for the due date, the scheme's history is fetched from mfapi.in, at most once every 6 hours. If no NAV is published yet, or the first NAV is more than 10 days after the due date (a history gap, unless the due date is older than the stored history), the SIP stops there and tries again on the next run. Nothing is posted out of order.
 - **Amount and units.** Invested is the full amount. Units = amount × 0.99995 ÷ NAV (the 0.005% stamp duty is deducted first), rounded half up to 3 dp. The holding's avg NAV = invested ÷ units (4 dp).
-- **Holding.** A SIP without a linked holding creates one at its first instalment: name from `mf_master` (at most 200 characters), the scheme code, the category from `mf_master`, the SIP's platform, and purchase date = the first instalment's NAV date. On create, the SIP links to `mutual_fund_id` when given. Otherwise it links to the holding of the same scheme and platform (platform compared ignoring case and spaces) when exactly one exists; with none or several, no holding is linked until the first instalment creates one.
+- **Holding.** A SIP without a linked holding creates one at its first instalment: name from `mf_master` (at most 200 characters), the scheme code, the category from `mf_master`, the SIP's platform, and purchase date = the first instalment's NAV date. The holding is built from that first instalment's units and amount (no zero-unit holding is saved first). On create, the SIP links to `mutual_fund_id` when given. Otherwise it links to the holding of the same scheme and platform (platform compared ignoring case and spaces) when exactly one exists; with none or several, no holding is linked until the first instalment creates one.
 - **Opening transaction.** When a SIP posts into an existing holding that has units but no `mf_transactions`, the first posting first writes one purchase for the holding's current units and invested, dated its purchase date. XIRR therefore stays on the transaction basis.
 - **Deleted holdings.** A soft-deleted holding gets no instalments (the holding queries hide deleted rows). A SIP whose holding was purged for good posts nothing, so no new holding appears.
 - **Idempotency.** `last_posted_on` (the due date of the last posted instalment) moves forward with each instalment, and `mf_transactions` has a unique (`sip_id`, `txn_date`). A re-run adds nothing new.

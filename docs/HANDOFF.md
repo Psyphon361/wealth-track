@@ -1,5 +1,21 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 night (DB constraints committed, gated)
+
+Committed on `main`, NOT pushed, NOT applied to any database: `152a51b` (CHECKs declared on the models, SIP first-instalment fix, CAS zero amount/units rejection, no opening row when invested <= 0) and `8d1f618` (migration `0032`: 36 CHECKs + `uq_holding_fundings_active`). Full API suite 2,321 passed. Docs: SPEC §2 "Database constraints", §8, §8a; STATUS; AGENTS.md.
+
+Gates (both need the user):
+1. Apply 0032 to the Neon dev DB and prove `downgrade` then `upgrade` (dev audit found 0 violations).
+2. The user runs `api/scripts/preflight_0032.sql` (SELECT-only counts) on prod, all must be 0, then says push. Possible failure: `mf_transactions` with 0 amount or units from older CAS imports; have a targeted fix ready. The migration is atomic and the deploy workflow runs it before the Vercel hook, so a failure leaves the old code live.
+
+Open questions for the user: SIP `end_date >= start_date` on POST, PF `opened_on <= balance_date` (both need API/form changes).
+
+Next batch (scout facts; re-scout if needed):
+- #14 Returns XIRR ignores partial-sale proceeds: `analytics_returns.py` `holding_flows` ignores `holding_exits`; fully sold holdings are dropped by `_active_holdings` (`services/analytics.py:282`), partly sold ones lose the sale proceeds as a positive flow.
+- #11 `exits.py` `sale_cost` caps at invested (l.196) and `remaining_after` (l.199-207) can leave invested 0 with units left; MF `avg_nav` becomes 0.0000.
+- #9 `undo_exit` (`exits.py:779`) clamps cash at 0 but l.786 reports the full `cash_added`; `routers/exits.py:242-256` builds the message from it.
+- #27 Delete flows without a pending state: `portfolio.tsx` `handleDelete` (l.181-196, optimistic), `holding-detail.tsx` `handleDelete` (l.157-166), shared `components/portfolio/delete-dialog.tsx` (button l.57-66). Pattern to copy: `sip-actions.tsx` `ConfirmDialog` (l.107-150, "Deleting…").
+
 ## Resume here — 2026-11-08 night (Wave 1 and Wave 2 committed, docs done)
 
 Committed on `main`: `567e2aa` (sold bond payouts), `bd27705` (cash grid refresh), `adfa3b2` (row locks), `a324634` (lock order fix, SIP re-check under lock), `9592502` (CAS re-import guards), `225c1f9` (edit guards). Docs (SPEC §4, §8, §8a, §8b, §8c, STATUS, AGENTS.md) are written. Full suites green: API 2,230 passed, web 393 passed, tsc and lint clean. The identity-field lock commit follows `0d30fca`. Advisor findings are fixed (reinvest vs undo lock order, stale SIP under lock, future statement date, vitest alias in `lib/edit-guards.ts`).
