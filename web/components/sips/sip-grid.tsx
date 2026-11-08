@@ -9,6 +9,8 @@ import {
   type PaginationState,
   type SortingState,
 } from "@tanstack/react-table";
+import { TopProgress } from "@/components/analytics/top-progress";
+import { cn } from "@/lib/utils";
 import { TableSkeleton } from "@/components/portfolio/grid/data-table";
 import {
   FacetedFilter,
@@ -90,10 +92,12 @@ function SipTable({
   sips,
   today,
   onChanged,
+  reloading,
 }: {
   sips: Sip[];
   today: string;
   onChanged: () => void;
+  reloading: boolean;
 }) {
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<SipStatus[]>([]);
@@ -215,8 +219,12 @@ function SipTable({
         ) : null}
       </div>
 
-      <div className="relative min-w-0 overflow-hidden rounded-xl border">
-        <Table>
+      <div
+        className="relative min-w-0 overflow-hidden rounded-xl border"
+        aria-busy={reloading}
+      >
+        <TopProgress active={reloading} />
+        <Table className={cn("transition-opacity", reloading && "opacity-60")}>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id} className="hover:bg-transparent">
@@ -245,16 +253,39 @@ function SipTable({
                   colSpan={visibleCount}
                   className="py-12 text-center text-muted-foreground"
                 >
-                  <p>No SIPs match your filters.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={reset}
-                  >
-                    Reset
-                  </Button>
+                  {sips.length === 0 ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-foreground">
+                          No SIPs yet
+                        </p>
+                        <p className="text-[13.2px]">
+                          Start one and its monthly instalments are added to
+                          your fund automatically.
+                        </p>
+                      </div>
+                      <Link
+                        href={ADD_SIP_HREF}
+                        className={buttonVariants({ size: "sm" })}
+                      >
+                        <Plus aria-hidden />
+                        Start a SIP
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <p>No SIPs match your filters.</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={reset}
+                      >
+                        Reset
+                      </Button>
+                    </>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (
@@ -279,7 +310,7 @@ function SipTable({
 
 /** The SIPs view on /portfolio/mf: compact summary, then the SIPs in the standard holdings grid. */
 export function SipGrid() {
-  const { sips, error, reload, retry } = useSips();
+  const { sips, error, reloading, reload, retry } = useSips();
   const [today] = useState(todayISO);
 
   if (error && !sips) {
@@ -304,28 +335,20 @@ export function SipGrid() {
 
   if (!sips) return <TableSkeleton />;
 
-  if (sips.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-        <div className="space-y-1">
-          <p className="text-sm font-medium">No SIPs yet</p>
-          <p className="text-[13.2px] text-muted-foreground">
-            Start one and its monthly instalments are added to your fund
-            automatically.
-          </p>
-        </div>
-        <Link href={ADD_SIP_HREF} className={buttonVariants({ size: "sm" })}>
-          <Plus aria-hidden />
-          Start a SIP
-        </Link>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-3">
-      <SipSummaryStrip sips={sips} />
-      <SipTable sips={sips} today={today} onChanged={reload} />
+      <div
+        className={cn("transition-opacity", reloading && "opacity-60")}
+        aria-busy={reloading}
+      >
+        <SipSummaryStrip sips={sips} />
+      </div>
+      <SipTable
+        sips={sips}
+        today={today}
+        onChanged={reload}
+        reloading={reloading}
+      />
     </div>
   );
 }

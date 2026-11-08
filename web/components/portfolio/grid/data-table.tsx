@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   functionalUpdate,
   useTable,
@@ -8,7 +8,9 @@ import {
   type PaginationState,
   type SortingState,
 } from "@tanstack/react-table";
+import { TopProgress } from "@/components/analytics/top-progress";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -33,7 +35,9 @@ import {
   type HoldingsFilters,
 } from "./use-holdings-query";
 
-const storageKey = (type: string) => `wt.portfolio.columns.${type}`;
+const SKELETON_ROWS = 5;
+
+const storageKey =(type: string) => `wt.portfolio.columns.${type}`;
 
 /** Saved visibility, limited to known, hideable columns (new columns stay visible). */
 function readVisibility(
@@ -96,6 +100,9 @@ export function HoldingsGrid<TRow extends HoldingRow>({
   data,
   filters,
   fetching,
+  switching,
+  noneYet,
+  addAction,
   onFilters,
   onReset,
   onSort,
@@ -107,6 +114,12 @@ export function HoldingsGrid<TRow extends HoldingRow>({
   data: HoldingsResponse<TRow>;
   filters: HoldingsFilters;
   fetching: boolean;
+  /** Shown data belongs to the other status tab: show skeleton rows. */
+  switching: boolean;
+  /** The user has no holdings of this type at all (open or closed). */
+  noneYet: boolean;
+  /** Add button shown under "No {noun} yet". */
+  addAction: ReactNode;
   onFilters: (patch: FilterPatch) => void;
   onReset: () => void;
   onSort: (sort: string, dir: SortDir) => void;
@@ -176,6 +189,8 @@ export function HoldingsGrid<TRow extends HoldingRow>({
   const rows = table.getRowModel().rows;
   const hasFilters = hasActiveFilters(filters);
   const visibleCount = table.getVisibleLeafColumns().length;
+  // Old tab's rows are never shown; an empty result is never shown while a request is in flight.
+  const showSkeleton = switching || (fetching && rows.length === 0);
 
   return (
     <div className="min-w-0 space-y-3">
@@ -193,16 +208,13 @@ export function HoldingsGrid<TRow extends HoldingRow>({
         className="relative min-w-0 overflow-hidden rounded-xl border"
         aria-busy={fetching}
       >
-        {fetching ? (
-          <div
-            role="progressbar"
-            aria-label="Loading…"
-            className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary/20"
-          >
-            <div className="h-full w-full animate-pulse bg-primary" />
-          </div>
-        ) : null}
-        <Table>
+        <TopProgress active={fetching} />
+        <Table
+          className={cn(
+            "transition-opacity",
+            fetching && !showSkeleton && "opacity-60",
+          )}
+        >
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
               <TableRow key={group.id} className="hover:bg-transparent">
@@ -227,22 +239,45 @@ export function HoldingsGrid<TRow extends HoldingRow>({
             ))}
           </TableHeader>
           <TableBody>
-            {rows.length === 0 ? (
+            {showSkeleton ? (
+              Array.from({ length: SKELETON_ROWS }, (_, i) => (
+                <TableRow key={i} className="hover:bg-transparent">
+                  {table.getVisibleLeafColumns().map((col) => (
+                    <TableCell key={col.id}>
+                      <div className="flex h-8 items-center">
+                        <Skeleton className="h-4 w-full max-w-24" />
+                      </div>
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : rows.length === 0 ? (
               <TableRow className="hover:bg-transparent">
                 <TableCell
                   colSpan={visibleCount}
                   className="py-12 text-center text-muted-foreground"
                 >
-                  <p>No holdings match your filters.</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    onClick={onReset}
-                  >
-                    Reset
-                  </Button>
+                  {!hasFilters && noneYet ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <p>No {config.noun} yet</p>
+                      {addAction}
+                    </div>
+                  ) : !hasFilters && closedTab ? (
+                    <p>No closed {config.noun}</p>
+                  ) : (
+                    <>
+                      <p>No holdings match your filters.</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={onReset}
+                      >
+                        Reset
+                      </Button>
+                    </>
+                  )}
                 </TableCell>
               </TableRow>
             ) : (

@@ -140,14 +140,6 @@ export function RecentlyDeleted() {
     );
   }
 
-  if (items.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed py-12 text-center text-[13.5px] text-muted-foreground">
-        No recently deleted holdings
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
       <div className="flex h-4 items-center justify-end text-xs text-muted-foreground">
@@ -156,6 +148,11 @@ export function RecentlyDeleted() {
         ) : null}
       </div>
       <ul className="divide-y rounded-lg border">
+        {items.length === 0 ? (
+          <li className="py-12 text-center text-[13.5px] text-muted-foreground">
+            No recently deleted holdings
+          </li>
+        ) : null}
         {items.map((item) => (
           <DeletedRow
             key={`${item.type}-${item.id}`}

@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { notify } from "@/lib/notify";
 import { SipGrid } from "@/components/sips/sip-grid";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { apiDelete } from "@/lib/api";
 import { invalidateNetWorth } from "@/lib/networth-cache";
@@ -74,13 +75,31 @@ function StatusTabs({
   );
 }
 
+function TotalsSkeleton() {
+  return (
+    <>
+      {["Invested", "Current", "Gain"].map((label) => (
+        <div key={label} className="flex items-baseline gap-1.5">
+          <dt className={LABEL}>{label}</dt>
+          <dd aria-busy="true" aria-label="Loading…">
+            <Skeleton className="h-4 w-20" />
+          </dd>
+        </div>
+      ))}
+    </>
+  );
+}
+
 function SummaryStrip({
   summary,
   showTotals = true,
+  loadingTotals = false,
   tabs,
 }: {
   summary: HoldingsSummary;
   showTotals?: boolean;
+  /** Figures belong to the other status tab: show placeholders. */
+  loadingTotals?: boolean;
   tabs?: ReactNode;
 }) {
   return (
@@ -96,7 +115,9 @@ function SummaryStrip({
           ) : null}
         </div>
       )}
-      {showTotals ? <Totals summary={summary} /> : null}
+      {showTotals ? (
+        loadingTotals ? <TotalsSkeleton /> : <Totals summary={summary} />
+      ) : null}
     </dl>
   );
 }
@@ -204,22 +225,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
 
   const { data, filters } = q;
 
-  if (data.summary.count + data.summary.closed_count === 0) {
-    return (
-      <>
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-          <p className="text-sm font-medium">No {config.noun} yet</p>
-          <Link
-            href={`/add/${config.type}`}
-            className={buttonVariants({ size: "sm" })}
-          >
-            <Plus aria-hidden />
-            {addLabel}
-          </Link>
-        </div>
-      </>
-    );
-  }
+  const noneYet = data.summary.count + data.summary.closed_count === 0;
 
   return (
     <>
@@ -228,6 +234,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
           <SummaryStrip
             summary={data.summary}
             showTotals={!filters.closed}
+            loadingTotals={q.switching}
             tabs={
               <StatusTabs
                 summary={data.summary}
@@ -258,27 +265,29 @@ function TypedPortfolio<TRow extends HoldingRow>({
       ) : null}
 
       <div className="min-w-0">
-        {filters.closed &&
-        data.total === 0 &&
-        !q.fetching &&
-        !hasActiveFilters(filters) ? (
-          <div className="rounded-lg border border-dashed py-12 text-center text-[13.5px] text-muted-foreground">
-            No closed {config.noun}
-          </div>
-        ) : (
-          <HoldingsGrid
-            config={config}
-            data={data}
-            filters={filters}
-            fetching={q.fetching}
-            onFilters={q.setFilters}
-            onReset={q.resetFilters}
-            onSort={q.setSort}
-            onPage={q.setPage}
-            onEdit={onEdit}
-            onDelete={onDelete}
-          />
-        )}
+        <HoldingsGrid
+          config={config}
+          data={data}
+          filters={filters}
+          fetching={q.fetching}
+          switching={q.switching}
+          noneYet={noneYet}
+          addAction={
+            <Link
+              href={`/add/${config.type}`}
+              className={buttonVariants({ size: "sm" })}
+            >
+              <Plus aria-hidden />
+              {addLabel}
+            </Link>
+          }
+          onFilters={q.setFilters}
+          onReset={q.resetFilters}
+          onSort={q.setSort}
+          onPage={q.setPage}
+          onEdit={onEdit}
+          onDelete={onDelete}
+        />
 
         <EditDialog
           config={config}

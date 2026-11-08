@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CardInfo } from "@/components/analytics/card-info";
+import { TopProgress } from "@/components/analytics/top-progress";
 import { useAnalyticsSection } from "@/components/analytics/use-analytics-section";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDate, formatINRWhole } from "@/lib/format";
@@ -116,7 +117,8 @@ function InflowsBody({
   ];
 
   return (
-    <Card size="sm" className="min-w-0 gap-4 px-4" aria-busy={switching}>
+    <Card size="sm" className="relative min-w-0 gap-4 px-4" aria-busy={switching}>
+      <TopProgress active={switching} />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -183,6 +185,9 @@ function InflowsBody({
         </div>
       </div>
 
+      <div
+        className={`flex flex-col gap-4 transition-opacity duration-200 ${switching ? "pointer-events-none opacity-50" : ""}`}
+      >
       <div>
         <p className="num text-xl font-semibold">{formatINRWhole(Math.round(total))}</p>
         {total > 0 && (
@@ -322,6 +327,7 @@ function InflowsBody({
           )}
         </>
       )}
+      </div>
     </Card>
   );
 }

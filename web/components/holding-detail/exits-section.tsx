@@ -218,17 +218,23 @@ function ExitRows({
 export function ExitsSection({
   type,
   id,
+  hasExit,
   version,
   onChanged,
 }: {
   type: AssetType;
   id: number;
+  /** Whether the holding is known to have an exit; no skeleton on first load when false. */
+  hasExit: boolean;
   version: number;
   onChanged: () => void;
 }) {
   const [exits, setExits] = useState<ExitRead[] | null>(null);
   const [error, setError] = useState<ApiMessage | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const key = `${type}:${id}:${version}:${attempt}`;
+  const reloading = settledKey !== key;
 
   useEffect(() => {
     let cancelled = false;
@@ -237,14 +243,17 @@ export function ExitsSection({
         if (cancelled) return;
         setExits(list);
         setError(null);
+        setSettledKey(key);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setError(toApiMessage(err));
+        if (cancelled) return;
+        setError(toApiMessage(err));
+        setSettledKey(key);
       });
     return () => {
       cancelled = true;
     };
-  }, [type, id, version, attempt]);
+  }, [type, id, version, attempt, key]);
 
   if (error && !exits) {
     return (
@@ -271,12 +280,55 @@ export function ExitsSection({
       </Card>
     );
   }
-  // Nothing to show while loading or when the holding was never sold or settled.
-  if (!exits || exits.length === 0) return null;
+  if (!exits) {
+    if (!hasExit) return null;
+    return (
+      <Card size="sm" className="gap-3 px-4" aria-busy>
+        <h3 className={LABEL}>Sales and settlements</h3>
+        <div
+          role="status"
+          className="flex items-center gap-3 text-[13.2px] text-muted-foreground"
+        >
+          <div
+            aria-hidden
+            className="size-10 shrink-0 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+          />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-1/2 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+            <div className="h-3 w-1/3 animate-pulse rounded bg-muted motion-reduce:animate-none" />
+          </div>
+          <span className="inline-flex items-center gap-2">
+            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+            Loading…
+          </span>
+        </div>
+      </Card>
+    );
+  }
+  // Nothing to show when the holding was never sold or settled.
+  if (exits.length === 0) return null;
   return (
-    <Card size="sm" className="gap-3 px-4">
-      <h3 className={LABEL}>Sales and settlements</h3>
-      <ExitRows type={type} exits={exits} onUndone={onChanged} />
+    <Card size="sm" className="gap-3 px-4" aria-busy={reloading}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className={LABEL}>Sales and settlements</h3>
+        {reloading ? (
+          <span
+            role="status"
+            className="inline-flex items-center gap-1.5 text-[13.2px] text-muted-foreground"
+          >
+            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+            Updating…
+          </span>
+        ) : null}
+      </div>
+      <div
+        className={cn(
+          "transition-opacity",
+          reloading && "pointer-events-none opacity-50",
+        )}
+      >
+        <ExitRows type={type} exits={exits} onUndone={onChanged} />
+      </div>
     </Card>
   );
 }

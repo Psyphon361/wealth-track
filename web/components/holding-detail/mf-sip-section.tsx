@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { TopProgress } from "@/components/analytics/top-progress";
+import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,10 +14,11 @@ import { LABEL } from "./sections";
 
 /** The SIPs feeding this holding, with the same actions as the SIPs list. */
 export function MfSipSection({ id }: { id: number }) {
-  const { sips, error, reload, retry } = useSips(id);
+  const { sips, error, reloading, reload, retry } = useSips(id);
 
   return (
-    <Card size="sm" className="gap-3 px-4">
+    <Card size="sm" className="relative gap-3 overflow-hidden px-4" aria-busy={reloading}>
+      <TopProgress active={reloading} />
       <div className="flex items-center justify-between gap-3">
         <h3 className={LABEL}>SIP</h3>
         {sips && sips.length === 0 ? (
@@ -53,7 +56,12 @@ export function MfSipSection({ id }: { id: number }) {
           No SIP is feeding this holding.
         </p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border/50">
+        <ul
+          className={cn(
+            "flex flex-col divide-y divide-border/50 transition-opacity",
+            reloading && "opacity-60",
+          )}
+        >
           {sips.map((s) => (
             <li
               key={s.id}

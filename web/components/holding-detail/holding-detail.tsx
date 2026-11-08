@@ -252,6 +252,7 @@ function TypedDetail<TRow extends HoldingRow>({
         <ExitsSection
           type={config.type}
           id={item.id}
+          hasExit={item.exit != null}
           version={exitsVersion}
           onChanged={exitDone}
         />

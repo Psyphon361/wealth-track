@@ -11,6 +11,7 @@ import type { Sip } from "@/lib/types";
 export function useSips(mutualFundId?: number) {
   const [sips, setSips] = useState<Sip[] | null>(null);
   const [error, setError] = useState<ApiMessage | null>(null);
+  const [reloading, setReloading] = useState(false);
   const requestId = useRef(0);
   const hasData = useRef(false);
 
@@ -18,15 +19,18 @@ export function useSips(mutualFundId?: number) {
     const id = ++requestId.current;
     const query =
       mutualFundId === undefined ? "" : `?mutual_fund_id=${mutualFundId}`;
+    if (hasData.current) setReloading(true);
     apiGet<Sip[]>(`/sips${query}`)
       .then((res) => {
         if (id !== requestId.current) return;
         hasData.current = true;
         setSips(res);
         setError(null);
+        setReloading(false);
       })
       .catch((err: unknown) => {
         if (id !== requestId.current) return;
+        setReloading(false);
         if (hasData.current) notify.error(err);
         else setError(toApiMessage(err));
       });
@@ -45,5 +49,5 @@ export function useSips(mutualFundId?: number) {
     load();
   }, [load]);
 
-  return { sips, error, reload: load, retry };
+  return { sips, error, reloading, reload: load, retry };
 }

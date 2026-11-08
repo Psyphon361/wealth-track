@@ -47,13 +47,19 @@ function loadAccounts(): Promise<CashAccount[]> {
 
 /**
  * The user's active cash accounts (every page, sorted by name). `accounts` is null while
- * loading; on failure it is empty and `error` holds the API text. Reloads when holdings change.
+ * loading and again while a reload after a holdings change is in flight (so a stale balance
+ * can't be picked); `refreshing` is true only for that reload. On failure it is empty and
+ * `error` holds the API text.
  */
 export function useCashAccounts(): {
   accounts: CashAccount[] | null;
   error: ApiMessage | null;
+  refreshing: boolean;
 } {
-  const [accounts, setAccounts] = useState<CashAccount[] | null>(null);
+  const [loaded, setLoaded] = useState<{
+    version: number;
+    list: CashAccount[];
+  } | null>(null);
   const [error, setError] = useState<ApiMessage | null>(null);
   const [tick, setTick] = useState(0);
 
@@ -61,21 +67,28 @@ export function useCashAccounts(): {
 
   useEffect(() => {
     let cancelled = false;
+    const version = anyHoldingsVersion();
     loadAccounts()
       .then((list) => {
         if (cancelled) return;
-        setAccounts(list);
+        setLoaded({ version, list });
         setError(null);
       })
       .catch((err: unknown) => {
         if (cancelled) return;
         setError(toApiMessage(err));
-        setAccounts([]);
+        setLoaded({ version, list: [] });
       });
     return () => {
       cancelled = true;
     };
   }, [tick]);
 
-  return { accounts, error };
+  // tick is read so a holdings change re-renders; the list is hidden until its reload lands.
+  const current = tick >= 0 && loaded && loaded.version === anyHoldingsVersion();
+  return {
+    accounts: current ? loaded.list : null,
+    error,
+    refreshing: !current && loaded !== null,
+  };
 }

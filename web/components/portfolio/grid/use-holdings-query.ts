@@ -141,12 +141,15 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   // Query string of the last request that completed (success or failure).
   const [settled, setSettled] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Status tab (closed or not) the shown `data` belongs to.
+  const [dataClosed, setDataClosed] = useState(false);
   const requestId = useRef(0);
   const hasData = useRef(false);
   const seenVersion = useRef(holdingsVersion(config.type));
+  const closedNow = filters.closed;
 
   const load = useCallback(
-    (query: string) => {
+    (query: string, closed: boolean) => {
       const id = ++requestId.current;
       // Data already shown (e.g. route revealed again): refresh in the background.
       if (hasData.current) setRefreshing(true);
@@ -155,6 +158,7 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
           if (id !== requestId.current) return;
           hasData.current = true;
           setData(res);
+          setDataClosed(closed);
           setError(null);
           setSettled(query);
           setRefreshing(false);
@@ -180,11 +184,11 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
       setData(null);
       setError(null);
     }
-    load(qs);
+    load(qs, closedNow);
     return () => {
       counter.current++;
     };
-  }, [qs, load, config.type]);
+  }, [qs, load, config.type, closedNow]);
 
   const navigate = useCallback(
     (next: HoldingsFilters) => {
@@ -243,8 +247,8 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
     // In-grid change: rows stay, and nothing is pending for this type.
     seenVersion.current = holdingsVersion(config.type);
     setRefreshing(true);
-    load(qs);
-  }, [load, qs, config.type]);
+    load(qs, closedNow);
+  }, [load, qs, config.type, closedNow]);
 
   // A change to this type made elsewhere while the grid is visible (e.g. a restore
   // from the Recently deleted page): reload in place. Hidden grids
@@ -262,8 +266,8 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
   const retry = useCallback(() => {
     setError(null);
     setSettled(null);
-    load(qs);
-  }, [load, qs]);
+    load(qs, closedNow);
+  }, [load, qs, closedNow]);
 
   /** Optimistically drop a row; returns a function that restores the snapshot. */
   const removeItem = useCallback(
@@ -308,13 +312,19 @@ export function useHoldingsQuery<TRow extends HoldingRow>(
 
   const status: QueryStatus = data ? "ready" : error ? "error" : "loading";
   const fetching = status === "ready" && (settled !== qs || refreshing);
+  // The shown data belongs to the other status tab and its replacement is loading:
+  // callers show skeletons instead of the old tab's rows and figures.
+  const switching =
+    status === "ready" && dataClosed !== filters.closed && settled !== qs;
 
   return {
     filters,
     data,
+    dataClosed,
     error,
     status,
     fetching,
+    switching,
     setFilters,
     setSort,
     setPage,

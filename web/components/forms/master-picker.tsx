@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "cn";
-import { ChevronsUpDown } from "lucide-react";
+import { ChevronsUpDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -108,6 +108,7 @@ export function MasterPicker<T>({
   }
 
   const trimmed = query.trim();
+  const searching = loading && trimmed.length >= MIN_QUERY;
   const emptyText = error
     ? error
     : trimmed.length < MIN_QUERY
@@ -167,12 +168,33 @@ export function MasterPicker<T>({
             onValueChange={handleQuery}
             placeholder={placeholder}
           />
-          <CommandList>
+          <CommandList aria-busy={searching}>
+            {searching && results.length > 0 ? (
+              <div
+                role="status"
+                className="flex items-center gap-2 px-3 py-2 text-[13.2px] text-muted-foreground"
+              >
+                <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                Searching…
+              </div>
+            ) : null}
             <CommandEmpty className="py-4 text-muted-foreground">
-              {emptyText}
+              {searching ? (
+                <span className="inline-flex items-center justify-center gap-2">
+                  <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                  {emptyText}
+                </span>
+              ) : (
+                emptyText
+              )}
             </CommandEmpty>
             {results.length > 0 ? (
-              <CommandGroup>
+              <CommandGroup
+                className={cn(
+                  "transition-opacity",
+                  searching && "pointer-events-none opacity-50",
+                )}
+              >
                 {results.map((item) => (
                   <CommandItem
                     key={itemKey(item)}

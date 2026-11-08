@@ -272,6 +272,13 @@ function ChartBody({
       </div>
     );
   }
+  if (shown && shown.points.length === 0 && loading) {
+    return (
+      <Skeleton
+        className={cn("rounded-lg", fill ? "min-h-0 flex-1" : "h-[220px]")}
+      />
+    );
+  }
   if (shown && shown.points.length === 0) {
     return (
       <p className="py-16 text-center text-[13.5px] text-muted-foreground">
