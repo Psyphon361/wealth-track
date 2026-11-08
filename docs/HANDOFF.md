@@ -2,13 +2,13 @@
 
 ## Resume here — 2026-11-08 night (DB constraints committed, gated)
 
-Committed on `main`, NOT pushed, NOT applied to any database: `152a51b` (CHECKs declared on the models, SIP first-instalment fix, CAS zero amount/units rejection, no opening row when invested <= 0) and `8d1f618` (migration `0032`: 36 CHECKs + `uq_holding_fundings_active`). Full API suite 2,321 passed. Docs: SPEC §2 "Database constraints", §8, §8a; STATUS; AGENTS.md.
+Committed on `main`, NOT pushed, NOT applied to prod (applied to the Neon dev DB on 2026-11-08, see gate 1): `152a51b` (CHECKs declared on the models, SIP first-instalment fix, CAS zero amount/units rejection, no opening row when invested <= 0) and `8d1f618` (migration `0032`: 37 CHECKs + `uq_holding_fundings_active`). Full API suite 2,321 passed. Docs: SPEC §2 "Database constraints", §8, §8a; STATUS; AGENTS.md.
 
 Gates (both need the user):
-1. Apply 0032 to the Neon dev DB and prove `downgrade` then `upgrade` (dev audit found 0 violations).
+1. DONE (2026-11-08): 0032 applied to the Neon dev DB after a preflight with 0 violating rows; 37 of 37 constraints and the unique partial index verified; `downgrade -1` and `upgrade head` round trip OK; row counts unchanged; dev left at 0032.
 2. The user runs `api/scripts/preflight_0032.sql` (SELECT-only counts) on prod, all must be 0, then says push. Possible failure: `mf_transactions` with 0 amount or units from older CAS imports; have a targeted fix ready. The migration is atomic and the deploy workflow runs it before the Vercel hook, so a failure leaves the old code live.
 
-Open questions for the user: SIP `end_date >= start_date` on POST, PF `opened_on <= balance_date` (both need API/form changes).
+Open questions for the user: PF `opened_on <= balance_date` (needs API/form change).
 
 Next batch (scout facts; re-scout if needed):
 - #14 Returns XIRR ignores partial-sale proceeds: `analytics_returns.py` `holding_flows` ignores `holding_exits`; fully sold holdings are dropped by `_active_holdings` (`services/analytics.py:282`), partly sold ones lose the sale proceeds as a positive flow.
