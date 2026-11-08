@@ -81,11 +81,6 @@ def test_today_point_agrees_with_dashboard_all_priced():
     assert hist == dash
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="Drift #15: history ignores a gold rate older than 7 days (values at cost) while the "
-    "dashboard keeps using the latest rate at any age.",
-)
 def test_today_point_agrees_when_gold_rate_is_older_than_seven_days():
     records = {"gold": [make_gold(purchase_date=date(2026, 1, 1), weight_grams=D("10"),
                                   invested_amount=D("50000"))]}  # fmt: skip

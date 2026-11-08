@@ -268,7 +268,10 @@ def build_history(
             if r.purchase_date > d or is_closed_on(r, d):
                 continue
             cost = _q(Decimal(r.invested_amount))
-            rate = on_or_before(gold_rates.get((r.metal, r.purity), ()), d, GOLD_RATE_MAX_GAP_DAYS)
+            series = gold_rates.get((r.metal, r.purity), ())
+            rate = on_or_before(series, d, GOLD_RATE_MAX_GAP_DAYS)
+            if rate is None and series and d > series[-1][0]:
+                rate = series[-1][1]  # after the latest known rate: carry it forward, as the dashboard
             invested += cost
             current += cost if rate is None else _q(Decimal(r.weight_grams) * Decimal(rate))
         for r in holdings.get("cash", ()):
