@@ -39,6 +39,11 @@ export const SCHEME_REQUIRED_ERROR = "Select a scheme from the list";
 export const STOCK_REQUIRED_ERROR = "Select a stock from the list";
 export const BOND_REQUIRED_ERROR = "Select a bond from the list";
 export const ISSUER_REQUIRED_ERROR = "Select a bank or issuer from the list";
+// Edit guards on sold holdings (api/app/schemas/assets.py).
+export const HOLDING_CLOSED_MESSAGE = "This holding is closed";
+export const HOLDING_CLOSED_DESCRIPTION = "Undo the sale or settlement first to change it.";
+export const SOLD_IN_PART_ERROR = "Sold in part: undo the sale to change this.";
+// The locked field lists live in web/lib/edit-guards.ts (SOLD_IN_PART_FIELDS).
 export const GOLD_METAL_ERROR = "Choose a metal";
 export const GOLD_FORM_ERROR = "Choose a form";
 export const GOLD_PURITY_ERROR = "Choose a purity";

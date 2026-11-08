@@ -9,6 +9,14 @@ export function useFormDisabled(): boolean {
   return useContext(FormDisabledContext);
 }
 
+/** Names of the fields locked on their own (a holding sold in part); the rest stay editable. */
+export const ReadOnlyFieldsContext = createContext<readonly string[]>([]);
+
+/** True when this field is read-only because the holding was sold in part. */
+export function useFieldReadOnly(name: string): boolean {
+  return useContext(ReadOnlyFieldsContext).includes(name);
+}
+
 /** Lets a page learn that a form or import below it is busy (e.g. to lock tabs). */
 export const FormBusyContext = createContext<(busy: boolean) => void>(
   () => {},

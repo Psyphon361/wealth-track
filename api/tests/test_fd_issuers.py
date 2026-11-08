@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import Base, get_db
 from app.main import app
-from app.models import FdIssuerMaster, FixedDeposit, RecurringDeposit
+from app.models import FdIssuerMaster, FixedDeposit, HoldingExit, RecurringDeposit
 from app.services import fd_issuers
 from app.services.fd_issuers import (
     UNKNOWN_ISSUER_MESSAGE,
@@ -487,7 +487,9 @@ RD = {
 def client(auth_engine, auth_settings):
     Base.metadata.create_all(
         auth_engine,
-        tables=[m.__table__ for m in (FdIssuerMaster, FixedDeposit, RecurringDeposit)],
+        tables=[
+            m.__table__ for m in (FdIssuerMaster, FixedDeposit, RecurringDeposit, HoldingExit)
+        ],
     )
     factory = sessionmaker(bind=auth_engine, expire_on_commit=False)
     with factory() as session:

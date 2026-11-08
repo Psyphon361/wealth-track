@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { UseFormSetValue } from "react-hook-form";
 import { apiGet, toApiMessage } from "@/lib/api";
 import { formatDate } from "@/lib/format";
+import { useFieldReadOnly } from "./form-disabled";
 import type { MfNavResponse } from "@/lib/types";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -47,8 +48,10 @@ export function useNavAutofill({
     initial.avgNav !== "" &&
     schemeCode === initial.schemeCode &&
     purchaseDate === initial.purchaseDate;
+  const locked = useFieldReadOnly("avg_nav");
   const wantKey =
     enabled &&
+    !locked &&
     schemeCode !== null &&
     ISO_DATE.test(purchaseDate) &&
     !manual &&

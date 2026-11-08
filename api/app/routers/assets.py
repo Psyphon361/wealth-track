@@ -1,3 +1,6 @@
+from datetime import date
+from decimal import Decimal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,7 +11,26 @@ from sqlalchemy.orm import Session
 from app import schemas
 from app.db import Base, get_db
 from app.deps import current_user
-from app.models import Bond, Cash, FixedDeposit, Gold, MutualFund, Nps, Other, Pf, RecurringDeposit, Stock, User
+from app.models import (
+    Bond,
+    Cash,
+    FixedDeposit,
+    Gold,
+    HoldingExit,
+    MutualFund,
+    Nps,
+    Other,
+    Pf,
+    RecurringDeposit,
+    Stock,
+    User,
+)
+from app.schemas.assets import (
+    HOLDING_CLOSED_DESCRIPTION,
+    HOLDING_CLOSED_MESSAGE,
+    SOLD_IN_PART_ERROR,
+    SOLD_IN_PART_FIELDS,
+)
 from app.schemas.fundings import PaidFromBody
 from app.schemas.messages import Outcome
 from app.services import amfi, bond_master, duplicates, fd_issuers, fundings, nps, stock_master
@@ -50,6 +72,15 @@ def _get_or_404(db: Session, model: type[Base], item_id: int, user_id: int):
     if obj is None:
         raise HTTPException(status_code=404, detail="Not found")
     return obj
+
+
+def _changed(stored, new) -> bool:
+    """True when a submitted value differs from the stored one (numbers compared by value)."""
+    if stored is None or new is None:
+        return stored is not new
+    if isinstance(stored, date):
+        return stored != new
+    return Decimal(str(stored)) != Decimal(str(new))
 
 
 def _holding_name(obj) -> str:
@@ -167,8 +198,48 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         db: Session = Depends(get_db),
         user: User = Depends(current_user),
     ):
-        obj = _get_or_404(db, model, item_id, user.id)
-        for key, value in _values(db, body).items():
+        # Lock the row, then check its exits: a sale or settlement committed meanwhile is seen.
+        obj = db.scalars(
+            select(model)
+            .where(model.id == item_id, model.user_id == user.id)
+            .with_for_update(of=model)
+        ).first()
+        if obj is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        values = _values(db, body)
+        kinds = set(
+            db.scalars(
+                select(HoldingExit.kind).where(
+                    HoldingExit.user_id == user.id,
+                    HoldingExit.asset_type == slug,
+                    HoldingExit.holding_id == obj.id,
+                )
+            )
+        )
+        if getattr(obj, "closed_on", None) is not None or "maturity" in kinds:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": HOLDING_CLOSED_MESSAGE,
+                    "description": HOLDING_CLOSED_DESCRIPTION,
+                },
+            )
+        if "sale" in kinds:
+            errors = [
+                {
+                    "type": "value_error",
+                    "loc": ("body", field),
+                    "msg": SOLD_IN_PART_ERROR,
+                    "input": "" if values.get(field) is None else str(values[field]),
+                }
+                for field in SOLD_IN_PART_FIELDS.get(slug, ())
+                if _changed(getattr(obj, field), values.get(field))
+            ]
+            if errors:
+                db.rollback()
+                raise RequestValidationError(errors)
+        for key, value in values.items():
             setattr(obj, key, value)
         db.commit()
         db.refresh(obj)

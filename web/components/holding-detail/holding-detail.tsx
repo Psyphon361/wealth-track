@@ -26,6 +26,7 @@ import type { GridConfig } from "@/components/portfolio/grid/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiDelete } from "@/lib/api";
+import { canEdit } from "@/lib/edit-guards";
 import {
   CASH_PAID_FROM_INFO,
   canSell,
@@ -187,10 +188,12 @@ function TypedDetail<TRow extends HoldingRow>({
               Sell
             </Button>
           ) : null}
-          <Button variant="outline" size="sm" onClick={() => setEditing(item)}>
-            <Pencil aria-hidden />
-            Edit
-          </Button>
+          {canEdit(item) ? (
+            <Button variant="outline" size="sm" onClick={() => setEditing(item)}>
+              <Pencil aria-hidden />
+              Edit
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

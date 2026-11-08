@@ -1,7 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FormBusyContext } from "@/components/forms/form-disabled";
+import {
+  FormBusyContext,
+  ReadOnlyFieldsContext,
+} from "@/components/forms/form-disabled";
+import { readOnlyFields } from "@/lib/edit-guards";
 import {
   Dialog,
   DialogContent,
@@ -43,7 +47,11 @@ export function EditDialog<TRow extends HoldingRow>({
           <DialogDescription>{row ? config.rowName(row) : ""}</DialogDescription>
         </DialogHeader>
         <FormBusyContext.Provider value={setBusy}>
-          {row ? config.renderEditForm(row, onSaved) : null}
+          <ReadOnlyFieldsContext.Provider
+            value={row ? readOnlyFields(config.type, row) : []}
+          >
+            {row ? config.renderEditForm(row, onSaved) : null}
+          </ReadOnlyFieldsContext.Provider>
         </FormBusyContext.Provider>
       </DialogContent>
     </Dialog>

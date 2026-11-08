@@ -25,8 +25,8 @@ import { formatDate } from "@/lib/format";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { MAX_NOTES, MAX_TEXT, MIN_DATE } from "./schema";
-import { useFormDisabled } from "./form-disabled";
+import { MAX_NOTES, MAX_TEXT, MIN_DATE, SOLD_IN_PART_ERROR } from "./schema";
+import { useFieldReadOnly, useFormDisabled } from "./form-disabled";
 import {
   Select,
   SelectContent,
@@ -191,7 +191,8 @@ export function TextField<TIn extends FieldValues, TOut>({
   uppercase?: boolean;
 }) {
   const numeric = inputMode !== undefined;
-  const locked = useFormDisabled();
+  const readOnly = useFieldReadOnly(name);
+  const locked = useFormDisabled() || readOnly;
   return (
     <Controller
       control={control}
@@ -255,7 +256,9 @@ export function TextField<TIn extends FieldValues, TOut>({
               </span>
             ) : null}
           </div>
-          {hint ? (
+          {readOnly ? (
+            <p className="text-[11px] text-muted-foreground">{SOLD_IN_PART_ERROR}</p>
+          ) : hint ? (
             <p className="text-[11px] text-muted-foreground">{hint}</p>
           ) : null}
           <FormError error={fieldState.error} />
@@ -381,7 +384,8 @@ export function DateField<TIn extends FieldValues, TOut>({
   toYear?: number;
 }) {
   const [open, setOpen] = useState(false);
-  const locked = useFormDisabled();
+  const readOnly = useFieldReadOnly(name);
+  const locked = useFormDisabled() || readOnly;
   const endYear = Math.max(toYear ?? 0, new Date().getFullYear() + 40);
   const minParsed = parseISODate(MIN_DATE);
   const maxParsed = maxDate ? parseISODate(maxDate) : undefined;
@@ -438,6 +442,9 @@ export function DateField<TIn extends FieldValues, TOut>({
                 />
               </PopoverContent>
             </Popover>
+            {readOnly ? (
+              <p className="text-[11px] text-muted-foreground">{SOLD_IN_PART_ERROR}</p>
+            ) : null}
             <FormError error={fieldState.error} />
           </Field>
         );

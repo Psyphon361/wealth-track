@@ -55,6 +55,7 @@ import {
 } from "./schema";
 import { useAssetSave } from "./use-asset-form";
 import { usePaidFrom } from "./paid-from-field";
+import { useFieldReadOnly } from "./form-disabled";
 import type { ReinvestPrefill } from "@/lib/reinvest";
 
 const schema = z
@@ -207,6 +208,7 @@ export function BondForm({
       }
     }
   });
+  const dateLocked = useFieldReadOnly("purchase_date");
   const mode = useWatch({ control, name: "master_mode" });
   const bondName = useWatch({ control, name: "name" });
   const purchaseDate = useWatch({ control, name: "purchase_date" });
@@ -385,7 +387,8 @@ export function BondForm({
                     if (
                       s.issue_date &&
                       s.issue_date <= todayISO() &&
-                      !getValues("purchase_date")
+                      !getValues("purchase_date") &&
+                      !dateLocked
                     ) {
                       setValue("purchase_date", s.issue_date);
                     }

@@ -5,6 +5,7 @@ import type { UseFormSetValue } from "react-hook-form";
 import { apiGet, toApiMessage } from "@/lib/api";
 import { formatDate, formatINR } from "@/lib/format";
 import type { GoldRateResponse } from "@/lib/types";
+import { useFieldReadOnly } from "./form-disabled";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DEBOUNCE_MS = 200;
@@ -49,8 +50,10 @@ export function useGoldRateAutofill({
     metal === initial.metal &&
     purity === initial.purity &&
     purchaseDate === initial.purchaseDate;
+  const locked = useFieldReadOnly("invested_amount");
   const wantKey =
     enabled &&
+    !locked &&
     purity !== "" &&
     ISO_DATE.test(purchaseDate) &&
     !manual &&

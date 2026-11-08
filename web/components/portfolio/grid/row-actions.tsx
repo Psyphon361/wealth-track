@@ -25,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { canEdit } from "@/lib/edit-guards";
 import { canSell, canSettle } from "@/lib/exits";
 import type { AssetType, HoldingRow } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -75,22 +76,23 @@ export function RowActions({
       run: () => setDialog("settle"),
     });
   }
-  entries.push(
-    {
+  // Sold or settled holdings can't be edited until the exit is undone.
+  if (canEdit(row)) {
+    entries.push({
       key: "edit",
       label: "Edit",
       icon: <Pencil />,
       run: onEdit,
-    },
-    {
-      key: "delete",
-      label: "Delete",
-      icon: <Trash2 />,
-      destructive: true,
-      separatorBefore: true,
-      run: onDelete,
-    },
-  );
+    });
+  }
+  entries.push({
+    key: "delete",
+    label: "Delete",
+    icon: <Trash2 />,
+    destructive: true,
+    separatorBefore: canEdit(row) || entries.length > 0,
+    run: onDelete,
+  });
 
   return (
     <div className="flex items-center justify-end gap-0.5">

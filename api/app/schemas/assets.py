@@ -616,6 +616,19 @@ class PfRead(PfBase, _Read):
 
 OTHER_ACQUIRED_AFTER_VALUE_ERROR = "Purchase date can't be after the value date"
 
+# Edit guards on sold or settled holdings (SPEC: closed holdings can't be edited; partly sold ones
+# keep their quantity, cost and date fields). Mirrored verbatim in web/components/forms/schema.ts.
+HOLDING_CLOSED_MESSAGE = "This holding is closed"
+HOLDING_CLOSED_DESCRIPTION = "Undo the sale or settlement first to change it."
+SOLD_IN_PART_ERROR = "Sold in part: undo the sale to change this."
+SOLD_IN_PART_FIELDS = {
+    "stock": ("quantity", "avg_buy_price", "buy_date"),
+    "bond": ("quantity", "purchase_price", "invested_amount", "purchase_date"),
+    "mf": ("units", "avg_nav", "invested_amount", "purchase_date"),
+    "gold": ("weight_grams", "invested_amount", "purchase_date"),
+    "other": ("invested_amount", "acquired_on"),
+}
+
 Category = Annotated[
     str,
     StringConstraints(strip_whitespace=True),
