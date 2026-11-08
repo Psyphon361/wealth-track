@@ -13,6 +13,7 @@ class ExistingHolding(BaseModel):
     invested_amount: Dec
     avg_nav: Dec
     purchase_date: date
+    has_sales: bool = False
 
 
 class CasTransaction(BaseModel):
@@ -38,6 +39,7 @@ class CasPreviewRow(BaseModel):
     purchase_date: date | None
     current_value: Dec | None
     existing: list[ExistingHolding]
+    has_sales: bool = False
     transactions: list[CasTransaction]
     importable: bool
     issue: str | None
@@ -65,6 +67,8 @@ class CasCommitRow(BaseModel):
 
 class CasCommit(BaseModel):
     rows: list[CasCommitRow]
+    # End of the statement period; SIP instalments after it survive an update.
+    statement_to: date | None = None
 
 
 class CasCommitResult(Outcome):

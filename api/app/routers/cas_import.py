@@ -1,3 +1,5 @@
+from decimal import ROUND_HALF_UP, Decimal
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import or_, select
@@ -5,10 +7,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
-from app.models import MFMaster, MutualFund, User
+from app.models import MFMaster, MFTransaction, MutualFund, User
 from app.schemas.assets import MutualFundCreate
 from app.schemas.cas_import import CasCommit, CasCommitResult, CasPreview
 from app.services import cas_import
+from app.services.sip import today_ist
+
+NAV_DP = Decimal("0.0001")
 
 router = APIRouter(prefix="/import/cas", tags=["import"])
 
@@ -53,7 +58,10 @@ def preview(
         for holding in holdings:
             existing_by_code.setdefault(holding.scheme_code, []).append(holding)
 
-    rows, hidden_zero = cas_import.build_rows(data, by_code, by_isin, existing_by_code)
+    sold = cas_import.sold_holding_ids(
+        db, user.id, [h.id for hs in existing_by_code.values() for h in hs]
+    )
+    rows, hidden_zero = cas_import.build_rows(data, by_code, by_isin, existing_by_code, sold)
     period = data.statement_period
     return {
         "statement_from": cas_import._as_date(period.from_),
@@ -78,6 +86,8 @@ def commit(
     user: User = Depends(current_user),
 ):
     title = "Couldn't import — nothing was saved"
+    if body.statement_to is not None and body.statement_to > today_ist():
+        raise _reject(422, title, cas_import.FUTURE_STATEMENT_DATE)
     prepared = []
     seen_holdings: set[int] = set()
     for row in body.rows:
@@ -102,12 +112,14 @@ def commit(
         if row.action == "update":
             if row.holding_id is not None and row.holding_id not in seen_holdings:
                 holding = db.scalars(
-                    select(MutualFund).where(
-                        MutualFund.id == row.holding_id, MutualFund.user_id == user.id
-                    )
+                    select(MutualFund)
+                    .where(MutualFund.id == row.holding_id, MutualFund.user_id == user.id)
+                    .with_for_update(of=MutualFund)  # a sale in flight must finish first
                 ).first()
             if holding is None:
                 raise _reject(422, title, f"{name} — The existing holding wasn't found")
+            if cas_import.sold_holding_ids(db, user.id, [holding.id]):
+                raise _reject(422, title, cas_import.sales_error(name))
             seen_holdings.add(holding.id)
         problem = cas_import.transaction_error(row.transactions)
         if problem:
@@ -131,6 +143,27 @@ def commit(
             holding.invested_amount = payload.invested_amount
             holding.purchase_date = payload.purchase_date
             updated += 1
+            kept_units, kept_amount = cas_import.save_transactions(
+                db, holding.id, transactions,
+                keep_sip_after=cas_import.cutoff_date(body.statement_to, transactions),
+            )  # fmt: skip
+            if kept_units > 0 and not transactions:
+                # No statement history: keep the history summing to the totals with an opening row
+                db.add(
+                    MFTransaction(
+                        mutual_fund_id=holding.id, txn_date=payload.purchase_date,
+                        kind="purchase", amount=payload.invested_amount, units=payload.units,
+                    )
+                )  # fmt: skip
+            if kept_units > 0:  # SIP instalments newer than the statement: totals include them
+                total_units = Decimal(str(payload.units)) + kept_units
+                total_invested = Decimal(str(payload.invested_amount)) + kept_amount
+                holding.units = total_units
+                holding.invested_amount = total_invested
+                holding.avg_nav = (total_invested / total_units).quantize(
+                    NAV_DP, rounding=ROUND_HALF_UP
+                )
+            continue
         cas_import.save_transactions(db, holding.id, transactions)
     db.commit()
 

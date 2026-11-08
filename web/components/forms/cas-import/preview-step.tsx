@@ -26,6 +26,14 @@ import { invalidateNetWorth } from "@/lib/networth-cache";
 import { markHoldingsStale } from "@/lib/holdings-cache";
 import { formatDate, formatINR } from "@/lib/format";
 import { notify } from "@/lib/notify";
+import {
+  defaultSelected,
+  rowAction,
+  SALES_BADGE,
+  SALES_HELPER,
+  updateBlocked,
+  type CasRowAction,
+} from "@/lib/cas-import";
 import type {
   CasCommitResult,
   CasCommitRow,
@@ -33,7 +41,7 @@ import type {
   CasPreviewRow,
 } from "@/lib/types";
 
-type RowAction = "update" | "create";
+type RowAction = CasRowAction;
 
 const ACTION_OPTIONS = [
   { value: "update", label: "Update Existing" },
@@ -77,7 +85,7 @@ export function CasPreviewStep({
 }) {
   const { rows } = preview;
   const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(rows.filter((r) => r.importable).map((r) => r.key)),
+    () => defaultSelected(rows),
   );
   const [actions, setActions] = useState<Record<string, RowAction>>({});
   const [importing, setImporting] = useState(false);
@@ -102,8 +110,7 @@ export function CasPreviewStep({
   }
 
   function actionFor(r: CasPreviewRow): RowAction {
-    if (r.existing.length !== 1) return "create";
-    return actions[r.key] ?? "update";
+    return rowAction(r, actions[r.key]);
   }
 
   async function submit() {
@@ -128,6 +135,7 @@ export function CasPreviewStep({
     try {
       const result = await apiPost<CasCommitResult>("/import/cas/commit", {
         rows: body,
+        statement_to: preview.statement_to,
       });
       invalidateNetWorth();
       markHoldingsStale("mf");
@@ -220,7 +228,12 @@ export function CasPreviewStep({
                       <Badge variant="secondary">New</Badge>
                     ) : (
                       <div className="flex flex-col items-start gap-1">
-                        <Badge variant="outline">In portfolio</Badge>
+                        <div className="flex flex-wrap gap-1">
+                          <Badge variant="outline">In portfolio</Badge>
+                          {r.has_sales ? (
+                            <Badge variant="secondary">{SALES_BADGE}</Badge>
+                          ) : null}
+                        </div>
                         {r.existing.length === 1 ? (
                           <>
                             <Select
@@ -239,12 +252,23 @@ export function CasPreviewStep({
                               </SelectTrigger>
                               <SelectContent>
                                 {ACTION_OPTIONS.map((o) => (
-                                  <SelectItem key={o.value} value={o.value}>
+                                  <SelectItem
+                                    key={o.value}
+                                    value={o.value}
+                                    disabled={
+                                      o.value === "update" && updateBlocked(r)
+                                    }
+                                  >
                                     {o.label}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
+                            {updateBlocked(r) ? (
+                              <span className="text-xs text-muted-foreground">
+                                {SALES_HELPER}
+                              </span>
+                            ) : null}
                             <span className="num text-xs text-muted-foreground">
                               {units3.format(r.existing[0].units)} →{" "}
                               {units3.format(r.units)} units

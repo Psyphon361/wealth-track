@@ -397,6 +397,7 @@ export interface CasExistingHolding {
   invested_amount: number;
   avg_nav: number;
   purchase_date: string;
+  has_sales: boolean;
 }
 
 export interface CasTransaction {
@@ -422,6 +423,7 @@ export interface CasPreviewRow {
   purchase_date: string | null;
   current_value: number | null;
   existing: CasExistingHolding[];
+  has_sales: boolean;
   transactions: CasTransaction[];
   importable: boolean;
   issue: string | null;

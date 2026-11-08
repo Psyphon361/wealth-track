@@ -161,7 +161,10 @@ def _first_error(exc: ValidationError) -> str:
     return str(error["msg"])
 
 
-def build_rows(data, by_code: dict, by_isin: dict, existing_by_code: dict[int, list]) -> tuple[list[dict], int]:
+def build_rows(
+    data, by_code: dict, by_isin: dict, existing_by_code: dict[int, list],
+    sold_ids: frozenset[int] | set[int] = frozenset(),
+) -> tuple[list[dict], int]:  # fmt: skip
     """Merge the statement's schemes into preview rows; returns (rows, hidden_zero)."""
     groups: dict[str, dict] = {}
     hidden_zero = 0
@@ -189,7 +192,7 @@ def build_rows(data, by_code: dict, by_isin: dict, existing_by_code: dict[int, l
 
     rows = []
     for key, group in groups.items():
-        rows.append(_row(key, group, existing_by_code))
+        rows.append(_row(key, group, existing_by_code, sold_ids))
     return rows, hidden_zero
 
 
@@ -239,13 +242,71 @@ def transaction_error(transactions: list, today: date | None = None) -> str | No
     return None
 
 
-def save_transactions(db, holding_id: int, transactions: list) -> None:
-    """Replace a holding's stored transactions with the given list (empty deletes them)."""
-    from sqlalchemy import delete
+def sold_holding_ids(db, user_id: int, holding_ids: Iterable[int]) -> set[int]:
+    """Which of these funds have a sale or settlement recorded in the app."""
+    from sqlalchemy import select
+
+    from app.models import HoldingExit
+
+    ids = list(holding_ids)
+    if not ids:
+        return set()
+    return set(
+        db.scalars(
+            select(HoldingExit.holding_id).where(
+                HoldingExit.user_id == user_id,
+                HoldingExit.asset_type == "mf",
+                HoldingExit.holding_id.in_(ids),
+            )
+        )
+    )
+
+
+def sales_error(name: str) -> str:
+    return f"{name} — Sales are recorded for this fund here, so use Add as new or skip it"
+
+
+def cutoff_date(statement_to: date | None, transactions: list) -> date | None:
+    """The date the statement's totals are as at: the later of its end and its latest transaction."""
+    dates = [t.date for t in transactions]
+    if statement_to is not None:
+        dates.append(statement_to)
+    return max(dates, default=None)
+
+
+FUTURE_STATEMENT_DATE = "The statement date is in the future."
+
+
+def save_transactions(
+    db, holding_id: int, transactions: list, keep_sip_after: date | None = None
+) -> tuple[Decimal, Decimal]:
+    """Replace a holding's stored transactions with the given list (empty deletes them).
+
+    SIP instalments dated after `keep_sip_after` stay (the statement doesn't have them yet).
+    Returns (units, amount) of the kept instalments, to add to the holding's totals.
+    """
+    from sqlalchemy import delete, select
 
     from app.models import MFTransaction
 
-    db.execute(delete(MFTransaction).where(MFTransaction.mutual_fund_id == holding_id))
+    keep = []
+    if keep_sip_after is not None:
+        keep = list(
+            db.scalars(
+                select(MFTransaction).where(
+                    MFTransaction.mutual_fund_id == holding_id,
+                    MFTransaction.sip_id.is_not(None),
+                    MFTransaction.txn_date > keep_sip_after,
+                )
+            )
+        )
+    keep_ids = [k.id for k in keep]
+    statement = delete(MFTransaction).where(MFTransaction.mutual_fund_id == holding_id)
+    if keep_ids:
+        statement = statement.where(MFTransaction.id.not_in(keep_ids))
+    db.execute(statement.execution_options(synchronize_session=False))
+    kept_units = sum((Decimal(str(k.units)) for k in keep), Decimal(0))
+    kept_amount = sum((Decimal(str(k.amount)) for k in keep), Decimal(0))
     db.add_all(
         MFTransaction(
             mutual_fund_id=holding_id, txn_date=t.date, kind=t.type,
@@ -253,9 +314,10 @@ def save_transactions(db, holding_id: int, transactions: list) -> None:
         )  # fmt: skip
         for t in transactions
     )
+    return kept_units, kept_amount
 
 
-def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
+def _row(key: str, group: dict, existing_by_code: dict[int, list], sold_ids=frozenset()) -> dict:
     master = group["master"]
     items = group["items"]
     units = sum((Decimal(s.close) for s in items), Decimal(0)).quantize(UNITS_DP)
@@ -294,6 +356,7 @@ def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
         {
             "id": h.id, "units": h.units, "invested_amount": h.invested_amount,
             "avg_nav": h.avg_nav, "purchase_date": h.purchase_date,
+            "has_sales": h.id in sold_ids,
         }  # fmt: skip
         for h in (existing_by_code.get(code, []) if code is not None else [])
     ]
@@ -313,6 +376,7 @@ def _row(key: str, group: dict, existing_by_code: dict[int, list]) -> dict:
         "purchase_date": purchase,
         "current_value": current_value,
         "existing": existing,
+        "has_sales": any(e["has_sales"] for e in existing),
         "transactions": _transactions(items),
         "importable": issue is None,
         "issue": issue,
