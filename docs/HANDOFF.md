@@ -1,5 +1,57 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 night (Wave 1 and Wave 2 committed, docs done)
+
+Committed on `main`: `567e2aa` (sold bond payouts), `bd27705` (cash grid refresh), `adfa3b2` (row locks), `a324634` (lock order fix, SIP re-check under lock), `9592502` (CAS re-import guards), `225c1f9` (edit guards). Docs (SPEC §4, §8, §8a, §8b, §8c, STATUS, AGENTS.md) are written. Full suites green: API 2,228 passed, web 393 passed, tsc and lint clean. Advisor findings are fixed (reinvest vs undo lock order, stale SIP under lock, future statement date, vitest alias in `lib/edit-guards.ts`).
+
+- Nothing pushed. Push only on the user's explicit OK; API commits trigger the prod deploy.
+- Not yet browser-checked. Check with probe rows only (rule 5), spare ports 8010+/3010+: T5 add a holding with Paid From, then open the Cash grid; delete and restore it. T4 a sold bond's details page, Bond payouts card with no coupons left. Edit hidden on the Closed tab and on a sold holding's details page. Edit dialog of a partly sold holding shows quantity/units/invested/price/purchase date read-only with the helper text. CAS preview badge and disabled Update Existing for a fund with a sale. SIP rows kept after a re-import.
+- OPEN DECISION for the user: identity fields (`master_id`, `scheme_code`, `isin`, `symbol` for stock, bond and MF; `metal` and `purity` for gold) can still be edited after a partial sale, so the recorded sale could point at a different security. The advisor suggested adding them to `SOLD_IN_PART_FIELDS` (API `schemas/assets.py`, `web/components/forms/schema.ts`, `web/lib/edit-guards.ts`); needs the user's OK.
+
+## (Superseded) 2026-11-08 later — notes from before the commits, kept for the sections it references
+
+Superseded by the section above; only the "Next steps" are obsolete.
+
+### (old heading) Wave 2 built, UNCOMMITTED
+
+Supersedes section "0. Progress" below for what to do next. Wave 1 is committed (`567e2aa`, `bd27705`, `adfa3b2`). Everything in this section is in the working tree, uncommitted, because the user said "wind up" at the usage limit. Nothing was reverted. Push only on the user's explicit OK (still 4 unpushed commits).
+
+### Advisor review of adfa3b2 (done)
+No blocking issues. Two real gaps were found and fixed in the working tree (not yet committed):
+- Reinvest vs undo deadlock: `services/fundings.py` `plan` now locks the exit row BEFORE the cash row (undo locks exit, holding, cash). Errors are raised after both locks, cash error first.
+- Stale SIP in posting: `services/sip.py` `_post_one` re-reads the MfSip row under lock (`with_for_update(of=MfSip)`, `populate_existing`) after the fund lock and posts only if still ACTIVE.
+- Plus: FD `FOR UPDATE OF fixed_deposits` SQL test, reinvest lock-order test and stale-SIP test in `api/tests/test_locks.py`, honest comments on the sequential double-request tests (they prove the re-check, not the lock), a comment at `routers/exits.py` undo.
+- Files: `api/app/services/fundings.py`, `api/app/services/sip.py`, `api/app/routers/exits.py` (comment), `api/tests/test_locks.py`. Targeted run: 221 passed. I read this diff; no second advisor review was run (it came from the advisor's own advice).
+- Commit message already drafted at `/private/tmp/claude-501/-Users-psy-dev-mvp-wealth-track/3e3e9708-9de4-442f-9e45-6894f8ad1d0b/scratchpad/commit-lockfix.txt` (scratchpad may be gone; rewrite it if so). Commit as `git add api/app/services/fundings.py api/app/services/sip.py api/app/routers/exits.py api/tests/test_locks.py && git commit -F <file>`.
+
+### T3 CAS re-import (behaviour B) — built, advisor-reviewed, blocking fix applied; needs the full suites then commit
+Files: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/app/schemas/cas_import.py`, `api/tests/test_cas_import_guards.py` (new), `web/components/forms/cas-import/preview-step.tsx`, `web/lib/types.ts` (CAS types), `web/lib/cas-import.ts` + `cas-import.test.ts` (new).
+- Preview returns `has_sales` on each existing match and on the row (any holding_exits row for that mf holding). Web: badge "Has sales recorded here", Update Existing disabled for a single-match row with sales, action forced to Add as New, row unticked by default, one-line helper.
+- Commit: update of a fund with a sale → 422 "Couldn't import — nothing was saved" / "<fund> — Sales are recorded for this fund here, so use Add as new or skip it", all-or-nothing, checked again after `with_for_update(of=MutualFund)`.
+- SIP rows (sip_id set) dated after the cutoff are kept on update; their units and amount are added back to the holding totals; avg_nav = invested/units, 4 dp half-up (same as the SIP poster). Cutoff = later of `statement_to` (new optional field on the commit body, sent by the web) and the latest CAS transaction date for that fund; neither → keep none. Advisor blocking fix applied: a `statement_to` after today (IST) is refused 422 "The statement date is in the future." (constant `FUTURE_STATEMENT_DATE` in services/cas_import.py); a too-early date can't double count. When the CAS has no transactions for the fund but SIP rows are kept, an opening purchase transaction (CAS units and invested, dated at the payload purchase_date) is added.
+- Tests: `tests/test_cas_import*.py tests/test_sip*.py tests/test_locks.py` 123 passed. Web 389 passed at that time. The commit's lock query is inline in the router, so no `FOR UPDATE OF mutual_funds` compile test (skipped on purpose).
+- The fix round was NOT re-reviewed by the advisor (one review per task rule). Re-check by reading the diff is enough.
+- Docs to write (SPEC §8, §8a): SIP rows before the cutoff become plain (non-SIP) rows after an update, so the SIPs table "Instalments" and "Invested via SIP" drop after a re-import; the future-date rule; the has_sales rule.
+
+### T2 edit guards (behaviour A) — built but NOT reviewed, one web test failing
+Files: `api/app/schemas/assets.py` (closed message, "Sold in part: undo the sale to change this.", `SOLD_IN_PART_FIELDS` per type), `api/app/routers/assets.py` (PUT locks row with `with_for_update(of=model)`, checks holding_exits: closed (closed_on set or a maturity exit) → 409 {message "This holding is closed", description "Undo the sale or settlement first to change it."}; sale exit present → 422 per CHANGED protected field with loc ("body", field), unchanged values pass), `api/tests/test_edit_guards.py` (new, passing), web `components/forms/schema.ts` (mirrored constants), `lib/edit-guards.ts` + `lib/edit-guards.test.ts` (new), `components/forms/form-disabled.tsx` (ReadOnlyFieldsContext), `components/forms/fields.tsx` (TextField and DateField show read-only with helper text), `components/portfolio/edit-dialog.tsx`, `components/portfolio/grid/row-actions.tsx` and `components/holding-detail/holding-detail.tsx` (Edit hidden when closed).
+- Decision made by the builder: no new `sold_in_part` API field; the web derives it from `exit.kind`, `settled`, `closed_on`, `status` already on grid/detail items. Verify this is correct for a PARTLY sold holding (partial sale has an exit but closed_on is null) — check the items actually carry the exit info the helper needs.
+- TO DO 1: `web/lib/edit-guards.test.ts` fails: `lib/edit-guards.ts` imports `components/forms/schema`, which imports `@/lib/paid-from`, and vitest has no `@` alias. Fix: make `lib/edit-guards.ts` dependency-free (move `SOLD_IN_PART_FIELDS` there, keep `SOLD_IN_PART_ERROR` in schema.ts) and re-run `npm test`.
+- TO DO 2: add a test that pins the web constants to the API strings; check no other Edit-dialog entry point shows Edit for closed holdings (search the web for EditDialog usages, e.g. global search, dashboard).
+- TO DO 3: advisor diff review of the T2 diff (data integrity): `git diff -- api/app/routers/assets.py api/app/schemas/assets.py` plus the web files. Questions: lock+re-check order in PUT, Decimal/date comparison, MF/NPS joined-load lock (`of=model`), closed detection for fd/rd/bond settle, partly-sold detection (sale exit with closed_on null), PUT race with a concurrent sale.
+- Tests run: `tests/test_edit_guards.py test_paid_from.py test_soft_delete.py test_scoping.py test_duplicates.py test_other.py test_nps.py test_locks.py` 176 passed. Web: tsc and lint clean, 389 passed plus the failing edit-guards file.
+
+### Next steps, in order
+1. Send a builder (Sonnet, effort medium) to fix T2 TO DO 1 and 2. Then advisor review of T2 (TO DO 3); send blocking fixes to a builder.
+2. Run the FULL suites on the stable tree: `cd api && .venv/bin/python -m pytest -q` (was 2,194 after Wave 1) and `cd web && npx tsc --noEmit && npm run lint && npm test`.
+3. Commit, one per task, via `git add <paths> && git commit -F <file>` with the Co-Authored-By line: (a) lock fixes, (b) T3 CAS, (c) T2 edit guards. Group files per task exactly as listed above (paths with parentheses as globs).
+4. Docs by a builder, text from the orchestrator: SPEC §4 edit rules, §8 (has_sales, statement_to, future-date rule, opening row), §8a (SIP rows kept after the statement date; instalments figures drop after a re-import), §8b (edit guards on sold/settled), §8c; AGENTS.md repo-layout lines for new files (`web/lib/cas-import.ts`, `web/lib/edit-guards.ts`, `api/tests/test_edit_guards.py`, `api/tests/test_cas_import_guards.py`, `api/tests/test_locks.py`); STATUS; HANDOFF. Commit docs.
+5. Offer the user a browser check of Wave 1 (T5: add a holding with Paid From then open the Cash grid; delete and restore it; T4: a sold bond's details page, Bond payouts card with no coupons left) and Wave 2 (Edit hidden on the Closed tab and on a sold holding's details page; Edit dialog of a partly sold holding shows quantity/units/invested/price/purchase date read-only with the helper text; CAS preview badge and disabled Update Existing for a fund with a sale; SIP rows kept after a re-import). Use probe rows only (rule 5), spare ports 8010+/3010+.
+6. Push only on the user's explicit OK.
+
+### Usage note
+The 5-hour window was ~90% when the user said "wind up". Resets 2026-11-08 13:40 UTC. All builders and the advisor finished; none are running.
+
 ## Resume here — 2026-11-08 (High-risk invariant fixes)
 
 This section supersedes the "Next items" lines in the sections below.

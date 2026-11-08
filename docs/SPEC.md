@@ -203,6 +203,11 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - `GET /cron/issuers` → runs the FD/RD issuer master import (§1) and returns its counts. Same bearer auth; Vercel Cron `0 3 * * 1` UTC (Mondays 08:30 IST, weekly). 502 "Couldn't fetch the issuer files" when both the Razorpay and DICGC sources fail.
 - `GET /cron/gold` → runs the IBJA gold rate import (see Master data (gold rates)) and returns `{rate_date, session, rows_upserted}`. Same bearer auth; Vercel Cron `0 13 * * *` UTC. 502 "Couldn't fetch the gold rates" when the page can't be fetched or parsed.
 - `GET|POST /assets/{type}`, `GET|PUT|DELETE /assets/{type}/{id}`; PUT is a full replace.
+- **Edit guards** (`PUT /assets/{type}/{id}`). The PUT locks the holding row (`FOR UPDATE OF` the holding table), then checks `holding_exits`:
+  - Closed holding (sold in full: `closed_on` set, status `sold`; or settled: a maturity exit) → 409 "This holding is closed" / "Undo the sale or settlement first to change it." Matured but unsettled holdings can still be edited.
+  - Sold in part (a sale exit exists, the holding is still open): changing a protected field → 422 per changed field, loc `("body", field)`, "Sold in part: undo the sale to change this." Unchanged values pass. Protected fields (`SOLD_IN_PART_FIELDS` in `api/app/schemas/assets.py`): stock `quantity`, `avg_buy_price`, `buy_date`; bond `quantity`, `purchase_price`, `invested_amount`, `purchase_date`; MF `units`, `avg_nav`, `invested_amount`, `purchase_date`; gold `weight_grams`, `invested_amount`, `purchase_date`; Other `invested_amount`, `acquired_on` (an Other sale is always full, so this rarely applies). Other types have none.
+  - Web: Edit is hidden on closed holdings (grid row actions and details page, `canEdit` in `web/lib/edit-guards.ts`). The Edit dialog shows protected fields read-only with a helper line; autofill (gold rate, MF NAV, bond pick) doesn't overwrite a locked field. The constants are mirrored in `web/components/forms/schema.ts` and `web/lib/edit-guards.ts`; `api/tests/test_edit_guards.py` pins them to `assets.py`.
+- **Row locks.** Delete, restore, sell, settle and PUT all lock the holding row. Every `FOR UPDATE` on a holding model uses `with_for_update(of=Model)`, because Nps and FixedDeposit load their masters with a join. Lock order: Paid From with `from_exit_id` locks the exit row before the cash row (undo locks exit, holding, cash), so reinvest and undo serialise; SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
 - **Soft delete** (migration 0025: nullable `deleted_at` on the nine holding tables; `other_holdings` has it from migration 0026). `DELETE /assets/{type}/{id}` sets `deleted_at`; every query (grids, portfolio, dashboard, net worth, details) hides deleted rows. MF transactions stay with their fund.
 - `POST /assets/{type}/{id}/restore` clears `deleted_at` → `{message: "<Type> restored", description}`; 404 for a holding that isn't deleted or isn't yours.
 - `GET /deleted` → the user's holdings deleted in the last 30 days, newest first: `[{type, type_label, id, name, deleted_at, purge_on, days_left}]`.
@@ -474,12 +479,14 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
 - Each row has `existing` (the user's MF holdings in the same scheme: id, units, invested, avg NAV, purchase date), `importable` and `issue`. `importable` is true when the row passes the manual MF rules (§2, rule 21 included). Otherwise `issue` gives the first reason: "Not found in the AMFI scheme list", "Closing units are not positive", "The statement has no invested amount for this fund", "The statement has no purchase date for this fund", or the first rule message.
 - Each row also carries `transactions`: the purchases and redemptions of all merged folios, sorted by date (`date`, `type` = `purchase` | `redemption`, `amount`, `units`). Zero-unit and zero-amount rows are dropped.
 - Response: `statement_from`, `statement_to`, `rows`, `hidden_zero`.
+- `has_sales`: each `existing` match and each row carries it, true when any `holding_exits` row exists for that MF holding.
 
 ### Review (web)
 
 - One checkbox per row, ticked when `importable`. Each row shows a "New" badge, or "In portfolio" when `existing` is not empty.
 - When exactly one holding matches the scheme, the row offers "Update existing" (default) or "Add as new".
-- "Import N funds" submits the ticked rows.
+- A row with `has_sales` shows the badge "Has sales recorded here". For a single match with sales, "Update existing" is disabled, the action is forced to "Add as new", the row is unticked by default, and a one-line helper explains it (`web/lib/cas-import.ts`).
+- "Import N funds" submits the ticked rows, plus `statement_to`.
 
 ### Commit (`POST /api/import/cas/commit`, JSON `rows`)
 
@@ -488,6 +495,10 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - 422 "Couldn't import — nothing was saved" / "<fund> — <reason>", where the reason is a field message (for example "Average NAV: …"), "Not found in the AMFI scheme list", or "The existing holding wasn't found".
 - create: a new MF holding with platform empty, and its `transactions` saved to `mf_transactions` (table `mf_transactions`: one row per purchase or redemption, `txn_date`, `kind`, `amount`, `units`; FK to `mutual_funds`, ON DELETE CASCADE).
 - update: replaces units, avg NAV, invested and purchase date, and replaces the holding's stored transactions with the row's `transactions`; platform and notes are kept.
+  - Sales guard: updating a fund that has a sale → 422 "Couldn't import — nothing was saved" / "<fund> — Sales are recorded for this fund here, so use Add as new or skip it" (all-or-nothing; checked again after locking the fund row).
+  - Body has an optional `statement_to` (the web sends it). A `statement_to` after today (IST) → 422 "Couldn't import — nothing was saved" / "The statement date is in the future." (`FUTURE_STATEMENT_DATE` in `services/cas_import.py`).
+  - SIP rows (`mf_transactions` with `sip_id` set) dated after the cutoff are kept, and their units and amount are added back to the holding totals; avg NAV = invested ÷ units, 4 dp half-up (same as the SIP poster). Cutoff = the later of `statement_to` and the latest CAS transaction date for that fund; neither → none kept. When the CAS has no transactions for the fund but SIP rows are kept, an opening purchase transaction (CAS units and invested, dated at the payload `purchase_date`) is added.
+  - SIP rows before the cutoff become plain (non-SIP) rows, so the SIPs table "Instalments" and "Invested via SIP" drop after a re-import (§8a).
 - Manual entries never get transactions (no per-transaction entry).
 - Transaction checks, in the same all-or-nothing 422 (`<fund name> — <reason>`):
   - "Transaction date can't be in the future"
@@ -548,6 +559,10 @@ Each outcome returns `message` and `description`. A SIP read has: `id`, `mutual_
 - `GET /api/holdings/mf/{id}/transactions?page=`: one fund's transactions, newest first, 10 a page (`page` is clamped to the last page). Items: `id`, `date`, `kind` (`purchase` | `redemption`), `amount`, `units`, `nav` (amount ÷ units; a SIP instalment's stamp duty is undone first, so this is the NAV used; null when units are 0), `sip` (true for a SIP instalment). Response: `items`, `total`, `page`, `page_size`, `page_count`. 404 when the fund isn't yours.
 - **`sip` on MF holdings.** `GET /api/holdings/mf` rows and `GET /api/holdings/mf/{id}` carry `sip: {id, amount, day_of_month, status, next_date} | null`: the holding's active SIP, or its paused one when none is active; null otherwise (cancelled SIPs are hidden).
 
+### CAS re-import
+
+A CAS update keeps SIP rows dated after the statement cutoff and turns earlier ones into plain rows, so "Instalments" and "Invested via SIP" drop after a re-import. A fund with a recorded sale can't be updated from a statement (§8). SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
+
 ### Web
 
 As built in `web/`; the code is the reference when the two differ.
@@ -563,6 +578,8 @@ As built in `web/`; the code is the reference when the two differ.
   - Every action has a pending state ("Skipping…", "Cancelling…", "Deleting…"), and its toast text comes from the API. An empty state reads "No SIPs yet" and links to "Start a SIP".
 
 ## 8b. Closing holdings
+
+Once closed, a holding can't be edited; once partly sold, its cost fields are read-only. Sell, settle, undo, delete, restore and edit all lock the holding row (rules and messages in §4, "Edit guards" and "Row locks").
 
 Code: `api/app/services/exits.py` (the maths, and the only writers), `api/app/routers/exits.py`, `api/app/schemas/exits.py` (bodies, read models and the validation messages shared with the web), `api/app/models/holding_exit.py`; migration `0029` (`holding_exits`). Web: see "Web" below.
 
@@ -715,6 +732,8 @@ Validation (422 on the field named; the web forms use the same wording and check
 The `paid_from` check runs before the duplicate check (§4). A 422 wins even when the holding also matches a duplicate. A 409 duplicate rolls back, so nothing is debited; "Add anyway" repeats the create with `confirm_duplicate=true` and debits then.
 
 ### Edit
+
+Edit guards (closed and sold-in-part holdings) are in §4. For a Paid From exit, `plan` locks the exit row before the cash row; undo locks exit, holding, cash.
 
 `PUT /api/assets/{type}/{id}` takes no `paid_from` and never changes the funding. Changing the holding's amount does not move money. The Edit dialog shows the funding as a read-only line: "Paid from HDFC Savings · ₹50,000" (or "Paid from a deleted account · ₹50,000").
 

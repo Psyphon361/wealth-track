@@ -68,6 +68,7 @@ api/            FastAPI backend (Python 3.12, uv-managed venv at api/.venv)
   app/schemas/analytics_tax.py  response models for GET /api/analytics/tax and bond-schedule
   app/schemas/analytics_cashflows.py  response models for GET /api/analytics/inflows
   app/routers/analytics_gains.py  GET /api/analytics/capital-gains?fy=: sales (and bond repayments computed from the holdings) in a financial year, gains by tax bucket after set-off and the equity exemption, fixed-rate tax and slab gains, expected bond repayments, tax-free SGB redemptions, bond interest (SPEC §9)
+  tests/test_edit_guards.py  PUT edit guards (closed 409, sold-in-part 422) and a check that the web constants match api/app/schemas/assets.py; tests/test_cas_import_guards.py  CAS re-import guards (has_sales, sales refusal, SIP rows kept, future statement date); tests/test_locks.py  lock SQL checks (FOR UPDATE OF on the postgresql dialect) and re-check tests (all under api/tests/; SPEC §4)
   app/services/capital_gains.py  pure capital gains maths: classification, FIFO lots for funds, term and bucket rules (23 Jul 2024 cut-off), set-off, exemption, fixed-rate tax, bond repayments (SPEC §9); tests in api/tests/test_capital_gains.py and test_capital_gains_api.py
   app/schemas/analytics_gains.py  response models for GET /api/analytics/capital-gains
   app/routers/holdings.py  /api/holdings/{type}: per-type grids, server-side search/filter/sort/paginate over valued holdings; /api/holdings/{type}/{id}: one holding + linked master (detail page, load_holding in routers/portfolio.py); /api/holdings/mf/{id}/transactions: one fund's transactions, 10 a page, with a sip flag; MF rows carry the running `sip` summary
@@ -132,6 +133,8 @@ web/            Next.js 16 (App Router, TS) + Tailwind v4 + shadcn (base-ui flav
   lib/paid-from.ts  "Paid from" helpers: labels and messages (shared with the API), amount per type, effect line, request body, read-only line (vitest tests in paid-from.test.ts; SPEC §8c)
   lib/reinvest.ts  one-shot Reinvest prefill in sessionStorage (`wt.reinvest`), taken once by the add form of that type (vitest tests in reinvest.test.ts; SPEC §8c)
   components/forms/paid-from-field.tsx  the "Paid From" select on every add form, the reinvest note, and the read-only line on the Edit dialog (SPEC §8c)
+  lib/cas-import.ts  CAS preview helpers for the has_sales rules: updateBlocked (single match with sales), rowAction (forced to create), defaultSelected (blocked rows unticked), the badge and helper texts (vitest tests in cas-import.test.ts; SPEC §8)
+  lib/edit-guards.ts  edit guards for closed and partly sold holdings: canEdit, isClosed, isSoldInPart, readOnlyFields, SOLD_IN_PART_FIELDS; dependency-free so vitest can import it (vitest tests in edit-guards.test.ts; SPEC §4)
   lib/closed.ts  Closed tab helpers: status text, received amount, realised gain, Closed On date (vitest tests in closed.test.ts; SPEC §5)
   lib/unsettled.ts  dashboard "matured holdings to settle" helpers: title, rows, Show All toggle, settle link (vitest tests in unsettled.test.ts; SPEC §5)
   components/dashboard/unsettled-prompt.tsx  "matured holdings to settle" card at the top of the dashboard (SPEC §5)
@@ -248,6 +251,7 @@ Locally sign-in is required. Set `JWT_SECRET` in `api/.env` (`openssl rand -hex 
 - **shadcn here is the base-ui flavour**: no `asChild`; use the `render` prop or `buttonVariants()` on `Link`.
 - **npm peer conflict** (@hookform/resolvers): `web/.npmrc` sets `legacy-peer-deps=true`. Keep it (Vercel needs it too).
 - **Python 3.12 via uv**: system python3 is 3.9 — never use it for the API.
+- **Row locks**: use `with_for_update(of=Model)` on holdings; Nps and FixedDeposit load masters with a join, and a bare FOR UPDATE would fail or lock the master (SPEC §4).
 - **Dates** are `YYYY-MM-DD` strings end to end; never use `toISOString()` for the date part (timezone shift).
 - **Decimals**: API serialises Decimal as JSON numbers. Money 2 dp, rates 2 dp (column 3), MF units 3 dp, MF avg_nav 4 dp, gold weight 3 dp, IBJA rate 2 dp, NPS units and NAV 4 dp.
 - **Neon latency** from local dev is ~0.28 s per round trip; `/api/portfolio` ≈ 0.8 s locally. On Vercel (iad1, next to Neon us-east) it's fast.
