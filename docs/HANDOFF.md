@@ -1,5 +1,41 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-08 night (wind-up at 99% usage; gold-rule commit done, nothing running)
+
+Status: everything is committed. 1 commit is ahead of origin/main and NOT pushed: the net worth gold-rule alignment. Everything before it (up to a7d0c22) is pushed. No builders or advisors are running. The working tree is clean (verify with `git status --short`). Usage at wind-up: 5-hour window 99%, resets 2026-11-08 16:40 UTC; weekly 68%.
+
+### Done this session (all pushed except the last item)
+- Wave 1 and Wave 2 of the invariants audit (locks, edit guards incl. identity fields, CAS re-import guards), pushed.
+- DB constraints: migration 0032 (37 CHECKs + the partial unique index uq_holding_fundings_active), applied on dev and prod (the user ran the preflight on prod: no violating rows), pushed.
+- Batch 2: #11 (refuse a partial sale that leaves no cost), #9, #14 (returns XIRR counts sale proceeds and fully sold holdings), #27 (delete pending states), pushed.
+- Batch 3, pushed: undo refused with 409 when cash is short (closes the Paid From refund money-creation hole), a full sale no longer stops SIPs, SIPs keep running when their holding is sold/deleted/purged (units go to the user's single active holding of the same scheme+platform, else a fresh holding; a sold or deleted holding is never changed; creating a SIP for a previously sold fund is allowed; explicit sold id on create -> 422 "This holding has been sold"), NAV history fetched before row locks, CAS commit locks in id order, cash balance may be 0, Settle IntegrityError mapping (#10), net worth today-point agreement tests (#15 test-only).
+- UNPUSHED commit: "Net worth history carries the latest gold rate forward, as the dashboard does" (services/networth.py: after the last known rate for a metal+purity, carry it forward with no 7-day limit; the 7-day rule stays between two rates and before the first rate). API suite at that commit: 2,386 passed + 1 xfail (case c2 documented drift). Web 394 passed (unchanged). I read the 3-line diff; no advisor review (not high-risk). docs/SPEC.md net worth drift bullet updated; STATUS.md and HANDOFF.md do NOT yet mention this commit.
+
+### Owed / open
+1. PUSH the gold-rule commit only on the user's explicit OK (push triggers the API deploy workflow; no migration). I did not check the last two deploy runs' results (`gh run list --repo Psyphon361/wealth-track --limit 3`).
+2. Router window for gold rates: api/app/routers/networth.py loads rates only from 14 days before the chart start; if the latest rate is older than that window nothing loads and the history uses cost. Widen the window (needs a small change + test) — decision/OK not yet asked.
+3. Net worth drift case (c2) remains (strict xfail): a stock whose latest price has no matching close in stock_price_history; ₹500 difference in the test. Not decided.
+4. Docs to refresh: STATUS.md and HANDOFF.md must record the gold-rule commit and that drift (b) is closed (SPEC already says so).
+5. Remaining audit backlog (see STATUS.md): #25 restore skips the duplicate check; #26 chart.tsx toLocaleString without en-IN + schemas/sip.py messages with no web mirror; #16 duplicated totals maths (holdings.py:330-345); #23 unused 'renewed' enum; #17 login lockout per email only (no IP limit, none on signup/refresh/google); #18 login_attempts/refresh_tokens never purged; #19 CI runs no tests or lint (the user's parked full-test-suite work; would also give real Postgres race tests); PF opened_on <= balance_date has no API rule (needs the user's approval to add API + form rule); drop the always-0 `sips_cancelled` (API + web/lib/exits.ts:73) — optional.
+6. Observations not investigated: details pages took 10-60 s to load on the dev server (Next dev compile + Neon latency); a sold bond's details page still shows current value/gain/"days left" as if held; the Undo confirm dialog text is static UI text.
+7. Not browser-verified: SIP posting after a sale/delete (unit-tested only), the sell dialog's new SIP note, the Settle error toasts, the gold carry-forward on the chart.
+
+### Decisions the user made (do not re-ask)
+Block a short undo; allow cash 0; SIPs are independent of holding records (keep running after sale/delete; undo after a SIP moved is allowed -> two active holdings, no auto-merge); returns include fully sold holdings as realised; refuse (not clamp) a partial sale with no remaining cost; undo allowed-with-message was REPLACED by block; net worth: align the gold rule (done as carry-forward after the latest rate).
+
+### Rules that bite
+- Orchestrator hook: the main agent can only run `git add <paths> && git commit -F <file>` (no cd, no extra && steps; use absolute paths), message files in the scratchpad; builders do all edits. A trailing `&& git status` is blocked. Writes to ~/.claude memory via Edit/Write are fine; `>>` redirects are blocked.
+- Never push without the user's explicit OK. Never ask the user to sign in to test accounts (memory: dont-ask-user-to-sign-in); the user typed the probe password in chat this session and the Browser pane is signed in as probe-ui3@example.test (do not repeat the password anywhere). Use the user's running web on localhost:3000 (a second `next dev` in the same folder cannot start); seed probe rows via a spare API on 8010 (stop it afterwards); probe rows must be prefixed (PROBE-W5 next), deleted by exact id, soft-delete only. All PROBE-W3/W4 rows are already soft-deleted.
+- Use `with_for_update(of=Model)`; model CheckConstraints go in the `_checks` tuple (TimestampedMixin hook); constraints need a matching migration with identical names (tests/test_migration_0032.py pattern).
+- Advisor only for high-risk diffs (money, locks, migrations, auth, deletes) and non-trivial plans; at most one review per task; effort "high"; builders/scouts effort "medium"; max 3 builders in parallel.
+- Tests: `cd api && .venv/bin/python -m pytest -q`; `cd web && npx tsc --noEmit && npm run lint && npm test`.
+
+### Next steps, in order
+1. Read this section, docs/STATUS.md, docs/SPEC.md §2/§5/§8a/§8b. Check `git status --short` (clean) and `git log origin/main..HEAD --oneline` (expect 1 commit).
+2. Ask the user: push the gold-rule commit? Then (with OK) `git push origin main`.
+3. Dispatch a Haiku builder to update STATUS.md and HANDOFF.md for the gold-rule commit (drift (b) closed, 14-day window item), then commit docs.
+4. Offer the user the next item (priority: gold router window + test; #25; #26; #16; #23; security #17/#18; PF opened_on rule; CI plan when they ask).
+
 ## Resume here — 2026-11-08 night (audit batch 3 committed, unpushed)
 
 Committed on `main`, NOT pushed (4 commits ahead of origin): `1149f2d` (cash balance 0 allowed), `e325fa7` (SIPs keep running for sold, deleted or purged holdings; NAV fetched before row locks), `4fa8036` (short undo refused 409; full sale keeps SIPs; Settle errors accurate), `fd786ad` (net worth today-point tests).
