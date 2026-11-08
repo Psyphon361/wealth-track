@@ -231,6 +231,17 @@ def _post_one(session: Session, sip: MfSip, today: date) -> int:
     elif sip.last_posted_on is not None:
         return 0  # its holding was purged for good: don't quietly create a new one
 
+    # Re-read under lock (fund first, then SIP, like a sale): a concurrent full sale may have
+    # stopped this SIP since the caller loaded it.
+    sip = session.scalars(
+        sa.select(MfSip)
+        .where(MfSip.id == sip.id)
+        .with_for_update(of=MfSip)
+        .execution_options(populate_existing=True)
+    ).first()
+    if sip is None or sip.status != ACTIVE:
+        return 0
+
     skipped = set(session.scalars(sa.select(MfSipSkip.due_date).where(MfSipSkip.sip_id == sip.id)))
     dues = due_dates(
         sip.day_of_month, sip.post_from, today, sip.end_date, skipped, sip.last_posted_on

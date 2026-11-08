@@ -229,6 +229,7 @@ def undo_exit(
                 "description": "A later sale of this holding was recorded after this one.",
             },
         )
+    # This unlocked read is safe: a reinvest locks the exit row first, and this undo holds it.
     if fundings_service.reinvested_by_exit(db, user.id, [row.id]).get(row.id):
         raise HTTPException(
             status_code=409,

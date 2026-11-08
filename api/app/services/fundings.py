@@ -107,22 +107,25 @@ def plan(
     Returns None when the holding costs nothing so far (an RD with no instalment paid yet).
     """
     cash_loc = ("paid_from", "cash_id")
+    found = True
+    if paid.from_exit_id is not None:
+        # Lock the exit FIRST (undo locks exit, holding, then cash) so an undo of it and this
+        # reinvest serialise without a lock-order deadlock.
+        found = (
+            db.scalar(
+                sa.select(HoldingExit.id)
+                .where(HoldingExit.id == paid.from_exit_id, HoldingExit.user_id == user_id)
+                .with_for_update()
+            )
+            is not None
+        )
     cash = db.scalars(
         sa.select(Cash).where(Cash.id == paid.cash_id, Cash.user_id == user_id).with_for_update(of=Cash)
     ).first()
     if cash is None:
         raise FundingError(cash_loc, CASH_ACCOUNT_ERROR, paid.cash_id)
-    if paid.from_exit_id is not None:
-        # Lock the exit so an undo of it and this reinvest serialise.
-        found = db.scalar(
-            sa.select(HoldingExit.id)
-            .where(HoldingExit.id == paid.from_exit_id, HoldingExit.user_id == user_id)
-            .with_for_update()
-        )
-        if found is None:
-            raise FundingError(
-                ("paid_from", "from_exit_id"), CASH_ACCOUNT_ERROR, paid.from_exit_id
-            )
+    if not found:
+        raise FundingError(("paid_from", "from_exit_id"), CASH_ACCOUNT_ERROR, paid.from_exit_id)
     amount = amount_for(slug, values, today)
     if amount is None:
         raise FundingError(cash_loc, PAID_FROM_OTHER_AMOUNT_ERROR)

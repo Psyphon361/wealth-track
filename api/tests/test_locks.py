@@ -14,11 +14,15 @@ from sqlalchemy import event
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from app.models import HoldingFunding, MutualFund
+from fastapi import HTTPException
+
+from app.models import Cash, HoldingFunding, MfSip, MutualFund
 from app.models.nps import Nps
 from app.routers.exits import MODELS, _get_holding
-from app.services.sip import post_due
-from tests.test_exits_api import BOND, STOCK, add, asset, sell, settle
+from app.schemas.fundings import PaidFromBody
+from app.services.fundings import plan
+from app.services.sip import _post_one, post_due
+from tests.test_exits_api import BOND, FD, STOCK, add, asset, sell, settle
 from tests.test_paid_from import (  # noqa: F401  (fixtures)
     NPS,
     add_paid,
@@ -58,6 +62,8 @@ def locked_tables(statements: list[str]) -> set[str]:
 # --- delete and restore ---------------------------------------------------------------------
 
 
+# Note: the two double-request tests below run sequentially, so they only prove the re-check after
+# the lock (the second request finds nothing to do), not the locks; the lock tests cover those.
 def test_double_delete_refunds_once(env, users):
     a = users[0]
     cash_id = source(env, a, balance=100000)
@@ -101,6 +107,20 @@ def test_delete_and_restore_lock_the_holding_and_its_fundings(env, users, locked
     assert {"stocks", "holding_fundings"} <= locked_tables(locked_statements)
 
 
+def test_fd_locks_only_the_holding_table(env, db, users, locked_statements):
+    """FD joins the issuer master eagerly; FOR UPDATE must name fixed_deposits."""
+    a = users[0]
+    fd_id = add(env, a, "fd", FD)
+    locked_statements.clear()
+    with pytest.raises(HTTPException):  # no such user: only the compiled statement matters
+        _get_holding(db, "fd", fd_id, SimpleNamespace(id=-1), lock=True)
+    fd_sql = [s for s in locked_statements if "FROM fixed_deposits" in s]
+    assert fd_sql
+    for sql in fd_sql:
+        assert "FOR UPDATE OF fixed_deposits" in sql
+        assert "FOR UPDATE" not in sql.replace("FOR UPDATE OF fixed_deposits", "")
+
+
 def test_nps_locks_only_the_holding_table(env, db, users, locked_statements, monkeypatch):
     """Nps joins nps_master eagerly; FOR UPDATE must name nps_holdings or Postgres refuses it."""
     monkeypatch.setitem(MODELS, "nps", Nps)  # exits never close an NPS; this checks the statement shape
@@ -127,6 +147,7 @@ def test_nps_locks_only_the_holding_table(env, db, users, locked_statements, mon
 # --- sell, settle and undo ------------------------------------------------------------------
 
 
+# Note: sequential requests, so these two only prove the state re-check, not the row locks.
 def test_sell_after_settle_is_refused(client, users):  # noqa: F811
     a = users[0]
     bond = add(client, a, "bond", {**BOND, "purchase_date": "2024-01-01", "maturity_date": "2025-01-01"})
@@ -208,6 +229,49 @@ def test_sip_posting_uses_the_units_left_after_a_concurrent_sale(sdb):  # noqa: 
     fresh = sdb.get(MutualFund, holding.id)
     assert fresh.units == Decimal("40") + Decimal("99.995")
     assert fresh.invested_amount == Decimal("6600")
+
+
+def test_sip_stopped_elsewhere_is_not_posted_from_a_stale_object(sdb):  # noqa: F811
+    add_nav(sdb, CODE, date(2026, 3, 5))
+    holding = MutualFund(
+        user_id=USER, scheme_name="Fund A - Direct Growth", scheme_code=CODE, platform="Groww",
+        category="equity", units=Decimal("100"), avg_nav=Decimal("40"),
+        invested_amount=Decimal("4000"), purchase_date=date(2025, 6, 1),
+    )  # fmt: skip
+    sdb.add(holding)
+    sdb.commit()
+    for status in ("stopped", "paused"):
+        sip = new_sip(
+            sdb, mutual_fund_id=holding.id, start_date=date(2026, 3, 5), post_from=date(2026, 3, 5)
+        )
+        assert sip.status == "active"
+        sdb.execute(  # committed elsewhere (a full sale stops the SIP); this object stays stale
+            sa.update(MfSip.__table__).where(MfSip.__table__.c.id == sip.id).values(status=status)
+        )
+        assert sip.status == "active"  # still stale in the identity map
+
+        assert _post_one(sdb, sip, date(2026, 3, 10)) == 0
+        sdb.expire_all()
+        assert sdb.get(MutualFund, holding.id).units == Decimal("100")
+        assert sdb.get(MfSip, sip.id).last_posted_on is None
+
+
+def test_reinvest_plan_locks_the_exit_before_the_cash_account(env, db, users, locked_statements):
+    a = users[0]
+    cash_id = source(env, a, balance=60000)
+    _stock_id, sale = sell_into(env, a, cash_id)
+    cash = db.get(Cash, cash_id)
+    locked_statements.clear()
+    plan(
+        db, cash.user_id, "stock", STOCK, PaidFromBody(cash_id=cash_id, from_exit_id=sale["id"]),
+        date(2026, 3, 10),
+    )
+    order = [
+        "holding_exits" if "FROM holding_exits" in sql else "cash_holdings"
+        for sql in locked_statements
+        if "FROM holding_exits" in sql or "FROM cash_holdings" in sql
+    ]
+    assert order == ["holding_exits", "cash_holdings"]
 
 
 def test_sip_posting_locks_the_fund_row(sdb, locked_statements):  # noqa: F811
