@@ -39,6 +39,7 @@ import {
   positiveUnits,
   startDateString,
 } from "./schema";
+import { useFieldReadOnly } from "./form-disabled";
 import { SchemePicker } from "./scheme-picker";
 import { useAssetSave } from "./use-asset-form";
 import { usePaidFrom } from "./paid-from-field";
@@ -156,6 +157,7 @@ export function MfForm({
       }
     }
   });
+  const identityLocked = useFieldReadOnly("scheme_code");
   const mode = useWatch({ control, name: "scheme_mode" });
   const schemeName = useWatch({ control, name: "scheme_name" });
   const schemeCode = useWatch({ control, name: "scheme_code" });
@@ -321,6 +323,7 @@ export function MfForm({
         )}
         <button
           type="button"
+          disabled={identityLocked}
           className={LINK_BUTTON}
           onClick={() => switchMode(mode === "picker" ? "manual" : "picker")}
         >

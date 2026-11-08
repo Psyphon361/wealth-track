@@ -31,20 +31,36 @@ describe("edit guards", () => {
   });
 
   it("locks the quantity, cost and date fields per type", () => {
-    expect(readOnlyFields("stock", partly)).toEqual(["quantity", "avg_buy_price", "buy_date"]);
+    expect(readOnlyFields("stock", partly)).toEqual([
+      "master_id",
+      "symbol",
+      "exchange",
+      "quantity",
+      "avg_buy_price",
+      "buy_date",
+    ]);
     expect(readOnlyFields("bond", partly)).toEqual([
+      "master_id",
+      "isin",
       "quantity",
       "purchase_price",
       "invested_amount",
       "purchase_date",
     ]);
     expect(readOnlyFields("mf", partly)).toEqual([
+      "scheme_code",
       "units",
       "avg_nav",
       "invested_amount",
       "purchase_date",
     ]);
-    expect(readOnlyFields("gold", partly)).toEqual(["weight_grams", "invested_amount", "purchase_date"]);
+    expect(readOnlyFields("gold", partly)).toEqual([
+      "metal",
+      "purity",
+      "weight_grams",
+      "invested_amount",
+      "purchase_date",
+    ]);
     expect(readOnlyFields("other", partly)).toEqual(["invested_amount", "acquired_on"]);
   });
 

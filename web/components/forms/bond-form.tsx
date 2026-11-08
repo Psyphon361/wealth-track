@@ -209,6 +209,7 @@ export function BondForm({
     }
   });
   const dateLocked = useFieldReadOnly("purchase_date");
+  const identityLocked = useFieldReadOnly("master_id");
   const mode = useWatch({ control, name: "master_mode" });
   const bondName = useWatch({ control, name: "name" });
   const purchaseDate = useWatch({ control, name: "purchase_date" });
@@ -343,6 +344,7 @@ export function BondForm({
                 </FieldLabel>
                 <MasterPicker<BondMaster>
                   id="master_id"
+                  fieldName="master_id"
                   hasValue={field.value !== null}
                   summary={
                     <>
@@ -403,6 +405,7 @@ export function BondForm({
         )}
         <button
           type="button"
+          disabled={identityLocked}
           className={LINK_BUTTON}
           onClick={() => switchMode(mode === "picker" ? "manual" : "picker")}
         >

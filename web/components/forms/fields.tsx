@@ -283,7 +283,8 @@ export function SelectField<TIn extends FieldValues, TOut>({
   /** Shown while no option is chosen (the field value is ""). */
   placeholder?: string;
 }) {
-  const locked = useFormDisabled();
+  const readOnly = useFieldReadOnly(name);
+  const locked = useFormDisabled() || readOnly;
   return (
     <Controller
       control={control}
@@ -318,6 +319,9 @@ export function SelectField<TIn extends FieldValues, TOut>({
               ))}
             </SelectContent>
           </Select>
+          {readOnly ? (
+            <p className="text-[11px] text-muted-foreground">{SOLD_IN_PART_ERROR}</p>
+          ) : null}
           <FormError error={fieldState.error} />
         </Field>
       )}

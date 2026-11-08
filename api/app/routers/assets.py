@@ -80,6 +80,8 @@ def _changed(stored, new) -> bool:
         return stored is not new
     if isinstance(stored, date):
         return stored != new
+    if isinstance(stored, str) or isinstance(new, str):
+        return str(stored).strip().casefold() != str(new).strip().casefold()
     return Decimal(str(stored)) != Decimal(str(new))
 
 

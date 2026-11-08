@@ -3,12 +3,14 @@
 import re
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
-from app.models import HoldingExit
+from app.models import HoldingExit, StockMaster
+from app.services import bond_master
 from app.schemas.assets import (
     HOLDING_CLOSED_DESCRIPTION,
     HOLDING_CLOSED_MESSAGE,
@@ -28,6 +30,8 @@ PARTLY = {
         STOCK,
         {"quantity": 40, "price": 80},
         {
+            "symbol": {"symbol": "OTHERCO"},
+            "exchange": {"exchange": "BSE"},
             "quantity": {"quantity": 59},
             "avg_buy_price": {"avg_buy_price": 51},
             "buy_date": {"buy_date": "2025-01-02"},
@@ -37,6 +41,7 @@ PARTLY = {
         BOND,
         {"quantity": 4, "price": 1100},  # leaves 6 at 1,000 = 6,000
         {
+            "isin": {"isin": "INE002A01018"},
             "quantity": {"quantity": 5, "invested_amount": 5000},
             "purchase_price": {"purchase_price": 990, "invested_amount": 5940},
             "invested_amount": {"purchase_price": 990, "invested_amount": 5940},
@@ -47,6 +52,7 @@ PARTLY = {
         FUND,
         {"quantity": 40, "price": 60},  # leaves 60 units at 40 = 2,400
         {
+            "scheme_code": {"scheme_code": 102},
             "units": {"units": 59, "invested_amount": 2360},
             "avg_nav": {"avg_nav": 41, "invested_amount": 2460},
             "invested_amount": {"avg_nav": 41, "invested_amount": 2460},
@@ -57,6 +63,8 @@ PARTLY = {
         GOLD,
         {"quantity": 2.5, "price": 4000},
         {
+            "metal": {"metal": "silver"},
+            "purity": {"purity": "995"},
             "weight_grams": {"weight_grams": 7},
             "invested_amount": {"invested_amount": 37501},
             "purchase_date": {"purchase_date": "2025-01-02"},
@@ -153,7 +161,9 @@ def test_partly_sold_protected_fields_are_rejected_one_by_one(sc, users, slug):
     item_id = add(sc, a, slug, body)
     assert sell(sc, a, slug, item_id, **sale).status_code == 201
     before = asset(sc, a, slug, item_id)
-    assert set(changed) == set(SOLD_IN_PART_FIELDS[slug])
+    # master_id is covered by test_partly_sold_cannot_be_pointed_at_another_security
+    assert set(changed) | {"master_id"} >= set(SOLD_IN_PART_FIELDS[slug])
+    assert set(changed) <= set(SOLD_IN_PART_FIELDS[slug])
     for field, change in changed.items():
         r = put(sc, a, slug, item_id, stored_body(sc, a, slug, item_id, body, **change))
         assert r.status_code == 422, (field, r.json())
@@ -178,6 +188,45 @@ def test_partly_sold_unchanged_values_and_free_fields_are_accepted(sc, users, sl
     assert r.status_code == 200, r.json()
     stored = asset(sc, a, slug, item_id)
     assert all(stored[key] == value for key, value in free.items())
+
+
+@pytest.mark.parametrize("slug", ["stock", "bond"])
+def test_partly_sold_cannot_be_pointed_at_another_security(
+    sc, users, auth_engine, monkeypatch, slug
+):
+    a = users[0]
+    StockMaster.__table__.create(auth_engine, checkfirst=True)
+    with sessionmaker(bind=auth_engine)() as session:
+        session.add_all([
+            StockMaster(id=1, isin="INE000A01001", kind="stock", name="Acme Ltd", nse_symbol="ACME"),
+            StockMaster(id=2, isin="INE000A01002", kind="stock", name="Other Ltd", nse_symbol="OTHERCO"),
+        ])  # fmt: skip
+        session.commit()
+    # the bond master table has a Postgres-only column, so its lookup is stubbed
+    bonds = {
+        1: SimpleNamespace(isin="INE000B07001", name="Test Bond 2035"),
+        2: SimpleNamespace(isin="INE000B07002", name="Other Bond 2030"),
+    }
+    monkeypatch.setattr(bond_master, "require_bond_master", lambda _db, mid: bonds[mid])
+    body = {**(STOCK if slug == "stock" else BOND), "master_id": 1}
+    item_id = add(sc, a, slug, body)
+    sale = {"quantity": 40, "price": 80} if slug == "stock" else {"quantity": 4, "price": 1100}
+    assert sell(sc, a, slug, item_id, **sale).status_code == 201
+    before = asset(sc, a, slug, item_id)
+    assert before["master_id"] == 1
+    # an unchanged full payload (name and symbol/isin as the master gave them) passes,
+    # even when the web resends them in another case or with spaces
+    same = stored_body(sc, a, slug, item_id, body)
+    assert put(sc, a, slug, item_id, same).status_code == 200
+    code = "symbol" if slug == "stock" else "isin"
+    spaced = {**same, code: f" {str(before[code]).lower()} "}
+    assert put(sc, a, slug, item_id, {**spaced, "master_id": 1}).status_code == 200
+    r = put(sc, a, slug, item_id, {**same, "master_id": 2})
+    assert r.status_code == 422
+    errors = sale_errors(r)
+    assert errors.get(("master_id",)) == SOLD_IN_PART_ERROR
+    assert errors.get((code,)) == SOLD_IN_PART_ERROR
+    assert asset(sc, a, slug, item_id) == before
 
 
 def test_undoing_the_sale_unlocks_the_fields(sc, users):

@@ -18,7 +18,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { apiGet, toApiMessage } from "@/lib/api";
-import { useFormDisabled } from "./form-disabled";
+import { useFieldReadOnly, useFormDisabled } from "./form-disabled";
+import { SOLD_IN_PART_ERROR } from "./schema";
 
 const MIN_QUERY = 2;
 const DEBOUNCE_MS = 250;
@@ -36,7 +37,10 @@ export function MasterPicker<T>({
   onSelect,
   onBlur,
   invalid,
+  fieldName,
 }: {
+  /** Form field this picker sets; locked (with a note) when the holding is sold in part. */
+  fieldName?: string;
   id?: string;
   /** Whether a value is currently selected (shows the summary + Change). */
   hasValue: boolean;
@@ -55,7 +59,8 @@ export function MasterPicker<T>({
   invalid?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const locked = useFormDisabled();
+  const readOnly = useFieldReadOnly(fieldName ?? "");
+  const locked = useFormDisabled() || readOnly;
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
@@ -153,6 +158,7 @@ export function MasterPicker<T>({
   );
 
   return (
+    <>
     <Popover open={open && !locked} onOpenChange={handleOpenChange}>
       <div ref={fieldRef} className="w-full">
         {trigger}
@@ -216,5 +222,9 @@ export function MasterPicker<T>({
         </Command>
       </PopoverContent>
     </Popover>
+    {readOnly ? (
+      <p className="text-[11px] text-muted-foreground">{SOLD_IN_PART_ERROR}</p>
+    ) : null}
+    </>
   );
 }

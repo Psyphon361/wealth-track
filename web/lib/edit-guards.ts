@@ -2,10 +2,10 @@ import type { AssetType } from "./types";
 
 /** Fields locked when a holding is sold in part (mirrors api/app/schemas/assets.py). */
 export const SOLD_IN_PART_FIELDS: Readonly<Record<string, readonly string[]>> = {
-  stock: ["quantity", "avg_buy_price", "buy_date"],
-  bond: ["quantity", "purchase_price", "invested_amount", "purchase_date"],
-  mf: ["units", "avg_nav", "invested_amount", "purchase_date"],
-  gold: ["weight_grams", "invested_amount", "purchase_date"],
+  stock: ["master_id", "symbol", "exchange", "quantity", "avg_buy_price", "buy_date"],
+  bond: ["master_id", "isin", "quantity", "purchase_price", "invested_amount", "purchase_date"],
+  mf: ["scheme_code", "units", "avg_nav", "invested_amount", "purchase_date"],
+  gold: ["metal", "purity", "weight_grams", "invested_amount", "purchase_date"],
   other: ["invested_amount", "acquired_on"],
 };
 

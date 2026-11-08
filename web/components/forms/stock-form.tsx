@@ -23,6 +23,7 @@ import {
   TextField,
   toOptions,
 } from "./fields";
+import { useFieldReadOnly } from "./form-disabled";
 import { MasterPicker } from "./master-picker";
 import {
   MAX_SYMBOL,
@@ -137,6 +138,7 @@ export function StockForm({
       }
     }
   });
+  const identityLocked = useFieldReadOnly("master_id");
   const mode = useWatch({ control, name: "master_mode" });
   const masterName = useWatch({ control, name: "name" });
   const exchange = useWatch({ control, name: "exchange" });
@@ -222,6 +224,7 @@ export function StockForm({
                 </FieldLabel>
                 <MasterPicker<StockMaster>
                   id="master_id"
+                  fieldName="master_id"
                   hasValue={field.value !== null}
                   summary={
                     <>
@@ -285,6 +288,7 @@ export function StockForm({
         )}
         <button
           type="button"
+          disabled={identityLocked}
           className={LINK_BUTTON}
           onClick={() => switchMode(mode === "picker" ? "manual" : "picker")}
         >

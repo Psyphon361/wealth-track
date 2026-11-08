@@ -69,6 +69,7 @@ export function SchemePicker({
   return (
     <MasterPicker<MfScheme>
       id={id}
+      fieldName="scheme_code"
       hasValue={value !== null}
       summary={
         value ? (

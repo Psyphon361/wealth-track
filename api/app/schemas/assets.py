@@ -622,10 +622,10 @@ HOLDING_CLOSED_MESSAGE = "This holding is closed"
 HOLDING_CLOSED_DESCRIPTION = "Undo the sale or settlement first to change it."
 SOLD_IN_PART_ERROR = "Sold in part: undo the sale to change this."
 SOLD_IN_PART_FIELDS = {
-    "stock": ("quantity", "avg_buy_price", "buy_date"),
-    "bond": ("quantity", "purchase_price", "invested_amount", "purchase_date"),
-    "mf": ("units", "avg_nav", "invested_amount", "purchase_date"),
-    "gold": ("weight_grams", "invested_amount", "purchase_date"),
+    "stock": ("master_id", "symbol", "exchange", "quantity", "avg_buy_price", "buy_date"),
+    "bond": ("master_id", "isin", "quantity", "purchase_price", "invested_amount", "purchase_date"),
+    "mf": ("scheme_code", "units", "avg_nav", "invested_amount", "purchase_date"),
+    "gold": ("metal", "purity", "weight_grams", "invested_amount", "purchase_date"),
     "other": ("invested_amount", "acquired_on"),
 }
 
