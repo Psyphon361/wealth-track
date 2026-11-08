@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { apiDelete } from "@/lib/api";
 import { invalidateNetWorth } from "@/lib/networth-cache";
-import { markHoldingsStale } from "@/lib/holdings-cache";
+import { markHoldingsChanged } from "@/lib/holdings-cache";
 import { formatINR, formatIstDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
@@ -164,7 +164,12 @@ function TypedPortfolio<TRow extends HoldingRow>({
   const onEdit = useCallback((row: TRow) => setEditing(row), []);
   const onDelete = useCallback(
     (row: TRow) =>
-      setDeleting({ type: config.type, id: row.id, name: config.rowName(row) }),
+      setDeleting({
+        type: config.type,
+        id: row.id,
+        name: config.rowName(row),
+        paidFrom: !!row.paid_from,
+      }),
     [config],
   );
 
@@ -180,7 +185,7 @@ function TypedPortfolio<TRow extends HoldingRow>({
       .then((res) => {
         invalidateNetWorth();
         // Marking stale makes the grid's subscriber refetch (once).
-        markHoldingsStale(target.type);
+        markHoldingsChanged(target.type, !!target.paidFrom);
         notify.success(res);
       })
       .catch((err: unknown) => {

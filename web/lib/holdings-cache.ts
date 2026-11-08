@@ -7,6 +7,19 @@ import type { AssetType } from "./types";
 const versions = new Map<AssetType, number>();
 let anyVersion = 0;
 
+/**
+ * Types to mark stale after a holding changes: its own type, plus cash when
+ * money moved through a "Paid from" cash account (debit, refund or re-debit).
+ */
+export function staleTypes(type: AssetType, paidFrom: boolean): AssetType[] {
+  return paidFrom && type !== "cash" ? [type, "cash"] : [type];
+}
+
+/** Mark every type affected by a change (see staleTypes). */
+export function markHoldingsChanged(type: AssetType, paidFrom: boolean): void {
+  for (const t of staleTypes(type, paidFrom)) markHoldingsStale(t);
+}
+
 /** Record that holdings of this type changed. */
 export function markHoldingsStale(type: AssetType): void {
   versions.set(type, (versions.get(type) ?? 0) + 1);

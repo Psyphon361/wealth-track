@@ -35,7 +35,7 @@ import {
   paidFromText,
 } from "@/lib/exits";
 import { formatDate } from "@/lib/format";
-import { markHoldingsStale } from "@/lib/holdings-cache";
+import { markHoldingsChanged } from "@/lib/holdings-cache";
 import { amountText } from "@/lib/sip";
 import { getAssetEntry } from "@/lib/asset-catalog";
 import { notify } from "@/lib/notify";
@@ -157,7 +157,7 @@ function TypedDetail<TRow extends HoldingRow>({
     setDeleting(null);
     apiDelete(`/assets/${target.type}/${target.id}`)
       .then((res) => {
-        markHoldingsStale(target.type);
+        markHoldingsChanged(target.type, !!target.paidFrom);
         notify.success(res);
         router.push(backHref);
       })
@@ -195,7 +195,7 @@ function TypedDetail<TRow extends HoldingRow>({
             variant="ghost"
             size="sm"
             className="text-destructive hover:text-destructive"
-            onClick={() => setDeleting({ type: config.type, id: item.id, name })}
+            onClick={() => setDeleting({ type: config.type, id: item.id, name, paidFrom: !!item.paid_from })}
           >
             <Trash2 aria-hidden />
             Delete

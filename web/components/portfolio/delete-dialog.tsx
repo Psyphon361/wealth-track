@@ -16,6 +16,8 @@ export interface DeleteTarget {
   type: AssetType;
   id: number;
   name: string;
+  /** The holding was paid from a cash account (deleting refunds it). */
+  paidFrom?: boolean;
 }
 
 /**

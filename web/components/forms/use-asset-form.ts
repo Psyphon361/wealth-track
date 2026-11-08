@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { notify } from "@/lib/notify";
 import { invalidateNetWorth } from "@/lib/networth-cache";
-import { markHoldingsStale } from "@/lib/holdings-cache";
+import { markHoldingsChanged } from "@/lib/holdings-cache";
 import { ApiError, apiPost, apiPut, type ApiMessage } from "@/lib/api";
 import { confirmDuplicatePath, duplicateHref } from "@/lib/duplicates";
 import type { AssetType, RecordFields } from "@/lib/types";
@@ -35,9 +35,11 @@ export function useAssetSave<R extends RecordFields>(
   const [saving, setSaving] = useState(false);
   const warning = useDuplicateWarning((m) => duplicateHref(type, m.id));
 
-  function done(saved: R) {
+  function done(saved: R, payload?: unknown) {
     invalidateNetWorth();
-    markHoldingsStale(type);
+    const paid =
+      !!payload && typeof payload === "object" && "paid_from" in payload && !!payload.paid_from;
+    markHoldingsChanged(type, paid);
     notify.success(saved as Partial<ApiMessage>);
     onSaved?.(saved);
   }
@@ -52,9 +54,9 @@ export function useAssetSave<R extends RecordFields>(
     setSaving(true);
     try {
       if (record) {
-        done(await apiPut<R>(`/assets/${type}/${record.id}`, payload));
+        done(await apiPut<R>(`/assets/${type}/${record.id}`, payload), payload);
       } else {
-        done(await apiPost<R>(`/assets/${type}`, payload));
+        done(await apiPost<R>(`/assets/${type}`, payload), payload);
       }
     } catch (e) {
       // Create only: a 409 duplicate warning opens the dialog instead of a toast.
@@ -65,6 +67,7 @@ export function useAssetSave<R extends RecordFields>(
               confirmDuplicatePath(`/assets/${type}`),
               payload,
             ),
+            payload,
           );
         } catch (err) {
           failed(err);
