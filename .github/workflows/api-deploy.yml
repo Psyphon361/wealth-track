@@ -6,6 +6,7 @@ on:
     paths:
       - 'api/**'
       - '.github/workflows/api-deploy.yml'
+      - '.github/workflows/ci-api.yml'
   workflow_dispatch:
 
 permissions:
@@ -16,7 +17,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tests:
+    uses: ./.github/workflows/ci-api.yml
+
   migrate:
+    needs: tests
     runs-on: ubuntu-24.04
     environment: production
     steps:

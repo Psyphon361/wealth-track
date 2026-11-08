@@ -1,0 +1,55 @@
+name: CI API
+
+# Runs on every push to a non-main branch, and is called by api-deploy.yml as
+# the gate before the production migration.
+# No concurrency group on purpose: in a reusable workflow a group would use the
+# caller's github.workflow and could cancel the gate (or be cancelled by it).
+on:
+  push:
+    branches-ignore: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  api-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.2
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            api/requirements.txt
+            api/requirements-dev.txt
+
+      - name: Install Python 3.12 and dependencies
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv/bin/python -r api/requirements.txt -r api/requirements-dev.txt
+
+      - name: Tests without Postgres
+        working-directory: api
+        run: ../.venv/bin/python -m pytest -q -m "not pg"
+
+      - name: Tests with Postgres
+        working-directory: api
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          REQUIRE_PG: '1'
+        run: ../.venv/bin/python -m pytest -q -m pg
