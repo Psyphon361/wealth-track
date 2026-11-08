@@ -46,7 +46,7 @@ async function forward(req: NextRequest, ctx: Ctx): Promise<Response> {
   // Auth endpoints are reachable only through server actions; /api/me maps to /auth/me.
   let upstreamPath = path;
   if (path.length === 1 && path[0] === "me") {
-    if (req.method !== "GET") {
+    if (req.method !== "GET" && req.method !== "PATCH") {
       return Response.json({ message: "Not found", description: "That API route does not exist.", detail: "Not found" }, { status: 404 });
     }
     upstreamPath = ["auth", "me"];

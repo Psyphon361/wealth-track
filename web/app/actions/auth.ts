@@ -15,7 +15,7 @@ import {
 export type AuthState = {
   message: string | null;
   description: string | null;
-  fieldErrors?: { email?: string; password?: string };
+  fieldErrors?: { email?: string; password?: string; full_name?: string };
 };
 
 const INITIAL_OK: AuthState = { message: null, description: null };
@@ -27,10 +27,15 @@ async function submit(path: "login" | "signup", formData: FormData): Promise<Aut
 
   let res: Response;
   try {
-    res = await apiAuthFetch(path, {
+    const payload: Record<string, string> = {
       email: typeof email === "string" ? email.trim() : "",
       password: typeof password === "string" ? password : "",
-    });
+    };
+    const fullName = formData.get("full_name");
+    if (path === "signup" && typeof fullName === "string" && fullName.trim()) {
+      payload.full_name = fullName.trim();
+    }
+    res = await apiAuthFetch(path, payload);
   } catch {
     return {
       message: "Couldn't reach the server",
@@ -55,7 +60,7 @@ async function submit(path: "login" | "signup", formData: FormData): Promise<Aut
     if (res.status === 422 && Array.isArray(body.detail)) {
       for (const item of body.detail as { loc?: unknown[]; msg?: string }[]) {
         const field = item.loc?.[1];
-        if ((field === "email" || field === "password") && item.msg && !fieldErrors[field]) {
+        if ((field === "email" || field === "password" || field === "full_name") && item.msg && !fieldErrors[field]) {
           fieldErrors[field] = item.msg;
         }
       }

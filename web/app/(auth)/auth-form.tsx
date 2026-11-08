@@ -14,6 +14,7 @@ import {
   PASSWORD_MIN_ERROR,
   PASSWORD_REQUIRED_ERROR,
 } from "@/components/forms/schema";
+import { cleanName } from "@/lib/profile";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -53,7 +54,7 @@ function GoogleLogo() {
 }
 
 type Mode = "login" | "signup";
-type Errors = { email?: string; password?: string };
+type Errors = { email?: string; password?: string; full_name?: string };
 
 export function AuthForm({
   mode,
@@ -87,8 +88,15 @@ export function AuthForm({
     const found: Errors = {};
     if (!emailResult.success) found.email = emailResult.error.issues[0].message;
     if (!passwordResult.success) found.password = passwordResult.error.issues[0].message;
+    if (!isLogin) {
+      const rawName = String(data.get("full_name") ?? "");
+      if (rawName.trim()) {
+        const nameResult = cleanName(rawName);
+        if (nameResult.error) found.full_name = nameResult.error;
+      }
+    }
     setLocalErrors(found);
-    if (found.email || found.password) event.preventDefault();
+    if (found.email || found.password || found.full_name) event.preventDefault();
   }
 
   const query = next !== "/dashboard" ? `?next=${encodeURIComponent(next)}` : "";
@@ -118,6 +126,21 @@ export function AuthForm({
         </div>
         <form action={action} onSubmit={onSubmit} noValidate className="space-y-3">
           <input type="hidden" name="next" value={next} />
+          {!isLogin ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="full_name">Full Name (Optional)</Label>
+              <Input
+                id="full_name"
+                type="text"
+                name="full_name"
+                autoComplete="name"
+                aria-invalid={errors.full_name ? true : undefined}
+              />
+              {errors.full_name ? (
+                <p className="text-xs text-destructive">{errors.full_name}</p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
