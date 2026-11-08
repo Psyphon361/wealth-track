@@ -6,7 +6,8 @@ Then read `docs/STATUS.md`, `docs/SPEC.md` and `docs/HANDOFF.md` before planning
 
 ## Claude Code working mode in this repo
 
-- **Orchestrator + builders.** The main session plans, reviews and commits; it does not edit project files. A PreToolUse hook (`.claude/hooks/block-orchestrator-writes.py`, registered in `.claude/settings.json`) blocks Edit/Write and file-changing shell commands from the main agent inside the project. Delegate code/file changes to the `builder` subagent (`.claude/agents/builder.md`, Sonnet); read-only lookups to `scout` (Haiku).
+- **Orchestrator + advisor + builders.** The main session (Sonnet) plans, reviews and commits; it does not edit project files. A PreToolUse hook (`.claude/hooks/block-orchestrator-writes.py`, registered in `.claude/settings.json`) blocks Edit/Write and file-changing shell commands from the main agent inside the project. Delegate code/file changes to the `builder` subagent (`.claude/agents/builder.md`, Sonnet); read-only lookups to `scout` (Haiku).
+- The read-only `advisor` subagent (Opus, effort high; global `~/.claude/agents/advisor.md`) is used only for plan reviews before approval and high-risk diff reviews before commit, per the global rules. High-risk here includes money movement (sales, settlements, Paid From, SIP posting), soft delete/restore, migrations and auth.
 - The main agent may commit reviewed work itself, but the hook only allows exactly these shapes (no `cd`, no parentheses, no extra `&&` steps):
   - `git add <paths> && git commit -F <message-file>` (message file written outside the project, e.g. the session scratchpad)
   - Paths containing `(` `)` (e.g. `web/app/(app)/layout.tsx`) must be passed as globs: `web/app/?app?/layout.tsx`.
