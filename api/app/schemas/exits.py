@@ -35,6 +35,10 @@ EXIT_DATE_FUTURE_ERROR = "Date can't be in the future"
 SELL_DATE_BEFORE_PURCHASE_ERROR = "Date can't be before the purchase date"
 SETTLE_DATE_BEFORE_MATURITY_ERROR = "Date can't be before the maturity date"
 SELL_QUANTITY_TOO_MANY_ERROR = "Can't sell more than you hold"
+SELL_PART_REFUSED_MESSAGE = "Can't sell part of this holding"
+SELL_PART_REFUSED_DESCRIPTION = (
+    "The recorded cost doesn't cover what would be left. Fix the invested amount, or sell all of it."
+)
 CHARGES_NEGATIVE_ERROR = "Can't be negative"
 CHARGES_TOO_HIGH_ERROR = "Charges must be less than the sale value"
 DESTINATION_ERROR = "Choose where the money went"

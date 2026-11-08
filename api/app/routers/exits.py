@@ -19,7 +19,7 @@ from app.schemas.messages import Outcome
 from app.services import exits as exits_service
 from app.services import fundings as fundings_service
 from app.services import sip as sip_service
-from app.services.exits import EXIT_TYPES, MODELS, SELL_TYPES, SETTLE_TYPES, ExitConflict, ExitError
+from app.services.exits import EXIT_TYPES, MODELS, SELL_TYPES, SETTLE_TYPES, ExitConflict, ExitError, ExitRefused
 
 router = APIRouter(tags=["exits"])
 
@@ -46,6 +46,18 @@ def _invalid(error: ExitError) -> RequestValidationError:
                 "input": "" if error.value is None else str(error.value),
             }
         ]
+    )
+
+
+def _refused(error: ExitRefused) -> HTTPException:
+    """422 with its own message and description, and the field it concerns in `loc`."""
+    return HTTPException(
+        status_code=422,
+        detail={
+            "message": error.message,
+            "description": error.description,
+            "loc": ["body", *error.loc],
+        },
     )
 
 
@@ -111,6 +123,9 @@ def sell_holding(
     except ExitConflict as error:
         db.rollback()
         raise _conflict(error) from None
+    except ExitRefused as error:
+        db.rollback()
+        raise _refused(error) from None
     except ExitError as error:
         db.rollback()
         raise _invalid(error) from None
@@ -244,9 +259,18 @@ def undo_exit(
     what = "Sale undone" if outcome.kind == "sale" else "Settlement undone"
     sentences = [f"{outcome.holding_name} is back in your portfolio."]
     if outcome.cash_name and outcome.cash_returned is not None:
-        sentences.append(
-            f"{sip_service.format_inr(outcome.cash_returned)} was taken out of {outcome.cash_name}."
-        )
+        taken = outcome.cash_returned
+        added = outcome.cash_added if outcome.cash_added is not None else taken
+        name = outcome.cash_name
+        if taken >= added:
+            sentences.append(f"{sip_service.format_inr(taken)} was taken out of {name}.")
+        elif taken > 0:
+            sentences.append(
+                f"{sip_service.format_inr(taken)} was taken out of {name} "
+                f"(it held less than the {sip_service.format_inr(added)} the {'sale' if outcome.kind == 'sale' else 'settlement'} added)."
+            )
+        else:
+            sentences.append(f"Nothing was taken out of {name}: it was already at ₹0.")
     if outcome.cash_account_kept:
         sentences.append(
             f"The account {outcome.cash_account_kept} was kept; delete it yourself if you don't want it."

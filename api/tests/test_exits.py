@@ -130,6 +130,56 @@ def test_fund_remaining_after_a_partial_sale_recomputes_average_nav():
     assert avg == D("0.0313")  # 1 / 32 = 0.03125 rounds half up
 
 
+# --- partial sales that would leave nothing -------------------------------------------------
+
+
+def test_remainder_floor_is_a_paisa_or_half_a_hundredth_of_a_paisa_a_unit_for_funds():
+    assert exits.remainder_floor("stock", D("5")) == D("0.01")
+    assert exits.remainder_floor("mf", D("20")) == D("0.01")
+    assert exits.remainder_floor("mf", D("400")) == D("0.02")
+    assert exits.remainder_floor("mf", D("400.001")) == D("0.03")  # 0.02000005 rounds up
+
+
+def test_fifo_partial_sale_that_takes_all_the_cost_is_refused():
+    cost = exits.sale_cost(
+        "mf", held=D("20"), invested=D("2000"), quantity=D("15"), full=False, txns=two_lots()
+    )
+    assert cost == D("2000.00")  # the whole invested amount, 5 units still held
+    with pytest.raises(exits.ExitRefused) as caught:
+        exits.check_remainder("mf", D("20"), D("2000"), D("15"), cost)
+    assert caught.value.loc == ("quantity",)
+    assert caught.value.message == "Can't sell part of this holding"
+    assert caught.value.description == (
+        "The recorded cost doesn't cover what would be left. Fix the invested amount, or sell all of it."
+    )
+
+
+def test_proportional_partial_sale_that_rounds_the_remainder_to_zero_is_refused():
+    for slug in ("mf", "gold", "bond"):
+        cost = exits.sale_cost(slug, held=D("3"), invested=D("0.01"), quantity=D("2"), full=False)
+        assert cost == D("0.01")
+        with pytest.raises(exits.ExitRefused):
+            exits.check_remainder(slug, D("3"), D("0.01"), D("2"), cost)
+
+
+def test_remainder_exactly_at_the_floor_passes_and_one_paisa_below_is_refused():
+    exits.check_remainder("gold", D("3"), D("0.02"), D("2"), D("0.01"))  # left 0.01
+    exits.check_remainder("mf", D("500"), D("0.12"), D("100"), D("0.10"))  # 400 units: floor 0.02
+    with pytest.raises(exits.ExitRefused):
+        exits.check_remainder("mf", D("500"), D("0.11"), D("100"), D("0.10"))  # left 0.01 < 0.02
+
+
+def test_a_cost_already_below_the_floor_is_refused_even_with_nothing_taken():
+    with pytest.raises(exits.ExitRefused):
+        exits.check_remainder("stock", D("10"), D("0"), D("4"), D("0"))
+
+
+def test_a_normal_partial_sale_passes_and_a_full_sale_is_never_checked():
+    exits.check_remainder("mf", D("20"), D("3000"), D("15"), D("2000"))
+    plan = sale("mf", held=D("3"), quantity=D("3"), price=D("1"))
+    assert plan.full  # record_sale skips check_remainder for it: cost is the invested amount
+
+
 # --- validation ----------------------------------------------------------------------------
 
 

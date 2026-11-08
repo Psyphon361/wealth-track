@@ -14,7 +14,7 @@ from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, ROUND_UP, Decimal
 from typing import Any
 
 import sqlalchemy as sa
@@ -38,6 +38,8 @@ from app.schemas.exits import (
     CHARGES_TOO_HIGH_ERROR,
     EXIT_DATE_FUTURE_ERROR,
     SELL_DATE_BEFORE_PURCHASE_ERROR,
+    SELL_PART_REFUSED_DESCRIPTION,
+    SELL_PART_REFUSED_MESSAGE,
     SELL_QUANTITY_TOO_MANY_ERROR,
     SETTLE_DATE_BEFORE_MATURITY_ERROR,
     ExitSummary,
@@ -87,6 +89,14 @@ class ExitError(Exception):
         self.loc = loc
         self.message = message
         self.value = value
+
+
+class ExitRefused(ExitError):
+    """A partial sale the recorded cost can't support (422 with its own message and description)."""
+
+    def __init__(self, loc: tuple[str, ...], value: Any = None):
+        super().__init__(loc, SELL_PART_REFUSED_MESSAGE, value)
+        self.description = SELL_PART_REFUSED_DESCRIPTION
 
 
 class ExitConflict(Exception):
@@ -207,6 +217,28 @@ def remaining_after(
     if slug == "mf" and left > 0:
         avg_nav = (left_invested / left).quantize(_NAV, rounding=ROUND_HALF_UP)
     return left, left_invested, avg_nav
+
+
+_FUND_NAV_FLOOR = Decimal("0.00005")
+
+
+def remainder_floor(slug: str, left: Decimal) -> Decimal:
+    """Least invested amount a partly sold holding may keep. A fund needs avg NAV (invested /
+    units) to round to at least 0.0001 at 4 dp, so 0.00005 per unit left, rounded up to the next
+    paisa; anything else needs a paisa."""
+    if slug == "mf":
+        return max((_FUND_NAV_FLOOR * Decimal(str(left))).quantize(_CENT, rounding=ROUND_UP), _CENT)
+    return _CENT
+
+
+def check_remainder(
+    slug: str, held: Decimal, invested: Decimal, quantity: Decimal, cost: Decimal
+) -> None:
+    """Refuse a PARTIAL sale whose cost leaves the remainder below the floor. A full sale never
+    comes here. Raises ExitRefused."""
+    left, left_invested, _ = remaining_after(slug, held, invested, quantity, cost)
+    if left > 0 and left_invested < remainder_floor(slug, left):
+        raise ExitRefused(("quantity",), quantity)
 
 
 @dataclass(frozen=True)
@@ -569,6 +601,8 @@ def record_sale(
         slug, held=held or _ZERO, invested=invested, quantity=plan.quantity, full=plan.full,
         txns=txns,
     )  # fmt: skip
+    if not plan.full:
+        check_remainder(slug, held, invested, plan.quantity, cost)
 
     remaining = None
     sips_cancelled = 0
@@ -716,6 +750,7 @@ class UndoOutcome:
     holding_name: str
     cash_name: str | None = None
     cash_returned: Decimal | None = None
+    cash_added: Decimal | None = None  # what the exit had added to the account
     sips_paused: int = 0
     cash_account_kept: str | None = None  # a new account the sale created
 
@@ -776,14 +811,18 @@ def undo_exit(db: Session, row: HoldingExit, holding: Any) -> UndoOutcome:
             .with_for_update(of=Cash)
         ).first()
         if cash is not None:
-            cash.balance = max(Decimal(str(cash.balance)) - Decimal(str(row.cash_added)), _ZERO)
+            balance_before = Decimal(str(cash.balance))
+            added = Decimal(str(row.cash_added))
+            taken = max(min(balance_before, added), _ZERO)
+            cash.balance = balance_before - taken
             if (
                 prev.get("cash_balance_date")
                 and prev.get("cash_date_set") == cash.balance_date.isoformat()
             ):
                 cash.balance_date = date.fromisoformat(prev["cash_balance_date"])
             out.cash_name = cash.name
-            out.cash_returned = Decimal(str(row.cash_added))
+            out.cash_returned = taken  # what was really taken out, never more than the account held
+            out.cash_added = added
             if prev.get("cash_created"):
                 out.cash_account_kept = cash.name
 

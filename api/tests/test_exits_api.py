@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
 from app.models import (
+    Cash,
     HoldingExit,
     MFTransaction,
     MutualFund,
@@ -324,6 +325,79 @@ def test_cash_existing_adds_the_money_and_undo_takes_it_back(client, users):
     )
     cash = asset(client, a, "cash", cash_id)
     assert cash["balance"] == 1000 and cash["balance_date"] == "2026-01-01"
+
+
+def _undo_with_balance(client, users, auth_engine, balance):
+    """Sell 1 share (adds 80 to the account), set the account's balance, undo the sale."""
+    a = users[0]
+    stock_id = add(client, a, "stock", STOCK)
+    cash_id = add(client, a, "cash", CASH)
+    dest = {"kind": "cash_existing", "cash_id": cash_id}
+    sold = sell(client, a, "stock", stock_id, quantity=1, price=80, destination=dest).json()
+    with sessionmaker(bind=auth_engine)() as s:
+        s.get(Cash, cash_id).balance = Decimal(balance)
+        s.commit()
+    undone = client.delete(f"/api/exits/{sold['id']}", headers=a)
+    assert undone.status_code == 200, undone.json()
+    return undone.json()["description"], asset(client, a, "cash", cash_id)["balance"]
+
+
+def test_undo_when_the_account_holds_less_than_the_sale_added(client, users, auth_engine):
+    text, balance = _undo_with_balance(client, users, auth_engine, "30")
+    assert text == (
+        "Acme Ltd is back in your portfolio. ₹30 was taken out of HDFC Savings "
+        "(it held less than the ₹80 the sale added)."
+    )
+    assert balance == 0
+
+
+def test_undo_when_the_account_is_already_empty(client, users, auth_engine):
+    text, balance = _undo_with_balance(client, users, auth_engine, "0")
+    assert text == (
+        "Acme Ltd is back in your portfolio. Nothing was taken out of HDFC Savings: "
+        "it was already at ₹0."
+    )
+    assert balance == 0
+
+
+def test_undo_when_the_account_holds_exactly_the_sale_amount(client, users, auth_engine):
+    text, balance = _undo_with_balance(client, users, auth_engine, "80")
+    assert text == "Acme Ltd is back in your portfolio. ₹80 was taken out of HDFC Savings."
+    assert balance == 0
+
+
+def test_undo_when_the_account_holds_more_than_the_sale_amount(client, users, auth_engine):
+    text, balance = _undo_with_balance(client, users, auth_engine, "500")
+    assert text == "Acme Ltd is back in your portfolio. ₹80 was taken out of HDFC Savings."
+    assert balance == 420
+
+
+def test_partial_fund_sale_is_refused_when_the_cost_leaves_nothing(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    fund_id = add(sc, a, "mf", FUND)
+    with sessionmaker(bind=auth_engine)() as s:  # a recorded cost of one paisa for 100 units
+        s.get(MutualFund, fund_id).invested_amount = Decimal("0.01")
+        s.commit()
+    cash_id = add(sc, a, "cash", CASH)
+    dest = {"kind": "cash_existing", "cash_id": cash_id}
+    r = sell(sc, a, "mf", fund_id, quantity=99, price=50, destination=dest)
+    assert r.status_code == 422
+    assert asset(sc, a, "cash", cash_id)["balance"] == 1000
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.scalars(select(MFTransaction).where(MFTransaction.mutual_fund_id == fund_id)).all() == []
+    body = r.json()
+    assert body["message"] == "Can't sell part of this holding"
+    assert body["description"] == (
+        "The recorded cost doesn't cover what would be left. Fix the invested amount, or sell all of it."
+    )
+    assert body["detail"]["loc"] == ["body", "quantity"]
+    with sessionmaker(bind=auth_engine)() as s:
+        assert s.scalars(select(HoldingExit)).all() == []
+        fund = s.get(MutualFund, fund_id)
+        assert (Decimal(str(fund.units)), Decimal(str(fund.invested_amount))) == (
+            Decimal("100"), Decimal("0.01"),
+        )
+    assert sell(sc, a, "mf", fund_id, quantity=100, price=50).status_code == 201  # all of it is fine
 
 
 def test_cash_balance_date_never_moves_backwards(client, users):
@@ -688,6 +762,24 @@ def test_settle_into_an_existing_or_new_cash_account_and_undo(client, users):
     assert (new_cash["name"], new_cash["balance"], new_cash["balance_date"]) == (
         "Maturity money", 108243.22, "2025-01-01",
     )
+
+
+def test_undo_of_a_settlement_when_the_account_holds_less_than_it_added(client, users, auth_engine):
+    a = users[0]
+    cash_id = add(client, a, "cash", CASH)
+    fd_id = add(client, a, "fd", FD)
+    r = settle(client, a, "fd", fd_id, {"kind": "cash_existing", "cash_id": cash_id})
+    assert r.status_code == 201, r.json()
+    with sessionmaker(bind=auth_engine)() as s:
+        s.get(Cash, cash_id).balance = Decimal("50")
+        s.commit()
+    undone = client.delete(f"/api/exits/{r.json()['id']}", headers=a).json()
+    assert undone["message"] == "Settlement undone"
+    assert undone["description"] == (
+        "Old Bank is back in your portfolio. ₹50 was taken out of HDFC Savings "
+        "(it held less than the ₹1,08,243.22 the settlement added)."
+    )
+    assert asset(client, a, "cash", cash_id)["balance"] == 0
 
 
 def test_renewed_is_no_longer_a_settle_destination(client, users):
