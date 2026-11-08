@@ -2,7 +2,7 @@
 
 ## Resume here — 2026-11-08 night (wind-up at 99% usage; gold-rule commit done, nothing running)
 
-Status: everything is committed. 1 commit is ahead of origin/main and NOT pushed: the net worth gold-rule alignment. Everything before it (up to a7d0c22) is pushed. No builders or advisors are running. The working tree is clean (verify with `git status --short`). Usage at wind-up: 5-hour window 99%, resets 2026-11-08 16:40 UTC; weekly 68%.
+Status: everything is committed. 2 commits are ahead of origin/main and unpushed: `3013df2` (net worth gold rule) and `f279662` (wind-up handoff); this docs update will be a 3rd. Everything before them (up to a7d0c22) is pushed. No builders or advisors are running. The working tree is clean (verify with `git status --short`). Usage at wind-up: 5-hour window 99%, resets 2026-11-08 16:40 UTC; weekly 68%.
 
 ### Done this session (all pushed except the last item)
 - Wave 1 and Wave 2 of the invariants audit (locks, edit guards incl. identity fields, CAS re-import guards), pushed.
@@ -31,9 +31,9 @@ Block a short undo; allow cash 0; SIPs are independent of holding records (keep 
 - Tests: `cd api && .venv/bin/python -m pytest -q`; `cd web && npx tsc --noEmit && npm run lint && npm test`.
 
 ### Next steps, in order
-1. Read this section, docs/STATUS.md, docs/SPEC.md §2/§5/§8a/§8b. Check `git status --short` (clean) and `git log origin/main..HEAD --oneline` (expect 1 commit).
+1. (done) Read this section, docs/STATUS.md, docs/SPEC.md §2/§5/§8a/§8b. Check `git status --short` (clean) and `git log origin/main..HEAD --oneline` (expect 1 commit).
 2. Ask the user: push the gold-rule commit? Then (with OK) `git push origin main`.
-3. Dispatch a Haiku builder to update STATUS.md and HANDOFF.md for the gold-rule commit (drift (b) closed, 14-day window item), then commit docs.
+3. (done) STATUS.md and HANDOFF.md updated for the gold-rule commit (drift (b) closed, 14-day window item); docs commit still to do.
 4. Offer the user the next item (priority: gold router window + test; #25; #26; #16; #23; security #17/#18; PF opened_on rule; CI plan when they ask).
 
 ## Resume here — 2026-11-08 night (audit batch 3 committed, unpushed)
