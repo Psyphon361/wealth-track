@@ -115,6 +115,10 @@ def sign_in_with_google(session: Session, claims: dict, allowed_emails: list[str
             raise NotAllowlisted
     if not user.is_active:
         raise InactiveUser
+    if not user.full_name:
+        name = " ".join(str(claims.get("name") or "").split())[:80].strip()
+        if name:
+            user.full_name = name
     user.last_login_at = datetime.now(UTC)
     session.commit()
     return user

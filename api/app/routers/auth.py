@@ -25,9 +25,26 @@ def _email(value: str) -> str:
     return email
 
 
+def clean_name(value: str) -> str:
+    name = " ".join(value.split())
+    if not name:
+        raise PydanticCustomError("required_name", "Enter your name")
+    if len(name) > 80:
+        raise PydanticCustomError("name_too_long", "Name is too long (80 characters at most)")
+    return name
+
+
 class SignupIn(BaseModel):
     email: str
     password: str
+    full_name: str | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def check_full_name(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        return clean_name(value)
 
     @field_validator("email")
     @classmethod
@@ -101,6 +118,24 @@ class GoogleIn(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    full_name: str | None = None
+
+
+class NameIn(BaseModel):
+    full_name: str
+
+    @field_validator("full_name")
+    @classmethod
+    def check_full_name(cls, value: str) -> str:
+        return clean_name(value)
+
+
+class NameOut(Outcome):
+    user: UserOut
+
+
+def _user_out(user: User) -> UserOut:
+    return UserOut(id=user.id, email=user.email, full_name=user.full_name)
 
 
 class TokenOut(BaseModel):
@@ -117,7 +152,7 @@ def _token_out(user: User, pair: auth.TokenPair) -> TokenOut:
         access_expires_at=pair.access_expires_at,
         refresh_token=pair.refresh_token,
         refresh_expires_at=pair.refresh_expires_at,
-        user=UserOut(id=user.id, email=user.email),
+        user=_user_out(user),
     )
 
 
@@ -131,7 +166,11 @@ def signup(body: SignupIn, db: Session = Depends(get_db)) -> TokenOut:
         raise _error(403, "Sign-ups are invite-only", "This email isn't on the invite list.")
     if auth.get_user_by_email(db, body.email) is not None:
         raise _error(409, "An account with this email already exists", "Log in instead.")
-    user = User(email=body.email, password_hash=auth.hash_password(body.password))
+    user = User(
+        email=body.email,
+        password_hash=auth.hash_password(body.password),
+        full_name=body.full_name,
+    )
     db.add(user)
     try:
         db.commit()
@@ -203,4 +242,14 @@ def logout(body: RefreshIn, db: Session = Depends(get_db)) -> Outcome:
 
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(current_user)) -> UserOut:
-    return UserOut(id=user.id, email=user.email)
+    return _user_out(user)
+
+
+@router.patch("/me", response_model=NameOut)
+def update_me(
+    body: NameIn, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> NameOut:
+    user.full_name = body.full_name
+    db.add(user)
+    db.commit()
+    return NameOut(message="Name updated", description=body.full_name, user=_user_out(user))
