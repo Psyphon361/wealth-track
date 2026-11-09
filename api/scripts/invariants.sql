@@ -125,6 +125,68 @@ FROM c
 JOIN last_sale l ON l.asset_type = c.asset_type AND l.holding_id = c.id
 WHERE abs(l.cost - c.invested) > CASE WHEN c.asset_type = 'stock' THEN 0.01 ELSE 0 END;
 
+-- name: deleted_holding_with_exit
+-- API delete is 409 while a holding has an exit, undo deletes the exit row and purge removes exits
+-- with the holding, so a soft-deleted holding never has an exit. (Only the seven exit types.)
+WITH d(asset_type, id) AS (
+  SELECT 'fd', id FROM fixed_deposits WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'rd', id FROM recurring_deposits WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'stock', id FROM stocks WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'bond', id FROM bonds WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'mf', id FROM mutual_funds WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'gold', id FROM gold_holdings WHERE deleted_at IS NOT NULL
+  UNION ALL SELECT 'other', id FROM other_holdings WHERE deleted_at IS NOT NULL
+)
+SELECT 'deleted_holding_with_exit' AS name, e.id AS exit_id
+FROM holding_exits e
+JOIN d ON d.asset_type = e.asset_type AND d.id = e.holding_id;
+
+-- name: closed_and_settled
+-- Settle refuses a closed bond and a sale refuses a matured one, so a bond never has both closed_on
+-- and a settlement. (Deposits have no closed_on.)
+SELECT 'closed_and_settled' AS name, e.id AS exit_id
+FROM holding_exits e
+JOIN bonds b ON e.asset_type = 'bond' AND b.id = e.holding_id
+WHERE e.kind = 'maturity' AND b.closed_on IS NOT NULL;
+
+-- name: exit_after_full_sale
+-- Once a full sale closes a holding every later sale or settlement is refused (and undo only takes
+-- the latest exit), so no exit has a higher id than a full sale of the same holding. A full sale is
+-- one whose prev_state says full; older rows without that key count when the holding is closed on
+-- the sale's date (exits.py _was_full_sale). Part-sale then settle is legal, as nothing closes.
+WITH h(asset_type, id, closed_on) AS (
+  SELECT 'stock', id, closed_on FROM stocks UNION ALL SELECT 'bond', id, closed_on FROM bonds
+  UNION ALL SELECT 'mf', id, closed_on FROM mutual_funds UNION ALL SELECT 'gold', id, closed_on FROM gold_holdings
+  UNION ALL SELECT 'other', id, closed_on FROM other_holdings
+),
+full_sale AS (
+  SELECT e.asset_type, e.holding_id, e.id
+  FROM holding_exits e
+  JOIN h ON h.asset_type = e.asset_type AND h.id = e.holding_id
+  WHERE e.kind = 'sale'
+    AND (e.prev_state->>'full' = 'true'
+         OR (e.prev_state->>'full' IS NULL AND h.closed_on = e.exit_date))
+)
+SELECT 'exit_after_full_sale' AS name, e.id AS exit_id
+FROM holding_exits e
+JOIN full_sale f ON f.asset_type = e.asset_type AND f.holding_id = e.holding_id AND f.id < e.id;
+
+-- name: exit_cash_mismatch
+-- Exit rows agree with their destination: cash has a positive cash_added, none has neither
+-- cash_added nor a cash account link. A null cash_holding_id alone is fine (the account was purged).
+SELECT 'exit_cash_mismatch' AS name, id AS exit_id
+FROM holding_exits
+WHERE (destination = 'cash' AND (cash_added IS NULL OR cash_added <= 0))
+   OR (destination = 'none' AND (cash_added IS NOT NULL OR cash_holding_id IS NOT NULL))
+   OR (destination <> 'cash' AND cash_holding_id IS NOT NULL);
+
+-- name: exit_kind_type_mismatch
+-- Only fd, rd and bond are settled (kind maturity); only stock, bond, mf, gold and other are sold.
+SELECT 'exit_kind_type_mismatch' AS name, id AS exit_id
+FROM holding_exits
+WHERE (kind = 'maturity' AND asset_type NOT IN ('fd', 'rd', 'bond'))
+   OR (kind = 'sale' AND asset_type NOT IN ('stock', 'bond', 'mf', 'gold', 'other'));
+
 -- name: invalid_constraint
 -- Every constraint (the migration 0032 CHECKs among them) must stay validated, and the funding
 -- unique index must stay valid.

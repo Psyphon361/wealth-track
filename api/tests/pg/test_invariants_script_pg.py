@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
+from tests.pg.helpers_t2 import BOND
 from tests.pg.helpers_t3 import FD, FUND, World, stock_body
 
 pytestmark = pytest.mark.pg
@@ -57,7 +58,11 @@ def world(pg_app):
     fd = w.add("fd", FD)
     assert w.settle("fd", fd, {"kind": "cash_existing", "cash_id": cash}).status_code in (200, 201)
     plain = w.add("stock", stock_body("Plain Ltd"))
-    w.ids = {"plain": plain, "cash": cash, "sold": sold, "gone": gone, "back": back, "part": part, "fund": fund, "fd": fd}
+    bond = w.add("bond", BOND)
+    w.ids = {
+        "plain": plain, "cash": cash, "sold": sold, "gone": gone, "back": back, "part": part,
+        "fund": fund, "fd": fd, "bond": bond,
+    }  # fmt: skip
     return w
 
 
@@ -154,7 +159,34 @@ def violations(ids):
         conn.execute(text(f"ALTER TABLE mf_transactions DROP CONSTRAINT {name}"))  # noqa: S608
         conn.execute(text("DELETE FROM mutual_funds WHERE id = {}".format(fund)))  # noqa: S608
 
+    def closed_and_settled(conn):
+        conn.execute(text(f"UPDATE bonds SET closed_on = '2026-02-01' WHERE id = {ids['bond']}"))  # noqa: S608
+        conn.execute(
+            text(
+                "INSERT INTO holding_exits (user_id, asset_type, holding_id, kind, exit_date, amount, cost, "
+                f"destination) SELECT user_id, 'bond', {ids['bond']}, 'maturity', exit_date, amount, cost, "  # noqa: S608
+                "'none' FROM holding_exits WHERE asset_type = 'fd' AND kind = 'maturity'"
+            )
+        )
+
+    def exit_after_full_sale(conn):
+        conn.execute(
+            text(
+                "INSERT INTO holding_exits (user_id, asset_type, holding_id, kind, exit_date, quantity, amount, "
+                "cost, destination, prev_state) SELECT user_id, asset_type, holding_id, kind, exit_date, "
+                "quantity, amount, cost, 'none', prev_state FROM holding_exits "
+                f"WHERE asset_type = 'stock' AND holding_id = {sold} AND kind = 'sale'"  # noqa: S608
+            )
+        )
+
     return {
+        "deleted_holding_with_exit": sql(f"UPDATE stocks SET deleted_at = now() WHERE id = {part}"),  # noqa: S608
+        "closed_and_settled": closed_and_settled,
+        "exit_after_full_sale": exit_after_full_sale,
+        "exit_cash_mismatch": sql(
+            f"UPDATE holding_exits SET cash_added = NULL WHERE asset_type = 'stock' AND holding_id = {sold}"  # noqa: S608
+        ),
+        "exit_kind_type_mismatch": sql("UPDATE holding_exits SET kind = 'sale' WHERE asset_type = 'fd'"),
         "orphan_exit": orphan_exit,
         "orphan_funding": orphan_funding,
         "funding_state_mismatch": sql(

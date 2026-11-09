@@ -1,5 +1,40 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-09 late night (wind-up: Wave B pushed and green; state-machine inventory and new invariants committed or pending locally, NOT pushed)
+
+Wind-up requested by the user (/windup). Usage at wind-up: about 65% of the 5-hour window (resets about 15:50 UTC 2026-11-09 window; check `get_usage`). No subagents running. This section sits above the "2026-11-09 night" Wave B section, which is still accurate for T5, T8, T9, T10.
+
+### Git state
+- Pushed to origin/main: up to `4ab6f73` (Wave B; its deploy and web CI were green).
+- Committed, NOT pushed: `d852c64` Docs: inventory of the implicit state machines (docs/STATE-MACHINES.md, ~450 lines).
+- UNCOMMITTED, reviewed (I read the SQL line by line; the builder's pg invariant tests passed: 4 passed): `api/scripts/invariants.sql`, `api/tests/pg/test_invariants_script_pg.py`, `docs/SPEC.md` (§2 "Nightly invariant check"), `AGENTS.md` (one line). They add five nightly invariants: `deleted_holding_with_exit`, `closed_and_settled` (bond only), `exit_after_full_sale`, `exit_cash_mismatch`, `exit_kind_type_mismatch` (a second-maturity check was dropped, `duplicate_settlement` covers it). NOT yet confirmed: the full suites (`-m "not pg"` and `-m pg` with REQUIRE_PG=1) were started in the background at wind-up and not read. If the orchestrator's background runs are gone, re-run them. Draft commit message: write a new one (subject: "Tests: nightly invariants for exits (deleted with exit, closed and settled, after full sale, cash and kind mismatches)", end with the Co-Authored-By line). Commit as ONE command from the repo root: `git add AGENTS.md api/scripts/invariants.sql api/tests/pg/test_invariants_script_pg.py docs/SPEC.md && git commit -F <msgfile>`.
+- The user said "commit and push all" just before the wind-up; the wind-up rule is never to push, so the push still awaits a fresh explicit OK (the earlier OK was given before the suites finished). After pushing check `gh run list --branch main --limit 3` once.
+- Known limit of `exit_after_full_sale`: exit rows from before the `full` key in prev_state count as a full sale when closed_on equals the sale date; a same-day part sale plus the closing sale could false-alarm on very old rows (dev data shows 0).
+
+### Dev data cleanup (DONE, committed in the database, user-approved)
+The first run of the new invariant found 15 legacy exits on soft-deleted holdings (made 7 and 8 Nov, before the delete guard; all probe user 7). The user confirmed all dev data is test data and approved a hard delete. A script (scratchpad `cleanup_legacy_exits.py`, same order as purge.py, exact ids, one transaction) deleted 15 exits, 4 fds, 6 stocks, 2 mfs (+4 mf_transactions), 1 bond, 2 gold holdings. Cash accounts 5, 6, 7, 15 were not changed; one funding keeps a NULL from_exit_id. `deleted_holding_with_exit` = 0 afterwards, so tonight's nightly run should be green (the owner said the nightly runs at 21:00 UTC). Owner tasks done by the user: prod preflight run, GitHub `production` environment limited to `main`.
+
+### Decisions made with the user this session (do not re-ask)
+- Cost edit of a Paid-From holding adjusts the cash account (built, pushed).
+- Sale cost after an edit: OPTION 2, TO BUILD: a partial sale of a mutual fund uses FIFO from the transactions only while the invested amount equals the sum of purchase transactions; otherwise proportional to the (edited) invested amount. Full sales already use the invested amount. This changes `sale_cost` in `api/app/services/exits.py` (money maths): needs a numbered plan, advisor plan review, tests (valuation/exits unit and property tests, the machine's sale-cost check that now skips edited funds must be restored), advisor diff review. The earlier "1902.95 vs 1880.09" machine oddity was most likely SIP postings after the edit, not a bug.
+- Duplicate warning vs account balance order: NO CHANGE (balance check first).
+- Net worth drift (stock with latest price but no history close): LEAVE (self-heals nightly; pinned as a strict xfail; the gold drift was already fixed, STATUS/HANDOFF notes that said two drifts are stale).
+- Analytics: the user discarded the Tax-tab rename; "go back to the analytics items" is NEXT (list in docs/STATUS.md "Open (analytics)").
+
+### State-machine inventory (docs/STATE-MACHINES.md) key gaps (medium priority, not decided)
+Invariants for deleted-with-exit and exit consistency are now added (above). Remaining: the cash ledger identity cannot be checked from the DB (the starting balance is not stored; only the money machine checks it); undo with a purged cash account skips the debit (confirm SPEC §8b); SIP control endpoints take no row lock (re-check in `_post_one` protects); `fundings.stored_cost` uses `date.today()` while creation uses `today_ist()` (harmless: RD never adjusts); `prev_state.stopped_sips` is read but never written; machine does not cover CAS import, SIP skip/update/delete, auth, sync markers; deactivate/set-password do not revoke refresh families (a deactivated user is still rejected on access and refresh).
+
+### Ordered next steps
+1. Start the pg cluster if needed (`cd api && scripts/pg_test_cluster.sh start`; it may still be running: `scripts/pg_test_cluster.sh url`). Run `cd api && HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m "not pg"` and `TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) REQUIRE_PG=1 HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m pg`; if green, commit the invariants (above), stop the cluster, ask the user for the push OK, push, check CI once.
+2. Analytics items with the user, one by one (list in docs/STATUS.md; start with the tax-season ones: 2.16 harvesting, 2.15 unrealised gains, 2.21 tax-saving tracker, capital-gains gaps).
+3. Offer the sale-cost option 2 build and the remaining state-machine follow-ups.
+
+### Rules that bite
+- Orchestrator + advisor + builders (Sonnet, effort medium, max 3 parallel); advisor (Opus, high) only for plan reviews and high-risk diffs; when the advisor says NOT OK, revise and send the plan back to the advisor BEFORE showing the user (the user called this out). Commits only as `git add <paths> && git commit -F <file>` in ONE command from the repo root (a trailing `&& git log` is blocked; run `cd` alone first if the shell is elsewhere). Never push without the user's OK.
+- pg cluster port 5544 is orchestrator-owned (builders never start or stop it). Never touch ports 3000/8000 (the user's dev servers; a second `next dev` in web/ is blocked by theirs: use the scratchpad web copy recipe in the Wave B section).
+- Probe account probe-ui3@example.test: password in `~/.config/wealth-track/probe.env` and the orchestrator's private memory `probe-account`; never write it into committed files. The user confirmed probe accounts hold no real holdings and dev data is test-only (this relaxes AGENTS.md rule 5 for probe-account data; still delete only by exact id).
+- The user wants the wind-up on request or at 96% of the 5-hour window (tell at 85%).
+
 ## Resume here — 2026-11-09 night (testing Phase 3 Wave A pushed; Wave B committed locally, NOT pushed)
 
 ### Git state
