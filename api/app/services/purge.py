@@ -50,13 +50,17 @@ LOCK_ORDER = tuple(slug for slug in HOLDING_MODELS if slug != "cash") + ("cash",
 # Postgres lock_timeout for the purge transaction.
 PURGE_LOCK_TIMEOUT = "10s"
 LOCK_NOT_AVAILABLE = "55P03"
+DEADLOCK_DETECTED = "40P01"
+# Both roll the whole purge back and are safe to retry.
+RETRYABLE_SQLSTATES = (LOCK_NOT_AVAILABLE, DEADLOCK_DETECTED)
 
 
 class PurgeLockTimeout(Exception):
-    """A row the purge needed stayed locked past PURGE_LOCK_TIMEOUT; nothing was deleted."""
+    """A row the purge needed stayed locked past PURGE_LOCK_TIMEOUT, or Postgres reported a
+    deadlock; nothing was deleted."""
 
     message = "Couldn't clean up deleted holdings"
-    description = "A holding was busy. Nothing was removed; try again shortly."
+    description = "A holding was busy (a lock conflict). Nothing was removed; try again shortly."
 
     def __init__(self) -> None:
         super().__init__(f"{self.message}: {self.description}")
@@ -84,6 +88,30 @@ def lock_purgeable_ids(session: Session, model, cutoff: datetime) -> list[int]:
     )
 
 
+def _lock_rows_pointing_at_cash(session: Session, cutoff: datetime) -> None:
+    """Lock (by id) the exits, then the fundings, whose cash_holding_id is a purge-eligible account.
+
+    The candidate cash ids are read without a lock: an account restored meanwhile only means a few
+    extra rows are locked, and the cash lock right after re-checks the condition.
+    """
+    cash_ids = list(
+        session.scalars(
+            select(Cash.id)
+            .where(Cash.deleted_at.is_not(None), Cash.deleted_at < cutoff)
+            .execution_options(include_deleted=True)
+        )
+    )
+    if not cash_ids:
+        return
+    for model in (HoldingExit, HoldingFunding):
+        session.execute(
+            select(model.id)
+            .where(model.cash_holding_id.in_(cash_ids))
+            .order_by(model.id)
+            .with_for_update(of=model)
+        ).all()
+
+
 def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> dict[str, int]:
     """Hard-delete holdings (all users) soft-deleted more than `older_than_days` ago.
 
@@ -96,7 +124,7 @@ def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> di
         return _purge(session, older_than_days)
     except OperationalError as exc:
         session.rollback()
-        if getattr(exc.orig, "sqlstate", None) == LOCK_NOT_AVAILABLE:
+        if getattr(exc.orig, "sqlstate", None) in RETRYABLE_SQLSTATES:
             raise PurgeLockTimeout() from exc
         raise
     except BaseException:
@@ -116,8 +144,15 @@ def _purge(session: Session, older_than_days: int) -> dict[str, int]:
     # exits or cash accounts SET NULLs holding_fundings rows (locking them), while a restore locks
     # its holding first and then its funding rows; taking all holding locks first keeps purge in
     # the same order and so cannot deadlock with a restore.
+    # Deleting a cash account SET NULLs the exits and fundings that point at it, which needs their
+    # row locks. An undo locks its exit, then its holding, then the cash account; a refund or
+    # restore locks the holding, then its fundings, then the cash account. So those rows are
+    # locked after every other holding and BEFORE the cash accounts. Global order: holdings by
+    # type, exits pointing at purgeable cash, fundings pointing at purgeable cash, cash.
     locked: dict[str, list[int]] = {}
     for slug in LOCK_ORDER:
+        if slug == "cash":
+            _lock_rows_pointing_at_cash(session, cutoff)
         locked[slug] = lock_purgeable_ids(session, HOLDING_MODELS[slug], cutoff)
     # Phase 2: delete children and holdings, only the ids that survived the locks.
     counts: dict[str, int] = {}
