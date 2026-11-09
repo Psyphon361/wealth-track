@@ -1,6 +1,40 @@
 # HANDOFF — session resume notes (2026-11-08)
 
-## Resume here — 2026-11-09 (testing Phase 3 Wave A: T6, T7 and the Delete guard committed; T1 and T2 built but UNCOMMITTED; T3 and T4 not started; nothing pushed since 34160d2)
+## Resume here — 2026-11-09 later (testing Phase 3 Wave A: T1, T2, T3, T6, T7 and the Delete guard committed; T4 half built, UNCOMMITTED; 5 commits unpushed)
+
+This section replaces the "Resume here — 2026-11-09 (testing Phase 3 Wave A…)" section below it for T1-T3 status; read both. Plan file (scratchpad, may be gone): `/private/tmp/claude-501/-Users-psy--claude-spares-spare-7qVS1Z/b85cc2c3-b50e-4717-8edd-bc54059e3674/scratchpad/plan-testing-phase3.md` (v2, advisor-reviewed). The user approved Wave A only; Wave B only after Wave A is verified and pushed.
+
+### Git state
+- Pushed to origin/main: up to `34160d2`.
+- Committed, NOT pushed (`git log origin/main..HEAD`): `8c651ef` Web: disable Delete for sold or settled holdings; `90e6fea` pairwise concurrency tests (T6) and nightly invariant check (T7); `7c96c9e` earlier handoff notes; `a1aad98` T1 frozen clock + T2 read-side oracle; `7357a8d` T3 second user, double-submit, delete-409 rule. Pushing to main triggers the gated deploy (tests -> migrate -> deploy); ASK the user first.
+- Uncommitted: `api/tests/stateful/world.py` and `api/tests/stateful/machine.py` (T4, below). Nothing else.
+
+### Wave A status
+- T1 (frozen clock), T2 (read oracle), T3 (second user, double-submit, delete 409 iff the holding has an exit), T6 (30 pairwise concurrency pairs), T7 (nightly read-only invariants): DONE and committed. Hunts passed (SQLite seeds 1..10 for T2, 1..5 for T3; pg 2-3 seeds). Last full-suite numbers before T4 (builder-run, T3): `-m "not pg"` 2474 passed + 1 xfail; `-m pg` 192 passed. No new app bug found by T1-T3/T6/T7.
+- T4 (purge and time in the machine): HALF BUILT, uncommitted, builder stopped by the wind-up. DONE: `world.py` (CRON_SECRET patched into settings, `Harness.fk`, `backdate_deleted(table, id, age_days)` sets deleted_at to now - age + 1 h so exactly 30 days is kept and 31 purged without patching app code, `purge(via_cron)` runs `purge_deleted` or GET /api/cron/purge; on SQLite it emulates the FK actions by hand: MF transactions cascade, SIP/exit/funding cash links set NULL); `machine.py` (del_day on HM and CashM, FundM.cash_id may be None, delete/restore skip the money move when the link is None, rule `purge_after` advancing 0/1/30/31/45 days, back-dating, checking returned counts against the model, applying model changes, 404s for purged items, SIP links, a second purge through the other entry point must be a no-op; rule `delete_linked_cash`; invariant: no orphan MF transactions). Verified: `tests/stateful` under ci 12 passed in 47 s (before delete_linked_cash was added); the machine alone after it 1 passed in 43 s (209 purge steps, 8 removed something, 3 removed a cash account, 2 nulled a funding link, 0 nulled an exit link). NOT verified/done: pg machine run, detection proof, hunts, full suites, doc lines, docstring updates (`test_money_machine.py`, `test_money_machine_pg.py` and the machine header still say "no purge"). Known gap: exit cash-link nulling is never exercised (0 times); consider biasing the machine toward selling into a cash account that is then deleted and purged.
+- Decision to confirm with the user (or just note): on SQLite the FK actions are emulated by the harness, so only the pg machine proves real FK behaviour. Fine in my view; the pg run is the proof.
+
+### Ordered next steps
+1. Start the pg cluster (orchestrator only): `cd api && scripts/pg_test_cluster.sh start`.
+2. Brief ONE builder (effort medium) to finish T4: review the uncommitted diff first; update the stale docstrings; run `TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m pg tests/pg/test_money_machine_pg.py` (make the pg machine include purge; the pg harness has real FKs); bias toward exits pointing at a deleted cash account; prove detection in a `git archive HEAD | tar -x` copy under the scratchpad (break the cash-link nulling, the fundings deletion or the retention cutoff, not the real files); hunts SQLite seeds 1..5 (`HYPOTHESIS_PROFILE=hunt STATEFUL_EXAMPLES=300 STATEFUL_NO_SHRINK=1`) and pg 2 seeds; add one line each to docs/SPEC.md and AGENTS.md. Acceptance also: `HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m "not pg"` (1 pre-existing xfail) and `TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) REQUIRE_PG=1 HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m pg`.
+3. Read the T4 diff (key risks: no app code touched, deterministic clock, no wall-clock reads, the model rules match SPEC §8b/§8c purge text). Run the full suites once yourself, commit T4 (`git add <paths> && git commit -F <file>`), stop the pg cluster, then ASK the user whether to push the unpushed commits.
+4. After the push is green (check `gh run list --branch main --limit 3`), offer Wave B (T5 PUT edit rule with the open question "should editing the cost of a Paid-From holding adjust the cash account? today: no"; T8 calibration by re-injecting 4 past bugs in a `git archive` copy; T9 rd/nps/pf in the machine) and the owner tasks below.
+
+### Open decisions and owner tasks
+- Duplicate vs funding order: with Paid From, a repeated create without `confirm_duplicate` returns 422 "More than this account's balance" when the account can no longer afford it, because the funding check runs before the duplicate check. The machine encodes it; the user may prefer the duplicate warning first (UX call).
+- Known net worth drifts (gold carry-forward beyond the router's 14-day window; stock latest price with no matching history close) stay pinned as strict xfails in `api/tests/test_networth_today_agreement.py`; fix or leave? The read oracle cannot see the stock drift because the history's last point is overwritten; an interior-point check was declined for now.
+- Owner: run `api/scripts/preflight_delete_refund.sql` on prod (SELECT-only); limit the GitHub `production` environment to `main`; watch the first nightly invariant run (`.github/workflows/nightly-invariants.yml`, 21:00 UTC): the "closed without a sale" check was never run on real dev data and may false-alarm (fix the query, do not ignore it).
+- Stale lines in docs/STATUS.md ("Open follow-ups: lock every type's ids first; lock_timeout in purge") are done; remove them when updating STATUS.
+
+### Rules that bite
+- Orchestrator + advisor + builders: main agent plans, reviews and commits only; builders (Sonnet, effort medium) edit, max 3 in parallel; advisor (Opus, high) only for plan reviews and high-risk diffs. The hook allows only `git add <paths> && git commit -F <file>`. Never push without the user's explicit OK. Run git from the repo root (`git diff -- AGENTS.md` from `web/` hits web/AGENTS.md).
+- The pg cluster on port 5544 is shared and orchestrator-owned; `stop` deletes its data dir; builders never start or stop it. Never run tests against Neon; probe rows only by exact id; never touch ports 3000/8000.
+- The user armed an automatic wind-up at 96% of the 5-hour usage window (tell them at 85%, once). Probe account for browser checks: probe-ui3 (creds in ~/.config/wealth-track/probe.env, never print); never ask the user to sign in.
+
+### Usage at wind-up
+5-hour window 97% (resets 11:40 UTC, 2026-11-09), weekly 87% (resets 2026-11-10 15:00 UTC).
+
+## Earlier — 2026-11-09 (testing Phase 3 Wave A: T6, T7 and the Delete guard committed; T1 and T2 built but UNCOMMITTED; T3 and T4 not started; nothing pushed since 34160d2)
 
 ### Where things stand
 - Pushed to origin/main on 2026-11-09: everything up to `34160d2` (Phase 2 tests, purge hardening, the two money-bug fixes, docs). The API deploy run for it passed (tests, migrate no-op, deploy).
