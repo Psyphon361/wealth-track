@@ -4,7 +4,8 @@ Same machine as tests/stateful (see tests/stateful/machine.py), run against the 
 `wt_test_*` database of the `pg_app` fixture. It adds what SQLite cannot: foreign keys and their
 ON DELETE actions, CHECK and partial unique indexes as Postgres enforces them, and Numeric
 columns that come back as Decimal. The machine's purge rules run here too, so the cascades and
-SET NULLs of a purge are the database's own (no hand emulation). Not included: concurrency
+SET NULLs of a purge are the database's own (no hand emulation), and so are the row locks of a cost edit
+of a Paid From holding (rule edit_funded). Not included: concurrency
 (test_concurrency_pg.py) and purge lock order (test_purge_hardening_pg.py).
 
 Budget: 25 examples of up to 25 steps (STATEFUL_PG_EXAMPLES overrides it for a local hunt).

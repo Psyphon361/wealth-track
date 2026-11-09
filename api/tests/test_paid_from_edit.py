@@ -14,6 +14,7 @@ from app.schemas.fundings import (
     PAID_FROM_EDIT_ZERO_ERROR,
 )
 from app.services import fundings
+from tests.test_cas_import import commit, commit_row
 from tests.test_exits_api import BOND, FD, GOLD, OTHER, RD, STOCK, add, asset, errors, item
 from tests.test_paid_from import (  # noqa: F401  (fixtures: env, db)
     NPS,
@@ -187,6 +188,22 @@ def test_a_holding_out_of_sync_with_its_funding_saves_and_moves_nothing(env, db,
     assert put(env, a, "mf", mf_id, mf(9000000)).status_code == 200
     assert env.delete(f"/api/assets/cash/{cash_id}", headers=a).status_code == 200
     assert put(env, a, "mf", mf_id, mf(5000)).status_code == 200
+
+
+def test_a_fund_updated_by_a_real_cas_commit_saves_a_cost_edit_and_moves_no_money(env, db, users):
+    a = users[0]
+    cash_id, mf_id = funded(env, a, "mf", FUND)  # 4,000 taken
+    r = commit(env, a, [commit_row(action="update", holding_id=mf_id, units=100, avg_nav=60, invested_amount=6000)])
+    assert r.status_code == 200, r.json()
+    assert asset(env, a, "mf", mf_id)["invested_amount"] == 6000
+    paid = item(env, a, "mf", mf_id)["paid_from"]
+    assert (paid["adjustable"], paid["reason"]) == (False, "out_of_sync")
+    r = put(env, a, "mf", mf_id, mf(7000))
+    assert r.status_code == 200, r.json()
+    note = PAID_FROM_EDIT_NOT_IN_SYNC_NOTE.format(account="HDFC Savings")
+    assert r.json()["description"].endswith(" · " + note)
+    assert asset(env, a, "mf", mf_id)["invested_amount"] == 7000
+    assert balance(env, a, cash_id)[0] == 996000 and fund_amount(db) == Decimal(4000)
 
 
 def test_a_notes_only_edit_of_an_out_of_sync_holding_has_no_note(env, db, users):

@@ -7,9 +7,13 @@ its quantity and invested amount, its exits and its fundings. The model is updat
 (or, where the model cannot know, a fixed small set), so a wrong 4xx fails as surely as a 5xx.
 
 Cash semantics modelled (the "ideal" ledger): a cash account's balance is always
-initial + exit proceeds paid into it - active fundings paid from it (reset by a PUT), whether or not
-the account is soft-deleted. Deleting a holding refunds its funding, restoring it debits it again
+initial + exit proceeds paid into it - active fundings paid from it (reset by a PUT of the balance), whether
+or not the account is soft-deleted. Deleting a holding refunds its funding, restoring it debits it again
 (409 when short, also for a deleted account). A holding with a sale or settlement can't be deleted.
+Editing the cost of a funded holding (rule edit_funded, SPEC §8c "Edit") moves the difference on the account
+and gives the funding the new amount, unless the holding is out of sync with its funding (SIP posting, CAS),
+the account was purged (both save, no money moves), the account is deleted, the increase is beyond the
+balance or the cost would be zero (422).
 
 Invariants after EVERY step: no 5xx; app balance == model balance for every cash account (live or
 deleted); no negative cash; the exits and fundings in the database are exactly the model's; no
@@ -36,7 +40,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from decimal import ROUND_UP, Decimal
+from decimal import ROUND_HALF_UP, ROUND_UP, Decimal
 
 import hypothesis.strategies as st
 from hypothesis import event
@@ -97,6 +101,7 @@ class HM:
     del_day: date | None = None  # the harness day it was soft-deleted (None while live)
     closed: bool = False  # sold in full (closed_on set)
     settled: bool = False
+    cost_edited: bool = False  # a PUT changed the cost: a fund's cost no longer equals its transactions
     invested0: Decimal = ZERO
     exits: list[int] = field(default_factory=list)
     fundings: list[FundM] = field(default_factory=list)
@@ -451,6 +456,164 @@ class MoneyMachine(RuleBasedStateMachine):
         r = self.h.call("PUT", f"/api/assets/cash/{c.id}", json=body)
         if self.expect(r, (200,), "put cash") < 400:
             c.bal, c.put = from_cents(cents), True
+
+    # ---- edit the cost of a holding (SPEC §8c "Edit") -----------------------------------------
+    @staticmethod
+    def cost_now(hold: HM) -> Decimal | None:
+        """The cost the app has stored for a holding (what Paid From took when it was in sync)."""
+        if hold.slug == "fd":
+            return hold.invested0
+        if hold.slug == "stock":
+            return hold.inv()
+        return hold.invested
+
+    @staticmethod
+    def with_cost(slug: str, body: dict, cost: Decimal) -> tuple[dict, Decimal]:
+        """`body` with its cost set near `cost`; returns (new body, the cost that body stands for)."""
+        body = dict(body)
+        if slug in ("stock", "bond"):
+            qty = Decimal(str(body["quantity"]))
+            cents = max(1, int((cost / qty * 100).to_integral_value(ROUND_HALF_UP)))
+            price = from_cents(cents)
+            cost = q2(qty * price)
+            if slug == "stock":
+                body["avg_buy_price"] = sx(price)
+            else:
+                body["purchase_price"], body["invested_amount"] = sx(price), sx(cost)
+        elif slug == "fd":
+            body["principal"] = sx(cost)
+        elif slug == "mf":
+            units = Decimal(str(body["units"]))
+            cost = max(cost, q2(units * Decimal("0.01")) + CENT)
+            body["avg_nav"] = sx((cost / units).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+            body["invested_amount"] = sx(cost)
+        else:  # gold, other
+            body["invested_amount"] = sx(cost)
+        return body, cost
+
+    @precondition(lambda self: bool(self.holds_of(*ADD_SLUGS)))
+    @rule(data=st.data())
+    def edit_funded(self, data):
+        """PUT a new cost for a holding (mostly one bought with Paid From): SPEC §8c "Edit". The model applies
+        the rules in the app's order: closed 409, sold-in-part 422, unchanged cost nothing, no funding saves,
+        a cost to zero 422, a holding out of sync with its funding (SIP posting, CAS) saves and moves nothing,
+        a purged account saves and moves nothing, a deleted account 422, an increase beyond the balance 422,
+        else the account moves by the difference and the funding takes the new amount (later deletes, restores,
+        sales and undos use it)."""
+        from app.routers.assets import REGISTRY
+        from app.schemas.assets import SOLD_IN_PART_ERROR
+        from app.schemas.fundings import (
+            PAID_FROM_EDIT_DELETED_ERROR,
+            PAID_FROM_EDIT_GONE_NOTE,
+            PAID_FROM_EDIT_NOT_IN_SYNC_NOTE,
+            PAID_FROM_EDIT_TOO_MUCH_ERROR,
+            PAID_FROM_EDIT_ZERO_ERROR,
+        )
+        from app.services.sip import format_inr
+
+        self.refresh_mf()  # SIP posting changes a fund's cost behind the funding's back
+        open_funded = [
+            h for h in self.holds_of(*ADD_SLUGS, live=True)
+            if any(f.active for f in h.fundings) and not h.closed and not h.settled
+        ]  # fmt: skip
+        hold = self.choose(data, open_funded, self.holds_of(*ADD_SLUGS))
+        slug = hold.slug
+        funding = next((f for f in hold.fundings if f.active), None) if hold.live else None
+        cash = self.cash.get(funding.cash_id) if funding and funding.cash_id is not None else None
+        old = self.cost_now(hold)
+        original = None
+        if hold.live:
+            got = self.h.call("GET", f"/api/assets/{slug}/{hold.id}")
+            if got.status_code != 200:
+                self.fail(f"edit {slug}: GET -> {got.status_code}")
+            fields = REGISTRY[slug][1].model_fields
+            original = {k: v for k, v in got.json().items() if k in fields}
+        else:
+            original = self.build(data, slug)[0]  # any valid body: a deleted holding is 404
+        variant = data.draw(st.sampled_from(["down", "down", "up_fit", "up_fit", "up_over", "random", "same", "zero"]))
+        base = funding.amount if funding else (old or Decimal(1000))
+        body, new = dict(original), old
+        if variant == "same":
+            body["notes"] = "edited"
+        elif variant == "zero" and slug == "other":
+            body["invested_amount"], new = None, None
+        else:
+            if variant == "down":
+                low = int(base * 100) - 1
+                target = from_cents(data.draw(st.integers(100, max(100, low))))
+            elif variant == "up_fit":
+                room = int(cash.bal * 100) if cash is not None else 100_000
+                target = base + from_cents(data.draw(st.integers(1, max(1, room))))
+            elif variant == "up_over":
+                extra = cash.bal if cash is not None else ZERO
+                target = base + extra + from_cents(data.draw(st.integers(1, 100_000)))
+            else:
+                target = from_cents(data.draw(st.integers(100, 2_000_000)))
+            body, new = self.with_cost(slug, original, target)
+            if new == old:
+                body = dict(original)  # nothing changes: not a single protected field is touched
+        changed = new != old
+        sale_on_record = any(self.exits[e].kind == "sale" for e in hold.exits)
+
+        # prediction, in the order the app checks ------------------------------------------------
+        prefix = None
+        note = line = None
+        if not hold.live:
+            want = 404
+        elif hold.closed or hold.settled:
+            want = 409
+        elif changed and sale_on_record:
+            want, prefix = 422, SOLD_IN_PART_ERROR
+        else:
+            want = 200
+            if not changed or funding is None:
+                TALLY["edit funded: no funding or cost unchanged"] += 1
+            elif new is None or new <= 0:
+                want, prefix = 422, PAID_FROM_EDIT_ZERO_ERROR
+                TALLY["edit funded: zero refused"] += 1
+            elif old is None or q2(old) != funding.amount:
+                name = cash.name if cash is not None else "its account"
+                note = PAID_FROM_EDIT_NOT_IN_SYNC_NOTE.format(account=name)
+                TALLY["edit funded: saved out of sync"] += 1
+            elif funding.cash_id is None:
+                note = PAID_FROM_EDIT_GONE_NOTE
+                TALLY["edit funded: saved purged"] += 1
+            elif not cash.live:
+                want, prefix = 422, PAID_FROM_EDIT_DELETED_ERROR.split("{")[0]
+                TALLY["edit funded: refused deleted account"] += 1
+            elif new - funding.amount > cash.bal:
+                want, prefix = 422, PAID_FROM_EDIT_TOO_MUCH_ERROR.split("{")[0]
+                TALLY["edit funded: refused short"] += 1
+            else:
+                delta = new - funding.amount
+                line = f"{cash.name}: {format_inr(cash.bal)} → {format_inr(cash.bal - delta)}"
+                TALLY["edit funded: moved " + ("up" if delta > 0 else "down" if delta < 0 else "none")] += 1
+                if funding.from_exit is not None:
+                    TALLY["edit funded: moved on a reinvest funding"] += 1
+
+        r = self.h.call("PUT", f"/api/assets/{slug}/{hold.id}", json=body)
+        if self.expect(r, (want,), f"edit {slug}", prefix) >= 400:
+            return
+        text = r.json().get("description") or ""
+        for extra in (line, note):
+            if extra is not None and not text.endswith(" · " + extra):
+                self.fail(f"edit {slug}: description {text!r} lacks {extra!r}")
+        if line is None and note is None and " · " in text:
+            self.fail(f"edit {slug}: description {text!r} has a note, none expected")
+        if line is not None:
+            cash.bal -= new - funding.amount
+            funding.amount = new
+        if changed:
+            hold.cost_edited = True
+            if slug == "fd":
+                hold.invested0 = new
+            elif slug == "stock":
+                hold.price = Decimal(body["avg_buy_price"])
+                hold.invested0 = hold.inv()
+            else:
+                hold.invested = new
+                hold.invested0 = new if new is not None else ZERO
+        self.touched = hold.key
 
     # ---- sell ---------------------------------------------------------------------------------
     def pick_dest(self, data):
@@ -1405,7 +1568,8 @@ class MoneyMachine(RuleBasedStateMachine):
             if hold.closed:
                 if hold.slug == "mf":
                     ts = txns.get(hold.id)
-                    expect_total = sum((q2(t.amount) for t in ts if t.kind == "purchase"), ZERO) if ts else None
+                    # a user-edited cost is the user's word over the statement's transactions: no expectation
+                    expect_total = sum((q2(t.amount) for t in ts if t.kind == "purchase"), ZERO) if ts and not hold.cost_edited else None
                 else:
                     expect_total = hold.invested0
                 if expect_total is not None and total != expect_total:

@@ -69,6 +69,21 @@ def w_deleted_old(w):
     return ctx
 
 
+def w_funded_cash_deleted(w):
+    """The funded stock's account is soft-deleted (a cost change is refused until it is restored)."""
+    ctx = w_funded(w)
+    assert w.delete("cash", ctx.cash).status_code == 200
+    return ctx
+
+
+def w_funded_cash_deleted_old(w):
+    """The account was deleted 40 days ago: the purge removes it and nulls the funding's link."""
+    ctx = w_funded_cash_deleted(w)
+    with w.engine.begin() as conn:
+        conn.execute(text("UPDATE cash_holdings SET deleted_at = now() - interval '40 days'"))
+    return ctx
+
+
 def w_cash(w):
     return SimpleNamespace(cash=w.add_cash(balance=100000))
 
@@ -142,6 +157,10 @@ def cash_delete(w, c):
     return w.delete("cash", c.cash)
 
 
+def cash_restore(w, c):
+    return w.restore("cash", c.cash)
+
+
 def settle(w, c):
     return w.settle("fd", c.fd, c.dest)
 
@@ -161,6 +180,7 @@ REFUND = After(fundings, "refund")
 RESTORE = After(fundings, "restore")
 PLAN = After(fundings, "plan")
 PLAN_EDIT = After(fundings, "plan_edit")
+EDIT_CASH = After(fundings, "_cash_of")  # the edit holds the account row (and then refuses a deleted one)
 
 PAIRS = [
     # sell / settle / undo on one holding or exit
@@ -197,6 +217,11 @@ PAIRS = [
     Pair("cash edit vs cost edit", w_funded, cash_put, put_cost_up, BeforeCommit(), ledger=False),
     Pair("cost edit vs cash delete", w_funded, put_cost_up, cash_delete, PLAN_EDIT),
     Pair("cash delete vs cost edit", w_funded, cash_delete, put_cost_up, BeforeCommit()),
+    # a cost edit against the purge or the restore of the soft-deleted account it was paid from
+    Pair("cost edit vs account purge", w_funded_cash_deleted_old, put_cost_up, purge, EDIT_CASH, ledger=False),
+    Pair("account purge vs cost edit", w_funded_cash_deleted_old, purge, put_cost_up, BeforeCommit("world"), ledger=False),
+    Pair("cost edit vs account restore", w_funded_cash_deleted, put_cost_up, cash_restore, EDIT_CASH),
+    Pair("account restore vs cost edit", w_funded_cash_deleted, cash_restore, put_cost_up, BeforeCommit()),
     # one cash account
     Pair("cash edit vs paid from", w_cash, cash_put, paid_from, BeforeCommit(), ledger=False),
     Pair("paid from vs cash edit", w_cash, paid_from, cash_put, PLAN, ledger=False),
