@@ -6,6 +6,16 @@ export const PAID_FROM_BALANCE_ERROR = "More than this account's balance";
 export const PAID_FROM_AMOUNT_ERROR =
   "Enter the amount invested to pay it from an account";
 export const PAID_FROM_ACCOUNT_ERROR = "Choose one of your accounts";
+// Editing the cost of a holding paid from an account (the API fills in {account} and {shortfall}).
+export const PAID_FROM_EDIT_TOO_MUCH_ERROR =
+  "Not enough in {account}: short by {shortfall}";
+export const PAID_FROM_EDIT_DELETED_ERROR = "Restore {account} first";
+export const PAID_FROM_EDIT_ZERO_ERROR =
+  "The cost must stay above zero while it is paid from an account";
+export const PAID_FROM_EDIT_NOT_IN_SYNC_NOTE =
+  "The cost no longer matches the amount paid from {account}, so the account was not changed.";
+export const PAID_FROM_EDIT_GONE_NOTE =
+  "The account it was paid from no longer exists, so no money moved.";
 
 function parseISO(iso: string): [number, number, number] | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);

@@ -294,7 +294,7 @@ def load_records_and_groups(
         records, today or date.today(), navs, prices, prev_navs, rates, nps_navs, nps_prev
     )
     exits_service.apply_exit_info(groups, exit_info)
-    fundings_service.apply_paid_from(groups, paid_from)
+    fundings_service.apply_paid_from(groups, paid_from, records)
     return records, groups
 
 
@@ -330,7 +330,9 @@ def load_group(
     )
     group = next(g for g in groups if g["type"] == slug)
     exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
-    fundings_service.apply_paid_from([group], fundings_service.paid_from_info(db, user_id))
+    fundings_service.apply_paid_from(
+        [group], fundings_service.paid_from_info(db, user_id), {slug: records}
+    )
     return group
 
 
@@ -365,7 +367,9 @@ def load_holding(
     )
     group = next(g for g in groups if g["type"] == slug)
     exits_service.apply_exit_info([group], exits_service.fetch_exit_info(db, user_id))
-    fundings_service.apply_paid_from([group], fundings_service.paid_from_info(db, user_id))
+    fundings_service.apply_paid_from(
+        [group], fundings_service.paid_from_info(db, user_id), {slug: [record]}
+    )
     return record, group["items"][0]
 
 

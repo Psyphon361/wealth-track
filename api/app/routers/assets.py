@@ -109,7 +109,7 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         return obj.metal.capitalize() if slug == "gold" else label
 
     result = create_model(f"{read.__name__}Result", __base__=(read, Outcome))
-    # POST also takes `paid_from`; PUT never does (editing a holding leaves its funding alone).
+    # POST also takes `paid_from`; PUT never does (editing the cost adjusts the existing funding).
     create_in = create_model(
         f"{create.__name__}In", __base__=create, paid_from=(PaidFromBody | None, None)
     )
@@ -247,13 +247,35 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
             if errors:
                 db.rollback()
                 raise RequestValidationError(errors)
+        # A changed cost of a holding paid from an account moves the difference on that account.
+        try:
+            edit = fundings.plan_edit(db, user.id, slug, obj, values)
+        except fundings.FundingError as error:
+            db.rollback()
+            raise RequestValidationError(
+                [
+                    {
+                        "type": "value_error",
+                        "loc": ("body", *error.loc),
+                        "msg": error.message,
+                        "input": "" if error.value is None else str(error.value),
+                    }
+                ]
+            ) from None
         for key, value in values.items():
             setattr(obj, key, value)
+        if edit is not None:
+            fundings.apply_edit(edit)
         db.commit()
         db.refresh(obj)
         if slug == "nps":
             background.add_task(nps.sync_scheme_safely, obj.scheme_id)
-        return _with_message(obj, "Changes saved")
+        out = _with_message(obj, "Changes saved")
+        if edit is not None:
+            for extra in (edit.line, edit.note):
+                if extra:
+                    out.description = f"{out.description} · {extra}"
+        return out
 
     @sub.delete("/{item_id}", response_model=Outcome)
     def delete_item(

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  PAID_FROM_EDIT_DELETED_ERROR,
+  PAID_FROM_EDIT_GONE_NOTE,
+  PAID_FROM_EDIT_NOT_IN_SYNC_NOTE,
+  PAID_FROM_EDIT_TOO_MUCH_ERROR,
+  PAID_FROM_EDIT_ZERO_ERROR,
   accountLabel,
   inr,
   paidFromAmount,
@@ -115,6 +120,22 @@ describe("paidFromBody", () => {
   it("sends the account and the exit it came from", () => {
     expect(paidFromBody(4)).toEqual({ paid_from: { cash_id: 4 } });
     expect(paidFromBody(4, 9)).toEqual({ paid_from: { cash_id: 4, from_exit_id: 9 } });
+  });
+});
+
+describe("edit messages shared with the API", () => {
+  it("keeps the wording of api/app/schemas/fundings.py", () => {
+    expect(PAID_FROM_EDIT_TOO_MUCH_ERROR).toBe("Not enough in {account}: short by {shortfall}");
+    expect(PAID_FROM_EDIT_DELETED_ERROR).toBe("Restore {account} first");
+    expect(PAID_FROM_EDIT_ZERO_ERROR).toBe(
+      "The cost must stay above zero while it is paid from an account",
+    );
+    expect(PAID_FROM_EDIT_NOT_IN_SYNC_NOTE).toBe(
+      "The cost no longer matches the amount paid from {account}, so the account was not changed.",
+    );
+    expect(PAID_FROM_EDIT_GONE_NOTE).toBe(
+      "The account it was paid from no longer exists, so no money moved.",
+    );
   });
 });
 

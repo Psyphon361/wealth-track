@@ -230,6 +230,7 @@ def test_items_carry_paid_from(env, users):
     stock_id = add_paid(env, a, "stock", STOCK, cash_id).json()["id"]
     expected = {
         "cash_holding_id": cash_id, "cash_name": "HDFC Savings", "amount": 5000, "date": "2025-01-01",
+        "adjustable": True, "reason": None,
     }  # fmt: skip
     assert item(env, a, "stock", stock_id)["paid_from"] == expected
     grid = env.get("/api/holdings/stock", headers=a).json()["items"]
@@ -248,15 +249,15 @@ def test_the_account_name_survives_the_account_being_deleted(env, users):
     assert (paid["cash_name"], paid["amount"]) == ("HDFC Savings", 5000)
 
 
-def test_editing_never_changes_the_funding(env, db, users):
+def test_editing_the_cost_adjusts_the_funding(env, db, users):
     a = users[0]
     cash_id = source(env, a)
     stock_id = add_paid(env, a, "stock", STOCK, cash_id).json()["id"]
     edited = {**STOCK, "quantity": 200, "paid_from": {"cash_id": cash_id}}
     assert env.put(f"/api/assets/stock/{stock_id}", json=edited, headers=a).status_code == 200
-    assert balance(env, a, cash_id)[0] == 995000
+    assert balance(env, a, cash_id)[0] == 990000
     [row] = funding_rows(db)
-    assert row.amount == Decimal(5000) and row.refunded_at is None
+    assert row.amount == Decimal(10000) and row.refunded_at is None
 
 
 # --- delete, restore, purge --------------------------------------------------------------------

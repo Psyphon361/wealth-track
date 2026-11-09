@@ -765,7 +765,7 @@ The amount is what the holding costs, rounded to 2 dp. None is taken when it is 
 - Create: the account's balance goes down by the amount. Its balance date becomes the later of its own and `funded_on`.
 - Delete (soft): the balance goes back up by the amount, and `refunded_at` is set. The balance date is not changed. The money goes back whether the account is active or soft-deleted.
 - Restore: the amount is taken out again (from an active or a soft-deleted account) and `refunded_at` is cleared. The balance date is not changed. When the account no longer has enough the restore is refused with 409 and nothing changes: for an active account "Not enough in <name>" / "Update its balance, then restore."; for a soft-deleted account "Not enough in <name>" / "Restore <name> from Recently deleted and add ₹X to it, then restore." (X = the shortfall).
-- Edit: never changes the funding (see below).
+- Edit: a changed cost adjusts the account and the funding (see below).
 - Purge (§8b, `services/purge.py`): the funding rows of a purged holding are removed. No money moves, as the refund was made at delete.
 - When the account was purged for good (the funding's `cash_holding_id` is NULL), delete and restore move no money; `refunded_at` is still set and cleared. While the account is only soft-deleted, the line on the holding reads "a deleted account" and delete and restore still move the money.
 - Lock order stays holding, then funding, then cash account (a soft-deleted account is locked too).
@@ -785,7 +785,14 @@ The `paid_from` check runs before the duplicate check (§4). A 422 wins even whe
 
 Edit guards (closed and sold-in-part holdings) are in §4. For a Paid From exit, `plan` locks the exit row before the cash row; undo locks exit, holding, cash.
 
-`PUT /api/assets/{type}/{id}` takes no `paid_from` and never changes the funding. Changing the holding's amount does not move money. The Edit dialog shows the funding as a read-only line: "Paid from HDFC Savings · ₹50,000" (or "Paid from a deleted account · ₹50,000").
+`PUT /api/assets/{type}/{id}` takes no `paid_from` (the account cannot be changed), but editing the cost of a holding that was paid from an account moves the difference on that account. Only for fd, stock, bond, mf, gold and other (a fixed purchase cost); cash, pf, nps and rd move no money (their amount is a running figure). Checks run in this order, all inside the PUT transaction (lock order: holding, funding row, account; any failure rolls back the edit too):
+
+1. Cost unchanged (the new cost equals the stored cost): saved, nothing else happens, no note. No funding or account lock is taken. A holding with no active funding edits as before.
+2. New cost missing or zero: 422 on the cost field (principal, invested_amount, quantity or avg_buy_price, whichever the user edited): "The cost must stay above zero while it is paid from an account".
+3. Not in sync (the stored cost differs from the funding amount, e.g. after SIP posting or a CAS update): saved, no money moves, the funding is left as is; the description adds "The cost no longer matches the amount paid from HDFC Savings, so the account was not changed."
+4. In sync: account purged: saved, no money moves, the description adds "The account it was paid from no longer exists, so no money moved."; account deleted: 422 on the cost field "Restore HDFC Savings first"; live account: an increase larger than the balance is a 422 on the cost field "Not enough in HDFC Savings: short by ₹10,000"; otherwise the balance moves by the difference (the balance date is left alone) and `funding.amount` becomes the new cost, so a later delete-refund, restore or undo uses it. The description adds "HDFC Savings: ₹2,00,000 → ₹1,75,000".
+
+The `paid_from` object on items also carries `adjustable` (true only for those six types with a live account and in sync) and `reason` (`type`, `account_gone`, `account_deleted`, `out_of_sync` or null). The Edit dialog shows the funding as a read-only line: "Paid from HDFC Savings · ₹50,000" (or "Paid from a deleted account · ₹50,000").
 
 ### Restore
 

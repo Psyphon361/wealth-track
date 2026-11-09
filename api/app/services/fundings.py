@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from app.models import Cash, HoldingExit, HoldingFunding
 from app.schemas.exits import CASH_ACCOUNT_ERROR
 from app.schemas.fundings import (
+    PAID_FROM_EDIT_DELETED_ERROR,
+    PAID_FROM_EDIT_GONE_NOTE,
+    PAID_FROM_EDIT_NOT_IN_SYNC_NOTE,
+    PAID_FROM_EDIT_TOO_MUCH_ERROR,
+    PAID_FROM_EDIT_ZERO_ERROR,
     PAID_FROM_OTHER_AMOUNT_ERROR,
     PAID_FROM_TOO_MUCH_ERROR,
     PaidFromBody,
@@ -156,6 +161,120 @@ def apply(db: Session, user_id: int, slug: str, holding_id: int, p: FundingPlan)
     return row
 
 
+# Types whose amount is a fixed purchase cost: editing it moves money on the funding account. For
+# cash, pf, nps and rd the amount is a running figure users update routinely, so an edit moves none.
+EDIT_ADJUSTS = ("fd", "stock", "bond", "mf", "gold", "other")
+_COST_ATTRS = {
+    "fd": ("principal",),
+    "stock": ("quantity", "avg_buy_price"),
+    "bond": ("invested_amount",),
+    "mf": ("invested_amount",),
+    "gold": ("invested_amount",),
+    "other": ("invested_amount",),
+}
+_COST_FIELD = {"fd": "principal", "bond": "invested_amount", "mf": "invested_amount",
+               "gold": "invested_amount", "other": "invested_amount"}  # fmt: skip
+
+
+def stored_cost(slug: str, record: Any) -> Decimal | None:
+    """The cost a stored holding has now (what `amount_for` says of its saved values)."""
+    return amount_for(slug, {a: getattr(record, a) for a in _COST_ATTRS[slug]}, date.today())
+
+
+@dataclass
+class EditPlan:
+    """What a cost edit does to the funding account (built under the locks, applied by `apply_edit`)."""
+
+    funding: HoldingFunding | None  # None when no money moves
+    cash: Cash | None
+    new_amount: Decimal | None
+    note: str | None = None
+    line: str | None = None
+
+
+def _edit_field(slug: str, record: Any, values: Mapping[str, Any]) -> str:
+    """The form field a cost change is blamed on."""
+    if slug != "stock":
+        return _COST_FIELD[slug]
+    for field in ("quantity", "avg_buy_price"):
+        if Decimal(str(getattr(record, field))) != Decimal(str(values[field])):
+            return field
+    return "quantity"
+
+
+def _name_of(db: Session, user_id: int, cash_id: int | None) -> str | None:
+    if cash_id is None:
+        return None
+    return db.scalar(
+        sa.select(Cash.name)
+        .where(Cash.id == cash_id, Cash.user_id == user_id)
+        .execution_options(include_deleted=True)
+    )
+
+
+def plan_edit(
+    db: Session, user_id: int, slug: str, record: Any, values: Mapping[str, Any]
+) -> EditPlan | None:
+    """Work out what editing the cost of `record` does to its funding account. No money is written.
+
+    The caller holds the holding's row lock and has not applied `values` yet. Order: (1) did the cost
+    change? (2) a funded cost may not drop to zero; (3) is the holding in sync with its funding?
+    (4) the account is gone, deleted or short. Locks: holding, the funding row, then the account.
+    Raises FundingError (422 on the cost field). Returns None when nothing about the funding changes.
+    """
+    if slug not in EDIT_ADJUSTS:
+        return None
+    today = date.today()
+    old = stored_cost(slug, record)
+    new = amount_for(slug, values, today)
+    if new == old:
+        return None
+    funding = db.scalars(
+        sa.select(HoldingFunding)
+        .where(
+            HoldingFunding.user_id == user_id,
+            HoldingFunding.asset_type == slug,
+            HoldingFunding.holding_id == record.id,
+            HoldingFunding.refunded_at.is_(None),
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).first()
+    if funding is None:
+        return None
+    field = _edit_field(slug, record, values)
+    shown = values.get(field)
+    if new is None or new <= 0:
+        raise FundingError((field,), PAID_FROM_EDIT_ZERO_ERROR, shown)
+    paid = money(funding.amount)
+    if old != paid:
+        name = _name_of(db, user_id, funding.cash_holding_id)
+        note = PAID_FROM_EDIT_NOT_IN_SYNC_NOTE.format(account=name or "its account")
+        return EditPlan(None, None, None, note)
+    cash = _cash_of(db, user_id, funding.cash_holding_id)
+    if cash is None:  # purged: its money is no longer tracked
+        return EditPlan(None, None, None, PAID_FROM_EDIT_GONE_NOTE)
+    if cash.deleted_at is not None:
+        raise FundingError((field,), PAID_FROM_EDIT_DELETED_ERROR.format(account=cash.name), shown)
+    balance = Decimal(str(cash.balance))
+    delta = new - paid
+    if delta > balance:
+        shortfall = sip_service.format_inr(delta - balance)
+        message = PAID_FROM_EDIT_TOO_MUCH_ERROR.format(account=cash.name, shortfall=shortfall)
+        raise FundingError((field,), message, shown)
+    line = f"{cash.name}: {sip_service.format_inr(balance)} → {sip_service.format_inr(balance - delta)}"
+    return EditPlan(funding, cash, new, None, line)
+
+
+def apply_edit(p: EditPlan) -> None:
+    """Move the difference between the account and the funding (balance date is left alone)."""
+    if p.funding is None or p.cash is None or p.new_amount is None:
+        return
+    delta = p.new_amount - money(p.funding.amount)
+    p.cash.balance = Decimal(str(p.cash.balance)) - delta
+    p.funding.amount = p.new_amount
+
+
 def _cash_of(db: Session, user_id: int, cash_id: int | None) -> Cash | None:
     """The user's account, active or soft-deleted; None when it was purged for good (its money is
     then not tracked)."""
@@ -255,6 +374,7 @@ def paid_from_info(session: Session, user_id: int) -> dict[tuple[str, int], dict
             HoldingFunding.amount,
             HoldingFunding.funded_on,
             account.c.name,
+            account.c.deleted_at,
         )
         .outerjoin(account, account.c.id == HoldingFunding.cash_holding_id)
         .where(HoldingFunding.user_id == user_id, HoldingFunding.refunded_at.is_(None))
@@ -266,18 +386,48 @@ def paid_from_info(session: Session, user_id: int) -> dict[tuple[str, int], dict
             "cash_name": name,
             "amount": float(amount),
             "date": funded_on.isoformat(),
+            "adjustable": slug in EDIT_ADJUSTS and cash_id is not None and deleted_at is None,
+            "reason": _edit_reason(slug, cash_id, deleted_at),
         }
-        for slug, holding_id, cash_id, amount, funded_on, name in rows
+        for slug, holding_id, cash_id, amount, funded_on, name, deleted_at in rows
     }
 
 
+def _edit_reason(slug: str, cash_id: int | None, deleted_at: Any) -> str | None:
+    """Why editing the cost will not move money: type, account_gone, account_deleted (else None)."""
+    if slug not in EDIT_ADJUSTS:
+        return "type"
+    if cash_id is None:
+        return "account_gone"
+    return "account_deleted" if deleted_at is not None else None
+
+
 def apply_paid_from(
-    groups: Iterable[Mapping[str, Any]], info: Mapping[tuple[str, int], Mapping[str, Any]]
+    groups: Iterable[Mapping[str, Any]],
+    info: Mapping[tuple[str, int], Mapping[str, Any]],
+    records: Mapping[str, Iterable[Any]] | None = None,
 ) -> None:
-    """Set `paid_from` on the items of valued groups, in place."""
+    """Set `paid_from` on the items of valued groups, in place.
+
+    With the stored `records` (by type), an adjustable funding is also checked to be in sync: the
+    holding's stored cost must equal what was taken, else editing moves no money (`out_of_sync`).
+    """
+    stored = {slug: {r.id: r for r in rows} for slug, rows in (records or {}).items()}
     for group in groups:
+        slug = group["type"]
         for item in group["items"]:
-            item["paid_from"] = info.get((group["type"], item["id"]))
+            found = info.get((slug, item["id"]))
+            if found is None:
+                item["paid_from"] = None
+                continue
+            found = dict(found)
+            record = stored.get(slug, {}).get(item["id"])
+            if slug in EDIT_ADJUSTS and record is not None:
+                cost = stored_cost(slug, record)
+                if cost is None or cost != money(found["amount"]):
+                    found["adjustable"] = False
+                    found["reason"] = "out_of_sync"
+            item["paid_from"] = found
 
 
 def paid_from_text(amount: Decimal, cash_name: str) -> str:

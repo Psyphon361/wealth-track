@@ -129,6 +129,11 @@ def put_stock(w, c):
     return w.put("stock", c.stock, stock_body("Renamed Ltd", 100))
 
 
+def put_cost_up(w, c):
+    """Raise the funded stock's cost from 5,000 to 10,000 (moves 5,000 more off the account)."""
+    return w.put("stock", c.stock, stock_body("Funded Ltd", 200))
+
+
 def cash_put(w, c):
     return w.put("cash", c.cash, cash_body(balance=1000))
 
@@ -155,6 +160,7 @@ UNDO = After(exits_service, "undo_exit")
 REFUND = After(fundings, "refund")
 RESTORE = After(fundings, "restore")
 PLAN = After(fundings, "plan")
+PLAN_EDIT = After(fundings, "plan_edit")
 
 PAIRS = [
     # sell / settle / undo on one holding or exit
@@ -182,6 +188,15 @@ PAIRS = [
     Pair("edit vs sell", w_stock, put_stock, sell(40), BeforeCommit()),
     Pair("sell vs edit", w_stock, sell(40), put_stock, REC_SALE),
     Pair("edit vs delete", w_stock, put_stock, delete_stock, BeforeCommit()),
+    # edit the cost of a holding paid from an account (holding, funding row, then the account)
+    Pair("cost edit vs delete", w_funded, put_cost_up, delete_stock, PLAN_EDIT),
+    Pair("delete vs cost edit", w_funded, delete_stock, put_cost_up, REFUND),
+    Pair("cost edit vs paid from", w_funded, put_cost_up, paid_from, PLAN_EDIT),
+    Pair("paid from vs cost edit", w_funded, paid_from, put_cost_up, PLAN),
+    Pair("cost edit vs cash edit", w_funded, put_cost_up, cash_put, PLAN_EDIT, ledger=False),
+    Pair("cash edit vs cost edit", w_funded, cash_put, put_cost_up, BeforeCommit(), ledger=False),
+    Pair("cost edit vs cash delete", w_funded, put_cost_up, cash_delete, PLAN_EDIT),
+    Pair("cash delete vs cost edit", w_funded, cash_delete, put_cost_up, BeforeCommit()),
     # one cash account
     Pair("cash edit vs paid from", w_cash, cash_put, paid_from, BeforeCommit(), ledger=False),
     Pair("paid from vs cash edit", w_cash, paid_from, cash_put, PLAN, ledger=False),
