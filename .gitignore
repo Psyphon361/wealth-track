@@ -9,4 +9,5 @@ __pycache__/
 .env.local
 .env.*.local
 .DS_Store
+.hypothesis/
 .claude/settings.local.json

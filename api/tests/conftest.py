@@ -8,6 +8,10 @@ os.environ.setdefault("DATABASE_URL", "postgresql://dummy:dummy@localhost:1/dumm
 
 import pytest  # noqa: E402
 
+from tests.hypothesis_profiles import register as _register_hypothesis_profiles  # noqa: E402
+
+_register_hypothesis_profiles()
+
 _STAMP = datetime(2025, 1, 1)
 _ids = iter(range(1, 10_000))
 
