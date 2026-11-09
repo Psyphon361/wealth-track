@@ -2,7 +2,8 @@
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import Delete, delete, select
+from sqlalchemy import Delete, delete, select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.models import (
@@ -41,6 +42,26 @@ HOLDING_MODELS = {
 EXIT_SLUGS = ("fd", "rd", "bond", "stock", "mf", "gold", "other")
 
 
+# Lock order of the purge: type order, but cash last. A restore (or Paid From) locks its holding
+# first and then the cash account that funded it, so purge must reach a cash account only after
+# every other holding, or it could hold the account while a restore holds the holding.
+LOCK_ORDER = tuple(slug for slug in HOLDING_MODELS if slug != "cash") + ("cash",)
+
+# Postgres lock_timeout for the purge transaction.
+PURGE_LOCK_TIMEOUT = "10s"
+LOCK_NOT_AVAILABLE = "55P03"
+
+
+class PurgeLockTimeout(Exception):
+    """A row the purge needed stayed locked past PURGE_LOCK_TIMEOUT; nothing was deleted."""
+
+    message = "Couldn't clean up deleted holdings"
+    description = "A holding was busy. Nothing was removed; try again shortly."
+
+    def __init__(self) -> None:
+        super().__init__(f"{self.message}: {self.description}")
+
+
 def purge_statement(model, cutoff: datetime) -> Delete:
     return delete(model).where(model.deleted_at.is_not(None), model.deleted_at < cutoff)
 
@@ -71,12 +92,39 @@ def purge_deleted(session: Session, older_than_days: int = RETENTION_DAYS) -> di
     the same transaction, and so are holding_fundings. Returns the number of rows removed per type
     slug, plus "exits" and "fundings" for the rows removed from those tables.
     """
+    try:
+        return _purge(session, older_than_days)
+    except OperationalError as exc:
+        session.rollback()
+        if getattr(exc.orig, "sqlstate", None) == LOCK_NOT_AVAILABLE:
+            raise PurgeLockTimeout() from exc
+        raise
+    except BaseException:
+        session.rollback()
+        raise
+
+
+def _purge(session: Session, older_than_days: int) -> dict[str, int]:
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    if session.get_bind().dialect.name == "postgresql":
+        # A stuck lock fails the run (all-or-nothing, rolled back) instead of hanging the cron.
+        session.execute(
+            text("SELECT set_config('lock_timeout', :value, true)"),
+            {"value": PURGE_LOCK_TIMEOUT},
+        )
+    # Phase 1: lock every type's candidate holdings before any child row is touched. Deleting
+    # exits or cash accounts SET NULLs holding_fundings rows (locking them), while a restore locks
+    # its holding first and then its funding rows; taking all holding locks first keeps purge in
+    # the same order and so cannot deadlock with a restore.
+    locked: dict[str, list[int]] = {}
+    for slug in LOCK_ORDER:
+        locked[slug] = lock_purgeable_ids(session, HOLDING_MODELS[slug], cutoff)
+    # Phase 2: delete children and holdings, only the ids that survived the locks.
     counts: dict[str, int] = {}
     exits_removed = 0
     fundings_removed = 0
     for slug, model in HOLDING_MODELS.items():
-        ids = lock_purgeable_ids(session, model, cutoff)
+        ids = locked[slug]
         if ids:
             if slug in EXIT_SLUGS:
                 exits_removed += session.execute(

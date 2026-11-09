@@ -97,4 +97,9 @@ def refresh_gold(db: Session = Depends(get_db)):
 
 @router.get("/purge", dependencies=[Depends(require_cron_secret)])
 def purge_deleted_holdings(db: Session = Depends(get_db)) -> dict[str, int]:
-    return purge.purge_deleted(db)
+    try:
+        return purge.purge_deleted(db)
+    except purge.PurgeLockTimeout as exc:
+        raise HTTPException(
+            status_code=503, detail={"message": exc.message, "description": exc.description}
+        ) from exc
