@@ -31,6 +31,12 @@ from app.schemas.assets import (
     SOLD_IN_PART_ERROR,
     SOLD_IN_PART_FIELDS,
 )
+from app.schemas.exits import (
+    DELETE_SETTLED_DESCRIPTION,
+    DELETE_SETTLED_MESSAGE,
+    DELETE_SOLD_DESCRIPTION,
+    DELETE_SOLD_MESSAGE,
+)
 from app.schemas.fundings import PaidFromBody
 from app.schemas.messages import Outcome
 from app.services import amfi, bond_master, duplicates, fd_issuers, fundings, nps, stock_master
@@ -262,6 +268,25 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         ).first()
         if obj is None or obj.deleted_at is not None:
             raise HTTPException(status_code=404, detail="Not found")
+        # Deleting a sold holding would leave the sale's money in the books with nothing behind it.
+        kinds = set(
+            db.scalars(
+                select(HoldingExit.kind).where(
+                    HoldingExit.user_id == user.id,
+                    HoldingExit.asset_type == slug,
+                    HoldingExit.holding_id == obj.id,
+                )
+            ).all()
+        )
+        if kinds:
+            sold = "sale" in kinds
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": DELETE_SOLD_MESSAGE if sold else DELETE_SETTLED_MESSAGE,
+                    "description": DELETE_SOLD_DESCRIPTION if sold else DELETE_SETTLED_DESCRIPTION,
+                },
+            )
         name = _holding_name(obj)
         deleted_label = _label(obj)
         obj.deleted_at = func.now()

@@ -157,11 +157,15 @@ def apply(db: Session, user_id: int, slug: str, holding_id: int, p: FundingPlan)
 
 
 def _cash_of(db: Session, user_id: int, cash_id: int | None) -> Cash | None:
-    """The user's active account; None when it was deleted (its money is simply not tracked)."""
+    """The user's account, active or soft-deleted; None when it was purged for good (its money is
+    then not tracked)."""
     if cash_id is None:
         return None
     return db.scalars(
-        sa.select(Cash).where(Cash.id == cash_id, Cash.user_id == user_id).with_for_update(of=Cash)
+        sa.select(Cash)
+        .where(Cash.id == cash_id, Cash.user_id == user_id)
+        .with_for_update(of=Cash)
+        .execution_options(include_deleted=True)
     ).first()
 
 
@@ -202,9 +206,15 @@ def restore(db: Session, user_id: int, slug: str, holding_id: int) -> None:
         if cash is not None:
             amount = Decimal(str(row.amount))
             if Decimal(str(cash.balance)) < amount:
-                raise FundingConflict(
-                    f"Not enough in {cash.name}", "Update its balance, then restore."
-                )
+                if cash.deleted_at is not None:  # can't be topped up until restored
+                    shortfall = sip_service.format_inr(amount - Decimal(str(cash.balance)))
+                    description = (
+                        f"Restore {cash.name} from Recently deleted and add {shortfall} to it, "
+                        "then restore."
+                    )
+                else:
+                    description = "Update its balance, then restore."
+                raise FundingConflict(f"Not enough in {cash.name}", description)
             cash.balance = Decimal(str(cash.balance)) - amount
         row.refunded_at = None
 

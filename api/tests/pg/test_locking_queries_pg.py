@@ -217,7 +217,10 @@ def test_settle_each_type_into_cash_then_undo(env, slug, body):
 def test_undo_of_an_exit_whose_holding_was_deleted_is_a_409(env):
     stock_id = add(env.client, env.headers, "stock", STOCK)
     sold = sell(env, "stock", stock_id, quantity=10, price=80).json()
-    assert env.client.delete(f"/api/assets/stock/{stock_id}", headers=env.headers).status_code == 200
+    assert env.client.delete(f"/api/assets/stock/{stock_id}", headers=env.headers).status_code == 409
+    with env.session() as session:  # legacy state: sold, then deleted before the delete guard existed
+        session.execute(text("UPDATE stocks SET deleted_at = now() WHERE id = :i"), {"i": stock_id})
+        session.commit()
     undone = env.client.delete(f"/api/exits/{sold['id']}", headers=env.headers)
     assert undone.status_code == 409 and undone.json()["message"] == "Holding not found"
 

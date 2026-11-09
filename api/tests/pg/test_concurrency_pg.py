@@ -11,6 +11,7 @@ from datetime import date
 from decimal import Decimal
 
 import pytest
+from sqlalchemy import text
 
 from app.models import Cash, MutualFund
 from app.services import exits as exits_service
@@ -106,14 +107,15 @@ def test_two_part_sales_that_fit_both_land_in_turn(world, monkeypatch):
 # --- (2) sell vs delete, delete vs restore ----------------------------------------------------------
 
 
-def test_sell_held_then_delete_waits_and_deletes_the_sold_holding(world, monkeypatch):
+def test_sell_held_then_delete_waits_and_is_refused_because_the_holding_was_sold(world, monkeypatch):
     stock = world.add("stock", STOCK)
     gate = hold_after(monkeypatch, exits_service, "record_sale")
     a, b = staged(
         world.engine, gate, lambda: world.sell_stock(stock, 40), lambda: world.delete("stock", stock)
     )
-    assert statuses(*assert_clean(a, b)) == [201, 200]
-    assert world.holding("stocks", stock).deleted_at is not None
+    ra, rb = assert_clean(a, b)
+    assert statuses(ra, rb) == [201, 409], (ra.text, rb.text)
+    assert world.holding("stocks", stock).deleted_at is None
     assert len(world.exits("stock", stock)) == 1
     check_invariants(world)
 
@@ -561,12 +563,13 @@ def test_undo_held_then_delete_of_the_holding_waits(world, monkeypatch):
     check_invariants(world)
 
 
-def test_delete_held_then_undo_is_refused_because_the_holding_is_gone(world, monkeypatch):
+def test_undo_of_a_legacy_deleted_sold_holding_is_refused_because_the_holding_is_gone(world):
     cash, stock, exit_id = sold_into_cash(world)
-    gate = hold_after(monkeypatch, fundings, "refund")
-    a, b = staged(world.engine, gate, lambda: world.delete("stock", stock), lambda: world.undo(exit_id))
-    ra, rb = assert_clean(a, b)
-    assert statuses(ra, rb) == [200, 409], (ra.text, rb.text)
+    assert world.delete("stock", stock).status_code == 409  # the API no longer deletes a sold holding
+    with world.engine.begin() as conn:  # legacy state: sold, then deleted
+        conn.execute(text("UPDATE stocks SET deleted_at = now() WHERE id = :i"), {"i": stock})
+    rb = world.undo(exit_id)
+    assert rb.status_code == 409, rb.text
     assert detail(rb) == "Holding not found"
     assert len(world.exits("stock", stock)) == 1 and world.balance(cash) == Decimal("108000")
     check_invariants(world)

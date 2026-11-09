@@ -52,8 +52,11 @@ def chain_world(world):
     paid = world.add_paid("pf", PF, cash, from_exit_id=exit_id)
     assert paid.status_code == 201, paid.text
     pf = paid.json()["id"]
-    for slug, item in (("pf", pf), ("stock", stock), ("cash", cash)):
+    for slug, item in (("pf", pf), ("cash", cash)):
         assert world.delete(slug, item).status_code == 200
+    assert world.delete("stock", stock).status_code == 409  # a sold holding can't be deleted through the API
+    with world.engine.begin() as conn:  # the legacy "sold and deleted" state, set directly
+        conn.execute(text("UPDATE stocks SET deleted_at = now() WHERE id = :i"), {"i": stock})
     age(world, "pf_holdings", "stocks", "cash_holdings")
     funding = world.fundings()
     assert len(funding) == 1 and funding[0].from_exit_id == exit_id

@@ -39,6 +39,10 @@ SELL_PART_REFUSED_MESSAGE = "Can't sell part of this holding"
 SELL_PART_REFUSED_DESCRIPTION = (
     "The recorded cost doesn't cover what would be left. Fix the invested amount, or sell all of it."
 )
+DELETE_SOLD_MESSAGE = "Undo the sale first"
+DELETE_SOLD_DESCRIPTION = "Delete this holding after you undo its sale."
+DELETE_SETTLED_MESSAGE = "Undo the settlement first"
+DELETE_SETTLED_DESCRIPTION = "Delete this holding after you undo its settlement."
 CHARGES_NEGATIVE_ERROR = "Can't be negative"
 CHARGES_TOO_HIGH_ERROR = "Charges must be less than the sale value"
 DESTINATION_ERROR = "Choose where the money went"

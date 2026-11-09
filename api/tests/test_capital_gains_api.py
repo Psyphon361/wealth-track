@@ -321,7 +321,10 @@ def test_soft_deleted_holding_is_skipped(gc, users):
     stock_id = add(gc, a, "stock", STOCK)
     put_exit(gc, a_id, "stock", stock_id, date(2025, 8, 1), D("1200"), D("1000"), quantity=10)
     assert len(get(gc, a, 2025).json()["sales"]) == 1
-    assert gc.delete(f"/api/assets/stock/{stock_id}", headers=a).status_code in (200, 204)
+    # The API refuses to delete a sold holding now; this is a legacy row deleted before that rule.
+    with gc.factory() as session:
+        session.execute(text("UPDATE stocks SET deleted_at = CURRENT_TIMESTAMP WHERE id = :i"), {"i": stock_id})
+        session.commit()
     assert get(gc, a, 2025).status_code == 422  # year no longer listed once nothing is left
     assert get(gc, a).json()["sales"] == []
 

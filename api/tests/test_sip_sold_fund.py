@@ -9,7 +9,7 @@ from datetime import date
 from decimal import Decimal as D
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
@@ -276,7 +276,13 @@ def test_a_sold_then_deleted_holding_gets_a_new_holding_and_restore_is_safe(
 ):
     a = users[0]
     old_id, sip_id = running_sip_then_sold(sc, a, auth_engine)
-    assert sc.delete(f"/api/assets/mf/{old_id}", headers=a).status_code == 200
+    # The API refuses to delete a sold holding now; this is a legacy row deleted before that rule.
+    assert sc.delete(f"/api/assets/mf/{old_id}", headers=a).status_code == 409
+    with sessionmaker(bind=auth_engine)() as s:
+        s.execute(
+            text("UPDATE mutual_funds SET deleted_at = CURRENT_TIMESTAMP WHERE id = :i"), {"i": old_id}
+        )
+        s.commit()
 
     assert post(auth_engine, date(2026, 4, 10)) == {sip_id: 1}
     new_id = sip_row(auth_engine, sip_id).mutual_fund_id

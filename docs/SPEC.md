@@ -240,6 +240,7 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
   - Web: Edit is hidden on closed holdings (grid row actions and details page, `canEdit` in `web/lib/edit-guards.ts`). The Edit dialog shows protected fields read-only with a helper line; autofill (gold rate, MF NAV, bond pick) doesn't overwrite a locked field. The constants are mirrored in `web/components/forms/schema.ts` and `web/lib/edit-guards.ts`; `api/tests/test_edit_guards.py` pins them to `assets.py`.
 - **Row locks.** Delete, restore, sell, settle and PUT all lock the holding row. Every `FOR UPDATE` on a holding model uses `with_for_update(of=Model)`, because Nps and FixedDeposit load their masters with a join. Lock order: Paid From with `from_exit_id` locks the exit row before the cash row (undo locks exit, holding, cash), so reinvest and undo serialise; SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
 - **Soft delete** (migration 0025: nullable `deleted_at` on the nine holding tables; `other_holdings` has it from migration 0026). `DELETE /assets/{type}/{id}` sets `deleted_at`; every query (grids, portfolio, dashboard, net worth, details) hides deleted rows. MF transactions stay with their fund.
+- `DELETE /assets/{type}/{id}` is refused with 409 for a holding that has a sale or settlement on record (a partly sold one too), because deleting it would leave the sale's money in a cash account with nothing behind it: `{message: "Undo the sale first", description: "Delete this holding after you undo its sale."}`, or "Undo the settlement first" / "Delete this holding after you undo its settlement." (the sale wording wins when both exist). Undo the exit, then delete. Undone exits leave no row, so they don't block. Holdings deleted before this rule restore as before. The web shows the API's error toast (grid and details page).
 - `POST /assets/{type}/{id}/restore` clears `deleted_at` → `{message: "<Type> restored", description}`; 404 for a holding that isn't deleted or isn't yours.
 - `GET /deleted` → the user's holdings deleted in the last 30 days, newest first: `[{type, type_label, id, name, deleted_at, purge_on, days_left}]`.
 - `GET /cron/purge` → permanently deletes holdings (all users) deleted more than 30 days ago, and their MF transactions along with the fund; returns counts per table. Same bearer auth; Vercel Cron `0 20 * * *` UTC. Also `python -m app.jobs.purge_deleted` and the dev data refresh job `purge`.
@@ -632,6 +633,7 @@ A closing is a sale (all or part of a holding) or a settlement (a matured deposi
 - A fund sale also writes a `redemption` transaction dated the sale date. A fund with no transactions yet gets an opening purchase for its current units first, so XIRR stays on transactions. A full sale of a fund does not touch its SIPs: they keep running (`sips_cancelled` is always 0, kept for compatibility).
 - The sale date can't be in the future or before the purchase date (stock buy date; bond, fund and gold purchase date; Other acquired date).
 - A matured bond can't be sold, and a sold holding can't be sold again (409, see below).
+- A holding with a sale or settlement can't be deleted (409, "Undo the sale first" / "Undo the settlement first"); undo the exit first (§4, "Soft delete").
 
 ### Settle (`POST /api/holdings/{fd|rd|bond}/{id}/settle`)
 
@@ -754,11 +756,12 @@ The amount is what the holding costs, rounded to 2 dp. None is taken when it is 
 ### Cash effect
 
 - Create: the account's balance goes down by the amount. Its balance date becomes the later of its own and `funded_on`.
-- Delete (soft): the balance goes back up by the amount, and `refunded_at` is set. The balance date is not changed.
-- Restore: the amount is taken out again and `refunded_at` is cleared. The balance date is not changed.
+- Delete (soft): the balance goes back up by the amount, and `refunded_at` is set. The balance date is not changed. The money goes back whether the account is active or soft-deleted.
+- Restore: the amount is taken out again (from an active or a soft-deleted account) and `refunded_at` is cleared. The balance date is not changed. When the account no longer has enough the restore is refused with 409 and nothing changes: for an active account "Not enough in <name>" / "Update its balance, then restore."; for a soft-deleted account "Not enough in <name>" / "Restore <name> from Recently deleted and add ₹X to it, then restore." (X = the shortfall).
 - Edit: never changes the funding (see below).
 - Purge (§8b, `services/purge.py`): the funding rows of a purged holding are removed. No money moves, as the refund was made at delete.
-- When the account is deleted, delete and restore move no money. The line on the holding then reads "a deleted account".
+- When the account was purged for good (the funding's `cash_holding_id` is NULL), delete and restore move no money; `refunded_at` is still set and cleared. While the account is only soft-deleted, the line on the holding reads "a deleted account" and delete and restore still move the money.
+- Lock order stays holding, then funding, then cash account (a soft-deleted account is locked too).
 
 ### Validation
 
@@ -805,6 +808,10 @@ As built in `web/`; the code is the reference when the two differ.
 - **Success step**, **Reinvest menu** and **money line**: as in §8b, Web.
 - **Cash & Savings details page** (`components/holding-detail/holding-detail.tsx`): the info line "Use this account as 'Paid From' when you add a holding bought with this money."
 - **Destination info line** on the sell and settle dialogs: as in §8b, Web.
+
+### Old data
+
+Before the delete-refund fix, deleting a holding whose cash account was already soft-deleted set `refunded_at` but never credited the account. Run the SELECT-only `api/scripts/preflight_delete_refund.sql` on prod: it counts and lists those fundings (`deleted_at` of the account at or before `refunded_at`); review each one by hand.
 
 ### Out of scope
 

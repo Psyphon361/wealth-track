@@ -19,6 +19,10 @@ WEB = API.parent / "web"
 API_ONLY = {
     "SELL_PART_REFUSED_MESSAGE": "refused on the sell path; the web renders the API's toast",
     "SELL_PART_REFUSED_DESCRIPTION": "refused on the sell path; the web renders the API's toast",
+    "DELETE_SOLD_MESSAGE": "refused on delete (409); the web renders the API's toast",
+    "DELETE_SOLD_DESCRIPTION": "refused on delete (409); the web renders the API's toast",
+    "DELETE_SETTLED_MESSAGE": "refused on delete (409); the web renders the API's toast",
+    "DELETE_SETTLED_DESCRIPTION": "refused on delete (409); the web renders the API's toast",
     "CASH_NAME_LENGTH_ERROR": "cash account name length is checked in the API; the web shows the API text",
     "SIP_INACTIVE_SCHEME_ERROR": "needs the fund master; only the API can know and renders it",
     "SIP_SKIP_NOT_UPCOMING_ERROR": "depends on SIP state; the web only shows the API text",

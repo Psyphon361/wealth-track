@@ -5,7 +5,7 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import sessionmaker
 
 from app.db import Base
@@ -874,11 +874,14 @@ def test_a_soft_deleted_holding_cannot_be_sold_or_settled(client, users):
     assert client.get(f"/api/holdings/stock/{stock_id}/exits", headers=a).status_code == 404
 
 
-def test_undo_of_a_soft_deleted_holding_asks_to_restore_it(client, users):
+def test_undo_of_a_soft_deleted_holding_asks_to_restore_it(client, users, auth_engine):
     a = users[0]
     stock_id = add(client, a, "stock", STOCK)
     exit_id = sell(client, a, "stock", stock_id, quantity=10, price=80).json()["id"]
-    client.delete(f"/api/assets/stock/{stock_id}", headers=a)
+    # The API refuses to delete a sold holding now; this is a legacy row deleted before that rule.
+    with sessionmaker(bind=auth_engine)() as s:
+        s.execute(text("UPDATE stocks SET deleted_at = CURRENT_TIMESTAMP WHERE id = :i"), {"i": stock_id})
+        s.commit()
     r = client.delete(f"/api/exits/{exit_id}", headers=a)
     assert r.status_code == 409 and r.json()["message"] == "Holding not found"
     client.post(f"/api/assets/stock/{stock_id}/restore", headers=a)
