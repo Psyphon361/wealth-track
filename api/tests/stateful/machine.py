@@ -489,8 +489,9 @@ class MoneyMachine(RuleBasedStateMachine):
 
     @rule(data=st.data())
     def add_holding(self, data):
-        slug = data.draw(st.sampled_from(ADD_SLUGS))
-        mode = data.draw(st.sampled_from(["none", "none", "paid", "paid", "paid", "edge", "dead"]))
+        mode = data.draw(st.sampled_from(["none", "paid", "paid", "paid", "paid", "edge", "dead"]))
+        # paid adds lean on NPS (its amount rule is the contributed value) so a wrong amount shows within a ci run
+        slug = data.draw(st.sampled_from(ADD_SLUGS + (("nps", "nps", "pf") if mode in ("paid", "edge") else ())))
         pool = self.dead_cash() if mode == "dead" else self.live_cash()
         cash = data.draw(st.sampled_from(pool)) if pool and mode != "none" else None
         forced = None
@@ -499,7 +500,7 @@ class MoneyMachine(RuleBasedStateMachine):
             if mode == "edge" and bal > 0:
                 forced = data.draw(st.sampled_from([bal, bal + 1]))
             elif bal > 0:
-                forced = data.draw(st.integers(1, bal)) if data.draw(st.booleans()) else None
+                forced = data.draw(st.integers(1, bal)) if slug in ("nps", "pf") or data.draw(st.booleans()) else None
         body, hold, amount = self.build(data, slug, forced)
         self.create(slug, body, hold, amount, cash)
 
@@ -751,7 +752,7 @@ class MoneyMachine(RuleBasedStateMachine):
 
     # ---- sell ---------------------------------------------------------------------------------
     def pick_dest(self, data):
-        kind = data.draw(st.sampled_from(["none", "none", "existing", "existing", "dead", "new"]))
+        kind = data.draw(st.sampled_from(["none", "existing", "existing", "existing", "existing", "dead", "new", "new"]))
         if kind == "existing" and self.live_cash():
             c = data.draw(st.sampled_from(self.live_cash()))
             return {"kind": "cash_existing", "cash_id": c.id}, c, "ok"
@@ -900,6 +901,8 @@ class MoneyMachine(RuleBasedStateMachine):
         self.touched = hold.key
         if repeat and full:
             self.resend(f"sell {slug}", "POST", f"/api/holdings/{slug}/{hold.id}/sell", (409,), json=body)
+        elif not repeat and ex.added > 0 and ex.cash_id is not None and data.draw(st.sampled_from([True, False, False, False])):
+            self.spend_and_undo(data, ex)
 
     # ---- settle -------------------------------------------------------------------------------
     @precondition(lambda self: bool(self.holds_of(*SETTLEABLE)))
@@ -946,6 +949,8 @@ class MoneyMachine(RuleBasedStateMachine):
         self.touched = hold.key
         if repeat:
             self.resend(f"settle {hold.slug}", "POST", f"/api/holdings/{hold.slug}/{hold.id}/settle", (409,), json=body)
+        elif ex.added > 0 and ex.cash_id is not None and data.draw(st.sampled_from([True, False, False, False])):
+            self.spend_and_undo(data, ex)
 
     # ---- undo ---------------------------------------------------------------------------------
     @precondition(lambda self: bool(self.exits))
@@ -959,17 +964,57 @@ class MoneyMachine(RuleBasedStateMachine):
         """Double submit: an undo, then the same request again (404: the record is gone)."""
         self.do_undo(data, repeat=True)
 
-    def do_undo(self, data, repeat: bool):
-        stale = [i for i in self.gone if i not in self.exits]
-        if stale and data.draw(st.sampled_from([False] * 12 + [True])):
-            r = self.h.call("DELETE", f"/api/exits/{stale[-1]}")
-            self.expect(r, (404,), "undo gone")
-            return
-        good = [
-            e for e in self.exits.values()
-            if self.holds[(e.slug, e.hid)].live and e.id == max(self.holds[(e.slug, e.hid)].exits)
-        ]  # fmt: skip
-        ex = self.choose(data, sorted(good, key=lambda e: e.id), sorted(self.exits.values(), key=lambda e: e.id))
+    def paying_exits(self) -> list[ExitM]:
+        """Exits that put money into a live account (what an undo has to take back out again)."""
+        return sorted(
+            (e for e in self.exits.values() if e.added > 0 and e.cash_id is not None and self.cash[e.cash_id].live),
+            key=lambda e: e.id,
+        )
+
+    @precondition(lambda self: bool(self.paying_exits()))
+    @rule(data=st.data())
+    def spend_then_undo(self, data):
+        """Sell or settle into an account, spend from that account, then undo the exit. The undo is refused
+        (409 "Not enough in") exactly while the account holds less than the exit paid in, and by the reinvest
+        rule while a holding was paid from the exit; the spend is a PUT of the balance or a Paid From add."""
+        paying = self.paying_exits()
+        latest = [e for e in paying if self.holds[(e.slug, e.hid)].live and e.id == max(self.holds[(e.slug, e.hid)].exits)]
+        self.spend_and_undo(data, self.choose(data, latest, paying))
+
+    def spend_and_undo(self, data, ex: ExitM) -> None:
+        """The body of spend_then_undo; a sale or settlement into an account also chains it (one time in four)
+        so a run reaches the combination however few steps it has."""
+        cash = self.cash[ex.cash_id]
+        added = int(ex.added * 100)
+        # the balance left after the spend: 1 cent short, anywhere short, exactly enough, or more than enough
+        left = data.draw(st.one_of(
+            st.just(max(added - 1, 0)), st.integers(0, max(added - 1, 0)), st.just(added), st.integers(added, added + 100_000),
+        ))  # fmt: skip
+        if data.draw(st.booleans()):
+            body = {"name": cash.name, "kind": cash.kind, "balance": sx(from_cents(left)), "balance_date": "2026-01-01"}
+            r = self.h.call("PUT", f"/api/assets/cash/{cash.id}", json=body)
+            if self.expect(r, (200,), "put cash") < 400:
+                cash.bal, cash.put = from_cents(left), True
+        else:
+            spend = int(cash.bal * 100) - left
+            if spend > 0:
+                tmpl, hold, amount = self.build(data, "other", spend)
+                self.create("other", tmpl, hold, amount, cash)
+        TALLY["spend then undo"] += 1
+        self.do_undo(data, repeat=False, ex=ex)
+
+    def do_undo(self, data, repeat: bool, ex: ExitM | None = None):
+        if ex is None:
+            stale = [i for i in self.gone if i not in self.exits]
+            if stale and data.draw(st.sampled_from([False] * 12 + [True])):
+                r = self.h.call("DELETE", f"/api/exits/{stale[-1]}")
+                self.expect(r, (404,), "undo gone")
+                return
+            good = [
+                e for e in self.exits.values()
+                if self.holds[(e.slug, e.hid)].live and e.id == max(self.holds[(e.slug, e.hid)].exits)
+            ]  # fmt: skip
+            ex = self.choose(data, sorted(good, key=lambda e: e.id), sorted(self.exits.values(), key=lambda e: e.id))
         hold = self.holds[(ex.slug, ex.hid)]
         cash = self.cash.get(ex.cash_id) if ex.cash_id is not None else None
         reinvested = any(f.active and f.from_exit == ex.id for h2 in self.holds.values() for f in h2.fundings)
