@@ -497,7 +497,7 @@ export type AssetRecord =
 
 export type ExitSummary = { id: number; kind: "maturity" | "sale"; date: string; quantity: number | null; amount: number; cost: number; charges: number; destination: "cash" | "none"; cash_holding_id: number | null; new_holding_id: number | null; new_asset_type: "fd" | "rd" | null; reinvested: number; left_in_account: number | null };
 /** What a holding was paid from (api/app/schemas/fundings.py). */
-export type PaidFrom = { cash_holding_id: number | null; cash_name: string | null; amount: number; date: string };
+export type PaidFrom = { cash_holding_id: number | null; cash_name: string | null; amount: number; date: string; adjustable?: boolean; reason?: "type" | "account_gone" | "account_deleted" | "out_of_sync" | null };
 export type UnsettledItem = { type: "fd" | "rd" | "bond"; id: number; name: string; maturity_date: string; amount: number };
 export type Unsettled = { count: number; amount: number; items: UnsettledItem[] };
 

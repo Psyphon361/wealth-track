@@ -9,6 +9,7 @@ import {
   inr,
   paidFromAmount,
   paidFromBody,
+  paidFromEditLine,
   paidFromEffect,
   paidFromError,
   paidFromReadOnly,
@@ -19,6 +20,65 @@ import {
 
 const hdfc = { id: 4, name: "HDFC Savings", balance: 225000 };
 const TODAY = "2026-11-07";
+
+describe("paidFromEditLine", () => {
+  const base = {
+    cash_holding_id: 4,
+    cash_name: "HDFC Savings",
+    amount: 50000,
+    date: "2026-11-02",
+    adjustable: true,
+    reason: null,
+  } as const;
+
+  it("shows nothing while the cost is unchanged or the balance is unknown", () => {
+    expect(paidFromEditLine(base, 225000, 50000)).toBeNull();
+    expect(paidFromEditLine(base, null, 60000)).toBeNull();
+  });
+
+  it("shows the new balance for an increase and a decrease", () => {
+    expect(paidFromEditLine(base, 225000, 60000)).toEqual({
+      text: "HDFC Savings: ₹2,25,000 → ₹2,15,000",
+      tone: "effect",
+    });
+    expect(paidFromEditLine(base, 225000, 40000)).toEqual({
+      text: "HDFC Savings: ₹2,25,000 → ₹2,35,000",
+      tone: "effect",
+    });
+  });
+
+  it("flags an increase over the balance with the shortfall", () => {
+    expect(paidFromEditLine(base, 5000, 60000)).toEqual({
+      text: "Not enough in HDFC Savings: short by ₹5,000",
+      tone: "error",
+    });
+  });
+
+  it("flags a blank or zero cost", () => {
+    expect(paidFromEditLine(base, 225000, null)).toEqual({
+      text: PAID_FROM_EDIT_ZERO_ERROR,
+      tone: "error",
+    });
+  });
+
+  it("explains each reason when not adjustable", () => {
+    const off = { ...base, adjustable: false };
+    expect(paidFromEditLine({ ...off, reason: "out_of_sync" }, 1, 2)?.text).toBe(
+      PAID_FROM_EDIT_NOT_IN_SYNC_NOTE.replace("{account}", "HDFC Savings"),
+    );
+    expect(paidFromEditLine({ ...off, reason: "account_deleted" }, 1, 2)?.text).toBe(
+      PAID_FROM_EDIT_DELETED_ERROR.replace("{account}", "HDFC Savings"),
+    );
+    expect(
+      paidFromEditLine(
+        { ...off, cash_holding_id: null, cash_name: null, reason: "account_gone" },
+        null,
+        2,
+      )?.text,
+    ).toBe(PAID_FROM_EDIT_GONE_NOTE);
+    expect(paidFromEditLine({ ...off, reason: "type" }, 1, 2)).toBeNull();
+  });
+});
 
 describe("inr", () => {
   it("groups the Indian way and drops zero paise", () => {

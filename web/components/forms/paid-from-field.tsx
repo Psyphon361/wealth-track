@@ -27,6 +27,7 @@ import {
   accountLabel,
   paidFromAmount,
   paidFromBody,
+  paidFromEditLine,
   paidFromEffect,
   paidFromError,
   paidFromReadOnly,
@@ -169,10 +170,33 @@ export function PaidFromField({ state }: { state: PaidFromState }) {
 
   if (state.editing) {
     if (!state.readOnly) return null;
+    const account = state.accounts?.find(
+      (a) => a.id === state.readOnly?.cash_holding_id,
+    );
+    const line = paidFromEditLine(
+      state.readOnly,
+      account ? account.balance : null,
+      state.amount,
+    );
     return (
-      <p className="text-xs text-muted-foreground sm:col-span-2">
-        {paidFromReadOnly(state.readOnly)}
-      </p>
+      <div className="flex flex-col gap-0.5 sm:col-span-2">
+        <p className="text-xs text-muted-foreground">
+          {paidFromReadOnly(state.readOnly)}
+        </p>
+        {line ? (
+          <p
+            className={
+              line.tone === "error"
+                ? "num text-xs text-loss"
+                : line.tone === "effect"
+                  ? "num text-xs text-foreground"
+                  : "text-xs text-muted-foreground"
+            }
+          >
+            {line.text}
+          </p>
+        ) : null}
+      </div>
     );
   }
 

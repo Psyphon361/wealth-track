@@ -217,6 +217,63 @@ export function paidFromReadOnly(p: PaidFromRecord): string {
   return `Paid from ${name} · ${inr(p.amount)}`;
 }
 
+/** A line under the Edit dialog's read-only funding line. `tone` picks the colour. */
+export interface PaidFromEditLine {
+  text: string;
+  tone: "effect" | "error" | "note";
+}
+
+/**
+ * What editing the cost will do to the Paid From account, from the API's flags
+ * (`adjustable`, `reason`). `balance` is the account's current balance (null while it
+ * loads); `amount` the cost for the edited values (null when blank or not above zero).
+ * Null means show nothing extra.
+ */
+export function paidFromEditLine(
+  p: PaidFromRecord,
+  balance: number | null,
+  amount: number | null,
+): PaidFromEditLine | null {
+  const account = p.cash_name ?? "the account";
+  if (!p.adjustable) {
+    if (p.reason === "out_of_sync") {
+      return {
+        text: PAID_FROM_EDIT_NOT_IN_SYNC_NOTE.replace("{account}", account),
+        tone: "note",
+      };
+    }
+    if (p.reason === "account_deleted") {
+      return {
+        text: PAID_FROM_EDIT_DELETED_ERROR.replace("{account}", account),
+        tone: "note",
+      };
+    }
+    if (p.reason === "account_gone") {
+      return { text: PAID_FROM_EDIT_GONE_NOTE, tone: "note" };
+    }
+    return null;
+  }
+  if (amount === null) {
+    return { text: PAID_FROM_EDIT_ZERO_ERROR, tone: "error" };
+  }
+  const delta = Math.round((amount - p.amount) * 100) / 100;
+  if (delta === 0 || balance === null) return null;
+  if (delta > balance) {
+    const shortfall = inr(Math.round((delta - balance) * 100) / 100);
+    return {
+      text: PAID_FROM_EDIT_TOO_MUCH_ERROR.replace("{account}", account).replace(
+        "{shortfall}",
+        shortfall,
+      ),
+      tone: "error",
+    };
+  }
+  return {
+    text: paidFromEffect({ id: p.cash_holding_id ?? 0, name: account, balance }, delta),
+    tone: "effect",
+  };
+}
+
 /** The record's `paid_from`, if the API sent one. */
 export function recordPaidFrom(
   record: { paid_from?: PaidFromRecord | null } | null | undefined,
