@@ -1,5 +1,32 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-09 night (sale-cost option 2 built and committed locally, NOT pushed)
+
+### Git state
+- Local commits after origin/main (`2f84e7b`), NOT pushed:
+  - `bb6b1f8` Scripts: preflight `api/scripts/preflight_sale_cost.py` (Python, read-only; takes `DATABASE_URL` env or the first argument; quote the URL in zsh).
+  - `c4d2e57` API: sale cost rule. A partial fund sale uses FIFO only when net transaction units match held units (0.01) AND invested is within 1.00 of the FIFO cost of the units still held; otherwise pro rata of invested. Full sales unchanged.
+  - `b7904cb` API: capital gains keeps the FIFO lots (real dates and units) and scales lot costs to the exit cost when the FIFO cost differs by more than 1.00 and units add up.
+  - `88a13ef` Docs and web: SPEC §8b and the Sell dialog hint.
+  - T2 machine commit: `machine.py` gets an independent cost oracle and a ledger check from transaction rows.
+- Verified: full suites green (not pg 2519 passed + 1 xfailed; pg 204 passed; web vitest 407; stateful 12; pg machine 1). Advisor approved plan v2 (two rounds) and the diff.
+- Preflight: dev has 8 funds with transactions, 0 gaps. The owner ran it on the target DB: 0 funds with transactions (vacuous pass).
+
+### Known limits
+- A backdated sale makes the next sale pro rata (pinned test, SPEC §8b).
+- A SIP instalment that adds too little to invested after a sale is only caught by the machine under `HYPOTHESIS_PROFILE=hunt`, not `ci`. A deterministic regression test could be added.
+- Once a fund's invested amount is edited by more than 1.00, it stays pro rata even after later SIP instalments.
+- A CAS Update-existing import after the preflight could create a gap (pro rata is the safe failure).
+
+### Not done
+- Push: needs the user's explicit OK. Pushing main triggers the gated deploy. No migration.
+- Browser check of the new Sell dialog hint (text-only change, not clicked through).
+
+### Ordered next steps
+1. Ask the user about the push.
+2. Analytics items one by one (docs/STATUS.md "Open (analytics)").
+3. Remaining state-machine follow-ups.
+
 ## Resume here — 2026-11-09 late night (wind-up: Wave B pushed and green; state-machine inventory and new invariants committed or pending locally, NOT pushed)
 
 Wind-up requested by the user (/windup). Usage at wind-up: about 65% of the 5-hour window (resets about 15:50 UTC 2026-11-09 window; check `get_usage`). No subagents running. This section sits above the "2026-11-09 night" Wave B section, which is still accurate for T5, T8, T9, T10.
@@ -16,7 +43,7 @@ The first run of the new invariant found 15 legacy exits on soft-deleted holding
 
 ### Decisions made with the user this session (do not re-ask)
 - Cost edit of a Paid-From holding adjusts the cash account (built, pushed).
-- Sale cost after an edit: OPTION 2, TO BUILD: a partial sale of a mutual fund uses FIFO from the transactions only while the invested amount equals the sum of purchase transactions; otherwise proportional to the (edited) invested amount. Full sales already use the invested amount. This changes `sale_cost` in `api/app/services/exits.py` (money maths): needs a numbered plan, advisor plan review, tests (valuation/exits unit and property tests, the machine's sale-cost check that now skips edited funds must be restored), advisor diff review. The earlier "1902.95 vs 1880.09" machine oddity was most likely SIP postings after the edit, not a bug.
+- Sale cost after an edit: OPTION 2, BUILT (commits `bb6b1f8`, `c4d2e57`, `b7904cb`, `88a13ef`, plus the T2 machine commit; see the "2026-11-09 night" section above): a partial sale of a mutual fund uses FIFO from the transactions only while the invested amount equals the sum of purchase transactions; otherwise proportional to the (edited) invested amount. Full sales already use the invested amount. This changes `sale_cost` in `api/app/services/exits.py` (money maths): needs a numbered plan, advisor plan review, tests (valuation/exits unit and property tests, the machine's sale-cost check that now skips edited funds must be restored), advisor diff review. The earlier "1902.95 vs 1880.09" machine oddity was most likely SIP postings after the edit, not a bug.
 - Duplicate warning vs account balance order: NO CHANGE (balance check first).
 - Net worth drift (stock with latest price but no history close): LEAVE (self-heals nightly; pinned as a strict xfail; the gold drift was already fixed, STATUS/HANDOFF notes that said two drifts are stale).
 - Analytics: the user discarded the Tax-tab rename; "go back to the analytics items" is NEXT (list in docs/STATUS.md "Open (analytics)").
