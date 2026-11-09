@@ -1,6 +1,51 @@
 # HANDOFF — session resume notes (2026-11-08)
 
-## Resume here — 2026-11-09 (testing Phase 2 done, money-bug fixes committed, NOT pushed)
+## Resume here — 2026-11-09 (testing Phase 3 Wave A: T6, T7 and the Delete guard committed; T1 and T2 built but UNCOMMITTED; T3 and T4 not started; nothing pushed since 34160d2)
+
+### Where things stand
+- Pushed to origin/main on 2026-11-09: everything up to `34160d2` (Phase 2 tests, purge hardening, the two money-bug fixes, docs). The API deploy run for it passed (tests, migrate no-op, deploy).
+- Committed locally, NOT pushed (`git log origin/main..HEAD`): `8c651ef` Web: disable Delete for a holding that has a sale or settlement (browser-checked on the probe account); `90e6fea` Tests: pairwise concurrency tests and a nightly read-only invariant check.
+- Plan file (scratchpad, may be gone): `/private/tmp/claude-501/-Users-psy--claude-spares-spare-7qVS1Z/b85cc2c3-b50e-4717-8edd-bc54059e3674/scratchpad/plan-testing-phase3.md` (v2, advisor-reviewed). User approved Wave A only; Wave B "after A is verified and pushed".
+
+### Wave A tasks (from the plan)
+- T1 Clock freeze for the stateful machine: BUILT, UNCOMMITTED, builder green (tests/stateful 12 passed, pg machine 1 passed, `-m "not pg"` 2474 passed + 1 xfail). Not yet line-reviewed by the orchestrator. Files: `api/tests/stateful/world.py` (FROZEN_DATE_MODULES: one clock = harness.today across valuation, cas_import, nav_history, gold_history and the portfolio/networth/holdings/analytics* routers), `api/tests/stateful/machine.py`, `api/tests/stateful/test_money_machine.py` (docstring), NEW `api/tests/stateful/test_clock_freeze.py`.
+- T2 Read-side oracle: BUILT PARTLY, UNCOMMITTED, wound up mid-hunt. Same files as T1 plus NEW `api/tests/stateful/reads.py`. Adds: market-data rules (`set_stock_price`, `set_mf_nav`, `set_metal_rate`), stocks linked to a master, silver, and the oracle (grid rows = portfolio = dashboard per type; ids and invested amounts vs the model; cash vs model; dashboard "unsettled" list vs model), run every 5th step (`STATEFUL_READ_EVERY`; every step took 85 s) and in teardown. Last fix: `nav_on` in world.py uses the last history day on or before the day (it crashed 9/10 hunt seeds). Verified: `HYPOTHESIS_PROFILE=ci pytest tests/stateful` 12 passed in 28 s; pg machine ci passed in 15 s but BEFORE the nav_on fix. NOT done: SQLite hunt seeds 1..10 re-run (first round failed 9/10 on the nav_on test bug only; seed 7 passed; no app bug found), pg machine re-run, pg hunt (3 seeds), full `-m "not pg"`, one-line notes in docs/SPEC.md and AGENTS.md. No new strict xfails; no app bugs found by T2 so far.
+- T3 Second user + double-submit (machine.py; cross-user ids -> 404, repeated POST -> clean 409/404 with no second money move): NOT STARTED.
+- T4 Purge + time in the machine (rule purge_after(days); model: >30-day-deleted holdings vanish with exits/fundings, cash links null, no money moves, restore of purged -> 404, SIPs keep running; also in test_money_machine_pg.py): NOT STARTED.
+- T6 Pairwise concurrency: DONE, committed `90e6fea` (30 pairs; 5 runs, no flake; whole pg suite 192 passed). Risk: the snapshot keeps row ids; could flake if sequence allocation changes.
+- T7 Nightly invariants: DONE, committed `90e6fea` (12 SELECT-only invariants, READ ONLY transaction, workflow `.github/workflows/nightly-invariants.yml` 21:00 UTC on DEV_DATABASE_URL). Risk: the "closed without a sale" check was never run against real dev data and may false-alarm; watch the first nightly run, adjust the query rather than ignoring it.
+- Delete guard (user request mid-session): DONE, committed `8c651ef`. Delete is disabled with a tooltip (API wording) in the grid row menu and details page when `item.exit != null`; undo re-enables. Browser-checked on the probe account (probe-ui3, creds in ~/.config/wealth-track/probe.env; never print). My probe row "zz-probe-delguard-*" (id 4, Other) was soft-deleted and sits in Recently deleted; it purges itself after 30 days. User also wants a machine check later: API delete returns 409 exactly when the holding has an exit (add to T3/T4 work in machine.py).
+
+### Decisions already made (do not re-ask)
+- Cash delete/restore moves money to or from a soft-deleted account; delete of a sold holding is blocked (409). SPEC §8c "Old data" and `api/scripts/preflight_delete_refund.sql` (owner runs it on prod, SELECT-only) cover old rows.
+- Never fix app code inside a test task: write a strict xfail and report.
+- Do not ask the user to sign in; probe creds are in ~/.config/wealth-track/probe.env.
+
+### Decisions open for the user
+1. T2: is a read check every 5th step acceptable (every step would exceed the ~30 s machine budget)? Also, the stock-price drift (latest price with no matching history close) can't be seen through the endpoints because the net worth history's last point is overwritten by today's value; add an interior-point check?
+2. Wave B go-ahead after Wave A is verified and pushed: T5 PUT edit rule (open question: should editing the cost of a Paid-From holding adjust the cash account? today no), T8 calibration (re-inject 4 past bugs in a `git archive` copy), T9 rd/nps/pf in the machine.
+3. Fix the two known net worth drifts (gold carry-forward window of 14 days in the router; stock price without a history close)? Pinned as strict xfail in `api/tests/test_networth_today_agreement.py`.
+4. The owner still has to run `api/scripts/preflight_delete_refund.sql` on prod, and set the GitHub `production` environment to deployments from `main` only.
+
+### Ordered next steps
+1. Start the pg cluster (orchestrator only; builders never stop it): `cd api && scripts/pg_test_cluster.sh start`.
+2. Brief ONE builder (effort medium) to finish T2: re-run the SQLite hunt (`HYPOTHESIS_PROFILE=hunt`, seeds 1..10), pg machine ci, pg hunt 3 seeds, triage (test bug / new app bug as strict xfail in tests/stateful/test_known_bugs.py / documented difference), add the SPEC and AGENTS lines. Acceptance: `HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q tests/stateful`; `TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m pg tests/pg/test_money_machine_pg.py`; `HYPOTHESIS_PROFILE=ci .venv/bin/python -m pytest -q -m "not pg"` (expect 1 pre-existing xfail plus any reported).
+3. Read the T1+T2 diff (`git diff -- api/tests/stateful`, reads.py, test_clock_freeze.py), key risks only: determinism (same result twice), no wall-clock reads, oracle compares across endpoints and does not re-derive values.
+4. Then T3, then T4 (sequential, same files), each with the machine check "delete is 409 iff the holding has an exit".
+5. Full suites once: `-m "not pg"` and `-m pg` with `REQUIRE_PG=1`; web `cd web && npx next typegen && npx tsc --noEmit && npm run lint && npm test` if web changed. Commit T1+T2 (one commit), T3, T4 with messages in the scratchpad (`git add <paths> && git commit -F <file>`), update STATUS/HANDOFF/AGENTS, stop the pg cluster, then ASK the user before pushing (push to main triggers the gated deploy: tests -> migrate -> deploy).
+6. After the push is green, offer Wave B.
+
+### Rules that bite
+- Orchestrator + advisor + builders: main agent plans, reviews, commits; builders (Sonnet, effort medium) edit; advisor (Opus, high) only for plan reviews and high-risk diffs; max 3 builders in parallel (the user once allowed a 4th for a web change). Never push without the user's explicit OK.
+- Hook: main agent cannot edit project files; commits only as `git add <paths> && git commit -F <file>`. Builders cannot run git stash/checkout/restore/reset.
+- `git diff -- AGENTS.md` run from `web/` hits web/AGENTS.md; run git from the repo root.
+- The pg cluster on port 5544 is shared; `stop` deletes its data dir. Never touch Neon from tests; modify only your own probe rows by exact id; never touch ports 3000/8000.
+- The wind-up at 95% of the 5-hour usage window was requested by the user ("/windup auto" behaviour): tell them at >= 85%, wind up at >= 95%.
+
+### Usage at wind-up
+5-hour window 81% (resets 11:40 UTC, 2026-11-09), weekly 84% (resets 2026-11-10 15:00 UTC).
+
+## Earlier — 2026-11-09 (testing Phase 2 done, money-bug fixes committed, pushed)
 
 Status: testing Phase 2 and the money-bug fixes are committed on `main` (HEAD `a1be995`); unpushed: see `git log origin/main..HEAD`. Nothing running.
 
