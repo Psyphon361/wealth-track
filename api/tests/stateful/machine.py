@@ -751,6 +751,53 @@ class MoneyMachine(RuleBasedStateMachine):
         self.touched = hold.key
 
     # ---- sell ---------------------------------------------------------------------------------
+    def mf_model_cost(self, hold: HM, qty: Decimal) -> Decimal:
+        """The cost of selling `qty` of a fund in part, from the machine's own bookkeeping (an oracle, kept
+        simple). With transactions whose net units match the units held (0.01) AND an invested amount within
+        1.00 of the cost of the lots still held: FIFO over the transactions. Otherwise (an edited cost, SIP
+        rows behind it, no transactions yet) the invested amount pro rata. Never more than invested."""
+        rows = self.h.rows(
+            "SELECT kind, units, amount, txn_date FROM mf_transactions WHERE mutual_fund_id = :i "
+            "ORDER BY txn_date, id", i=hold.id,
+        )  # fmt: skip
+        held, invested = hold.qty, hold.invested
+
+        def take(lots: list, want: Decimal) -> Decimal:
+            cost = ZERO
+            for lot in lots:
+                if want <= 0:
+                    break
+                use = min(lot[0], want)
+                part = lot[1] if use == lot[0] else lot[1] * use / lot[0]
+                lot[0] -= use
+                lot[1] -= part
+                want -= use
+                cost += part
+            return cost
+
+        net = sum((Decimal(str(t.units)) * (1 if t.kind == "purchase" else -1) for t in rows), ZERO)
+        pro_rata = q2(invested * qty / held)
+        cost = pro_rata
+        if rows and abs(net - held) <= Decimal("0.01"):
+            lots: list = []
+            for t in sorted(rows, key=lambda t: (t.txn_date, t.kind != "purchase")):
+                if t.kind == "purchase":
+                    lots.append([Decimal(str(t.units)), Decimal(str(t.amount))])
+                else:
+                    take(lots, Decimal(str(t.units)))
+            lots = [lot for lot in lots if lot[0] > 0]
+            left = sum((lot[0] for lot in lots), ZERO)
+            if abs(q2(take([list(lot) for lot in lots], min(held, left))) - invested) <= Decimal("1.00"):
+                cost = q2(take(lots, qty))
+                TALLY["mf partial sale: FIFO" + (" after an edit" if hold.cost_edited else "")] += 1
+            elif hold.cost_edited:
+                TALLY["mf partial sale: pro rata of an edited cost, with transactions"] += 1
+            else:
+                TALLY["mf partial sale: pro rata, cost differs from the lots, not edited"] += 1
+        elif hold.cost_edited:
+            TALLY["mf partial sale: pro rata of an edited cost, units do not match"] += 1
+        return min(cost, invested)
+
     def pick_dest(self, data):
         kind = data.draw(st.sampled_from(["none", "existing", "existing", "existing", "existing", "dead", "new", "new"]))
         if kind == "existing" and self.live_cash():
@@ -859,12 +906,13 @@ class MoneyMachine(RuleBasedStateMachine):
         else:
             allowed, prefix = (201,), None
             if slug == "mf":
-                allowed = (201, 422)  # FIFO cost is the app's: only a refusal with its message
+                allowed = (201, 422)  # the cost floor may refuse: only with its message
+                cost = self.mf_model_cost(hold, qty)
             else:
                 cost = q2(invested * qty / held)
                 if q2(invested - cost) < CENT:
                     allowed, prefix = (422,), REFUSED
-        if slug != "mf" and allowed == (201,) and not full and cost is None:
+        if allowed == (201,) and not full and cost is None:
             self.fail("model error: no cost predicted")
 
         pre = self.db_state(hold)
@@ -898,6 +946,8 @@ class MoneyMachine(RuleBasedStateMachine):
         ex.post = self.db_state(hold)
         if ex.post[0] != (pre[0] if full else pre[0] - qty) and slug != "other":
             self.fail(f"sell {slug}: quantity after {ex.post[0]} (before {pre[0]}, sold {qty})")
+        if slug == "mf" and not full and ex.post[1] != q2(pre[1] - cost):
+            self.fail(f"sell mf: invested after {ex.post[1]} != before {pre[1]} less the sale cost {cost}")
         self.touched = hold.key
         if repeat and full:
             self.resend(f"sell {slug}", "POST", f"/api/holdings/{slug}/{hold.id}/sell", (409,), json=body)
@@ -1752,7 +1802,7 @@ class MoneyMachine(RuleBasedStateMachine):
         # funds: units vs transactions, closed_on, SIP links
         txns: dict[int, list] = {}
         for r in h.rows(
-            "SELECT t.mutual_fund_id, t.kind, t.units, t.amount, t.txn_date FROM mf_transactions t "
+            "SELECT t.id, t.mutual_fund_id, t.kind, t.units, t.amount, t.txn_date, t.sip_id FROM mf_transactions t "
             "JOIN mutual_funds f ON f.id = t.mutual_fund_id WHERE f.user_id = :u", u=u,
         ):  # fmt: skip
             txns.setdefault(r.mutual_fund_id, []).append(r)
@@ -1799,9 +1849,25 @@ class MoneyMachine(RuleBasedStateMachine):
             total = sum((q2(r.cost) for r in rs), ZERO)
             if hold.closed:
                 if hold.slug == "mf":
+                    # the machine's own basis ledger: a fund with a sale can't be edited, so what was
+                    # invested before its first sale plus the amounts of the SIP purchase rows posted
+                    # after it. "After" is row order: ids grow with insertion, and the first live
+                    # sale's redemption row (no sip_id) marks the point (dates and timestamps can tie).
+                    exs = [self.exits[r.id] for r in sorted(rs, key=lambda r: r.id)]
                     ts = txns.get(hold.id)
-                    # a user-edited cost is the user's word over the statement's transactions: no expectation
-                    expect_total = sum((q2(t.amount) for t in ts if t.kind == "purchase"), ZERO) if ts and not hold.cost_edited else None
+                    redemptions = [t.id for t in ts or [] if t.kind == "redemption" and t.sip_id is None]
+                    if not redemptions:
+                        self.fail(f"{key}: a live sale but no redemption transaction")
+                    mark = min(redemptions)
+                    sip_after = sum(
+                        (q2(t.amount) for t in ts if t.kind == "purchase" and t.sip_id is not None and t.id > mark),
+                        ZERO,
+                    )
+                    expect_total = exs[0].pre[1] + sip_after
+                    if ts and not hold.cost_edited:
+                        bought = sum((q2(t.amount) for t in ts if t.kind == "purchase"), ZERO)
+                        if total != bought:
+                            self.fail(f"{key}: sale costs {total} != purchases {bought}")
                 else:
                     expect_total = hold.invested0
                 if expect_total is not None and total != expect_total:
