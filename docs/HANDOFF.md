@@ -1,14 +1,14 @@
 # HANDOFF — session resume notes (2026-11-08)
 
-## Resume here — 2026-11-09 night (sale-cost option 2 built and committed locally, NOT pushed)
+## Resume here — 2026-11-09 night (wind-up: sale-cost option 2 built, pushed; deploy was running at wind-up)
 
 ### Git state
-- Local commits after origin/main (`2f84e7b`), NOT pushed:
+- Pushed to origin/main on 2026-11-09, range `2f84e7b..04a5471` (`bb6b1f8`, `c4d2e57`, `b7904cb`, `88a13ef`, `619d715`, `04a5471`). CI Web succeeded. "API migrate and deploy" (run 42663937507) was still in progress at wind-up.
   - `bb6b1f8` Scripts: preflight `api/scripts/preflight_sale_cost.py` (Python, read-only; takes `DATABASE_URL` env or the first argument; quote the URL in zsh).
   - `c4d2e57` API: sale cost rule. A partial fund sale uses FIFO only when net transaction units match held units (0.01) AND invested is within 1.00 of the FIFO cost of the units still held; otherwise pro rata of invested. Full sales unchanged.
   - `b7904cb` API: capital gains keeps the FIFO lots (real dates and units) and scales lot costs to the exit cost when the FIFO cost differs by more than 1.00 and units add up.
   - `88a13ef` Docs and web: SPEC §8b and the Sell dialog hint.
-  - T2 machine commit: `machine.py` gets an independent cost oracle and a ledger check from transaction rows.
+  - T2 machine commit `619d715`: `machine.py` gets an independent cost oracle and a ledger check from transaction rows.
 - Verified: full suites green (not pg 2519 passed + 1 xfailed; pg 204 passed; web vitest 407; stateful 12; pg machine 1). Advisor approved plan v2 (two rounds) and the diff.
 - Preflight: dev has 8 funds with transactions, 0 gaps. The owner ran it on the target DB: 0 funds with transactions (vacuous pass).
 
@@ -19,13 +19,19 @@
 - A CAS Update-existing import after the preflight could create a gap (pro rata is the safe failure).
 
 ### Not done
-- Push: needs the user's explicit OK. Pushing main triggers the gated deploy. No migration.
+- Deploy: the gated deploy from the push is the first thing to confirm (see next steps). No migration.
 - Browser check of the new Sell dialog hint (text-only change, not clicked through).
 
 ### Ordered next steps
-1. Ask the user about the push.
+1. Run `gh run list --branch main --limit 3` and check the "API migrate and deploy" run (42663937507) is green (the gated deploy runs API tests, then a no-op migrate, then Vercel).
 2. Analytics items one by one (docs/STATUS.md "Open (analytics)").
 3. Remaining state-machine follow-ups.
+
+### Wind-up state
+- Wind-up state: no subagents running, working tree clean after the notes commit, pg cluster (port 5544) stopped, usage 27% of the 5-hour window at wind-up (resets 21:10 UTC), 28% weekly.
+- Next: analytics items one by one from docs/STATUS.md "Open (analytics)" (tax-season first: 2.16 harvesting, 2.15 unrealised gains, 2.21 tax-saving tracker, capital-gains gaps).
+- Optional small follow-ups: deterministic regression test for "SIP instalment adds too little after a sale" (the machine only catches it under HYPOTHESIS_PROFILE=hunt); browser click-through of the new Sell dialog hint; remaining state-machine follow-ups listed in the late-night section.
+- Owner tasks: none open.
 
 ## Resume here — 2026-11-09 late night (wind-up: Wave B pushed and green; state-machine inventory and new invariants committed or pending locally, NOT pushed)
 
