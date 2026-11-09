@@ -100,12 +100,17 @@ class ServerError(AssertionError):
 class Harness:
     """Engine, session factory, authenticated client and typed reads for one pytest test."""
 
-    def __init__(self, engine: Engine, factory: sessionmaker, user: Any, *, local_pg: bool) -> None:
+    def __init__(
+        self, engine: Engine, factory: sessionmaker, user: Any, *, local_pg: bool, user2: Any = None
+    ) -> None:
         from app.services.auth import create_access_token
 
         self.engine = engine
         self.factory = factory
         self.user = user
+        self.user2 = user2  # the second user: owns a few holdings, tries user 1's ids
+        self.uid = user.id
+        self.uid2 = user2.id if user2 is not None else None
         self.local_pg = local_pg
         self.today = START_TODAY
         self.log: list[str] = []
@@ -113,6 +118,7 @@ class Harness:
         self._issue = create_access_token
         self._token_at = 0.0
         self.headers: dict[str, str] = {}
+        self.headers2: dict[str, str] = {}
         self._refresh_token()
 
     # safety --------------------------------------------------------------------------------
@@ -133,17 +139,23 @@ class Harness:
     def _refresh_token(self) -> None:
         token, _ = self._issue(self.user)
         self.headers = {"Authorization": f"Bearer {token}"}
+        if self.user2 is not None:
+            token2, _ = self._issue(self.user2)
+            self.headers2 = {"Authorization": f"Bearer {token2}"}
         self._token_at = time.monotonic()
 
-    def call(self, method: str, url: str, **kwargs):
-        """One request. A 5xx or an exception fails with the operation log."""
+    def call(self, method: str, url: str, *, as_user: int = 1, **kwargs):
+        """One request (as user 1, or as the second user with as_user=2). A 5xx or an exception
+        fails with the operation log."""
         from app.main import app
 
         if time.monotonic() - self._token_at > 600:
             self._refresh_token()
-        self.log.append(f"{method} {url} {kwargs.get('params') or ''} {kwargs.get('json') or ''}")
+        who = "" if as_user == 1 else f"[user {as_user}] "
+        self.log.append(f"{who}{method} {url} {kwargs.get('params') or ''} {kwargs.get('json') or ''}")
+        headers = self.headers if as_user == 1 else self.headers2
         try:
-            response = TestClient(app).request(method, url, headers=self.headers, **kwargs)
+            response = TestClient(app).request(method, url, headers=headers, **kwargs)
         except Exception as error:  # noqa: BLE001 - TestClient re-raises server errors
             raise ServerError(f"{method} {url} raised {error!r}\n{self.tail()}") from error
         self.log[-1] += f" -> {response.status_code}"
@@ -162,6 +174,17 @@ class Harness:
     def scalar(self, sql: str, **params) -> Any:
         with self.engine.connect() as conn:
             return conn.execute(text(sql), params).scalar()
+
+    def snapshot(self) -> list[tuple]:
+        """Every row of every holding, exit, funding, SIP and transaction table (both users, soft-deleted
+        rows included, updated_at included): equal before and after a call means it changed nothing."""
+        out = []
+        for table in (
+            "cash_holdings", "fixed_deposits", "stocks", "bonds", "mutual_funds", "gold_holdings",
+            "other_holdings", "holding_exits", "holding_fundings", "mf_sips", "mf_sip_skips", "mf_transactions",
+        ):  # fmt: skip
+            out.append((table, [tuple(row) for row in self.rows(f"SELECT * FROM {table} ORDER BY id")]))  # noqa: S608
+        return out
 
     # reset ---------------------------------------------------------------------------------
     def reset(self) -> None:
@@ -394,8 +417,9 @@ def sqlite_harness(monkeypatch, *, foreign_keys: bool = False):
         db.SessionLocal.configure(bind=engine)
         factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
         user = _make_user(factory, "stateful@example.com")
+        user2 = _make_user(factory, "stateful2@example.com")
         seed_funds(factory)
-        harness = Harness(engine, factory, user, local_pg=False)
+        harness = Harness(engine, factory, user, local_pg=False, user2=user2)
         harness.stock_masters = seed_stock_masters(factory)
         harness.assert_safe()
         patch_clock_and_network(monkeypatch, harness)
@@ -409,7 +433,10 @@ def sqlite_harness(monkeypatch, *, foreign_keys: bool = False):
 
 def pg_harness(pg_app, monkeypatch) -> Harness:
     """The same world on the throwaway local Postgres database of the `pg_app` fixture."""
-    harness = Harness(pg_app.engine, pg_app.session, _make_user(pg_app.session, "stateful-pg@example.com"), local_pg=True)
+    harness = Harness(
+        pg_app.engine, pg_app.session, _make_user(pg_app.session, "stateful-pg@example.com"),
+        local_pg=True, user2=_make_user(pg_app.session, "stateful-pg-2@example.com"),
+    )  # fmt: skip
     seed_funds(pg_app.session)
     harness.stock_masters = seed_stock_masters(pg_app.session)
     harness.assert_safe()

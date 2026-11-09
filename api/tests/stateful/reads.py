@@ -78,6 +78,37 @@ def grid(m, slug: str) -> tuple[list[dict], dict]:
     return rows, summary
 
 
+def check_user2(m) -> None:
+    """The second user's reads count only their own holdings: their dashboard and portfolio match the
+    model's list of what they added (cash accounts, Other and stock holdings, none matured or sold). User 1's
+    totals not including these rows is checked by the main oracle (the model has none of them)."""
+    h = m.h
+    dash = h.call("GET", "/api/dashboard", as_user=2)
+    portfolio = h.call("GET", "/api/portfolio", as_user=2)
+    if dash.status_code != 200 or portfolio.status_code != 200:
+        m.fail(f"read oracle: user 2 dashboard/portfolio -> {dash.status_code}/{portfolio.status_code}")
+    by_type = {r["type"]: r for r in dash.json()["by_type"]}
+    groups = {g["type"]: g for g in portfolio.json()["groups"]}
+    total = Decimal(0)
+    for slug in ALL_SLUGS:
+        if slug == "cash":
+            want_ids = set(m.u2cash)
+            invested = sum(m.u2cash.values(), Decimal(0))
+        else:
+            mine = [x for x in m.u2hold if x[0] == slug]
+            want_ids = {x[1] for x in mine}
+            invested = sum((x[2] for x in mine), Decimal(0))
+        n = len(want_ids)
+        if {i["id"] for i in groups[slug]["items"]} != want_ids:
+            m.fail(f"read oracle: user 2 portfolio {slug} lists {sorted(i['id'] for i in groups[slug]['items'])}, own {sorted(want_ids)}")
+        row = by_type[slug]
+        if row["count"] != n:
+            m.fail(f"read oracle: user 2 dashboard {slug} count {row['count']} != {n}")
+        near(m, f"user 2 dashboard {slug} invested", row["invested"], invested, n)
+        total += invested
+    near(m, "user 2 dashboard total invested", dash.json()["total_invested"], total, len(ALL_SLUGS))
+
+
 def check_reads(m, force: bool = False) -> None:
     from tests.stateful.machine import TALLY
 
@@ -86,6 +117,7 @@ def check_reads(m, force: bool = False) -> None:
         return
     m.h.assert_safe()
     TALLY["read oracle runs"] += 1
+    check_user2(m)
 
     portfolio = {g["type"]: g for g in get(m, "/api/portfolio")["groups"]}
     dash = get(m, "/api/dashboard")

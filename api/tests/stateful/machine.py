@@ -28,7 +28,7 @@ purge, SQLite does not enforce foreign keys (ON DELETE actions only run on Postg
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from decimal import ROUND_UP, Decimal
 
@@ -121,7 +121,9 @@ class ExitM:
 @dataclass
 class SipM:
     id: int
-    status: str = "active"
+    status: str = "active"  # active | paused | stopped
+    amount: int = 0
+    day: int = 0
 
 
 class Fail(AssertionError):
@@ -175,6 +177,8 @@ class MoneyMachine(RuleBasedStateMachine):
         self.n = 0
         self.rate_dates: dict[tuple[str, str], date] = {}  # latest rate date per metal (never goes back)
         self.steps = 0  # invariant runs, for the read oracle's cadence
+        self.u2cash: dict[int, Decimal] = {}  # the second user's cash accounts: id -> balance
+        self.u2hold: list[tuple[str, int, Decimal, Decimal | None]] = []  # (slug, id, invested, quantity)
 
     # ---- plumbing ---------------------------------------------------------------------------
     def fail(self, message: str):
@@ -189,7 +193,10 @@ class MoneyMachine(RuleBasedStateMachine):
                 self.fail(f"{what}: expected a message starting {prefix!r}, got {text!r}")
         event("step valid" if r.status_code < 300 else "step legal rejection")
         event(f"{what} {r.status_code}")
-        TALLY["valid" if r.status_code < 300 else "rejected"] += 1
+        if " again" in what or what.startswith("cross-user"):
+            TALLY["refusals on purpose (repeats, other user's ids)"] += 1  # not part of the valid share
+        else:
+            TALLY["valid" if r.status_code < 300 else "rejected"] += 1
         TALLY[f"{what} {r.status_code}"] += 1
         return r.status_code
 
@@ -211,8 +218,9 @@ class MoneyMachine(RuleBasedStateMachine):
     def refresh_mf(self) -> None:
         """MF units/invested change by SIP posting: read them (and register funds a SIP created)."""
         for r in self.h.rows(
-            "SELECT id, units, invested_amount, closed_on, deleted_at, platform FROM mutual_funds"
-        ):
+            "SELECT id, units, invested_amount, closed_on, deleted_at, platform FROM mutual_funds "
+            "WHERE user_id = :u", u=self.h.uid,
+        ):  # fmt: skip
             hold = self.holds.get(("mf", r.id))
             if hold is None:  # a fund a SIP created: live/closed come from the app only here
                 hold = HM("mf", r.id, q3(r.units), q2(r.invested_amount), None, platform=r.platform or "")
@@ -240,8 +248,8 @@ class MoneyMachine(RuleBasedStateMachine):
         out = {}
         for r in self.h.rows(
             "SELECT id, units, invested_amount FROM mutual_funds "
-            "WHERE closed_on IS NOT NULL OR deleted_at IS NOT NULL"
-        ):
+            "WHERE user_id = :u AND (closed_on IS NOT NULL OR deleted_at IS NOT NULL)", u=self.h.uid,
+        ):  # fmt: skip
             count = self.h.scalar("SELECT count(*) FROM mf_transactions WHERE mutual_fund_id = :i", i=r.id)
             out[r.id] = (q3(r.units), q2(r.invested_amount), count)
         return out
@@ -338,15 +346,17 @@ class MoneyMachine(RuleBasedStateMachine):
         return body, hold, invested
 
     # ---- create (add / reinvest) ------------------------------------------------------------
-    def create(self, slug, body, hold, amount, cash: CashM | None, from_exit=None):
+    def create(self, slug, body, hold, amount, cash: CashM | None, from_exit=None, confirm=True):
+        """POST a create and update the model. Returns (status, request payload). With confirm=False
+        the duplicate check runs: the callers only use names no holding has, so it must find nothing."""
         paid = None
         if cash is not None:
             paid = {"cash_id": cash.id}
             if from_exit is not None:
                 paid["from_exit_id"] = from_exit
+        payload = {**body, **({"paid_from": paid} if paid else {})}
         r = self.h.call(
-            "POST", f"/api/assets/{slug}", params={"confirm_duplicate": "true"},
-            json={**body, **({"paid_from": paid} if paid else {})},
+            "POST", f"/api/assets/{slug}", params={"confirm_duplicate": "true"} if confirm else None, json=payload
         )  # fmt: skip
         prefix = None
         if cash is None:
@@ -362,14 +372,16 @@ class MoneyMachine(RuleBasedStateMachine):
         else:
             want = 201
         what = f"add {slug}" + (" paid" if cash else "")
-        if self.expect(r, (want,), what, prefix) >= 400:
-            return
+        status = self.expect(r, (want,), what, prefix)
+        if status >= 400:
+            return status, payload
         hold.id = r.json()["id"]
         self.holds[hold.key] = hold
         if cash is not None:
             cash.bal -= amount
             hold.fundings.append(FundM(cash.id, amount, from_exit))
         self.touched = hold.key
+        return status, payload
 
     @precondition(lambda self: len(self.cash) < 4)
     @rule(data=st.data())
@@ -462,14 +474,33 @@ class MoneyMachine(RuleBasedStateMachine):
         cash.bal += amount
         return cid, amount
 
+    def resend(self, what: str, method: str, url: str, want: tuple[int, ...], prefix: str | None = None, **kwargs):
+        """The same request again right after it succeeded: it must be refused as `want`, and no row of
+        any table may change (so no second money move)."""
+        before = self.h.snapshot()
+        r = self.h.call(method, url, **kwargs)
+        self.expect(r, want, f"{what} again", prefix)
+        if self.h.snapshot() != before:
+            self.fail(f"{what} again ({r.status_code}) changed the database")
+        return r
+
     @precondition(lambda self: bool(self.holds_of(*SELLABLE)))
     @rule(data=st.data())
     def sell(self, data):
+        self.do_sell(data, repeat=False)
+
+    @precondition(lambda self: bool(self.holds_of(*SELLABLE)))
+    @rule(data=st.data())
+    def sell_twice(self, data):
+        """Double submit: a full sale, then the same request again (409: it is closed now)."""
+        self.do_sell(data, repeat=True)
+
+    def do_sell(self, data, repeat: bool):
         good = [h for h in self.holds_of(*SELLABLE, live=True) if not h.closed and not (h.slug == "bond" and h.matured)]
         hold = self.choose(data, good, self.holds_of(*SELLABLE))
         slug, today = hold.slug, self.h.today
         dest, cash, how = self.pick_dest(data)
-        kind = "all" if slug == "other" else data.draw(st.sampled_from(["part", "part", "all", "all", "over"]))
+        kind = "all" if slug == "other" or repeat else data.draw(st.sampled_from(["part", "part", "all", "all", "over"]))
         body: dict = {"destination": dest}
         held = hold.qty
         if slug == "other":
@@ -561,11 +592,22 @@ class MoneyMachine(RuleBasedStateMachine):
         if ex.post[0] != (pre[0] if full else pre[0] - qty) and slug != "other":
             self.fail(f"sell {slug}: quantity after {ex.post[0]} (before {pre[0]}, sold {qty})")
         self.touched = hold.key
+        if repeat and full:
+            self.resend(f"sell {slug}", "POST", f"/api/holdings/{slug}/{hold.id}/sell", (409,), json=body)
 
     # ---- settle -------------------------------------------------------------------------------
     @precondition(lambda self: bool(self.holds_of("fd", "bond")))
     @rule(data=st.data())
     def settle(self, data):
+        self.do_settle(data, repeat=False)
+
+    @precondition(lambda self: bool(self.holds_of("fd", "bond")))
+    @rule(data=st.data())
+    def settle_twice(self, data):
+        """Double submit: a settlement, then the same request again (409: already settled)."""
+        self.do_settle(data, repeat=True)
+
+    def do_settle(self, data, repeat: bool):
         good = [h for h in self.holds_of("fd", "bond", live=True) if h.matured and not h.settled]
         hold = self.choose(data, good, self.holds_of("fd", "bond"))
         dest, cash, how = self.pick_dest(data)
@@ -596,11 +638,22 @@ class MoneyMachine(RuleBasedStateMachine):
         hold.exits.append(ex.id)
         hold.settled = True
         self.touched = hold.key
+        if repeat:
+            self.resend(f"settle {hold.slug}", "POST", f"/api/holdings/{hold.slug}/{hold.id}/settle", (409,), json=body)
 
     # ---- undo ---------------------------------------------------------------------------------
     @precondition(lambda self: bool(self.exits))
     @rule(data=st.data())
     def undo(self, data):
+        self.do_undo(data, repeat=False)
+
+    @precondition(lambda self: bool(self.exits))
+    @rule(data=st.data())
+    def undo_twice(self, data):
+        """Double submit: an undo, then the same request again (404: the record is gone)."""
+        self.do_undo(data, repeat=True)
+
+    def do_undo(self, data, repeat: bool):
         stale = [i for i in self.gone if i not in self.exits]
         if stale and data.draw(st.sampled_from([False] * 12 + [True])):
             r = self.h.call("DELETE", f"/api/exits/{stale[-1]}")
@@ -654,6 +707,8 @@ class MoneyMachine(RuleBasedStateMachine):
             if after != ex.pre:
                 self.fail(f"sell-then-undo: state {after} != the state before the sale {ex.pre}")
         self.touched = hold.key
+        if repeat:
+            self.resend(f"undo {ex.kind}", "DELETE", f"/api/exits/{ex.id}", (404,))
 
     def _cost_of(self, ex: ExitM) -> Decimal:
         """The cost the app recorded for an exit (read before it was deleted is not possible: use pre)."""
@@ -673,11 +728,28 @@ class MoneyMachine(RuleBasedStateMachine):
     @precondition(lambda self: any(i.live for i in self.items()))
     @rule(data=st.data())
     def delete(self, data):
+        self.do_delete(data, repeat=False)
+
+    @precondition(lambda self: any(i.live for i in self.items()))
+    @rule(data=st.data())
+    def delete_twice(self, data):
+        """Double submit: a delete, then the same request again (404: already deleted, no second refund)."""
+        self.do_delete(data, repeat=True)
+
+    def do_delete(self, data, repeat: bool):
         items = self.items()
         # Mostly holdings that can be deleted (no sale or settlement on record), sometimes any.
         free = [i for i in items if i.live and not (isinstance(i, HM) and i.exits)]
-        item = self.choose(data, free, items)
+        with_exits = [i for i in items if i.live and isinstance(i, HM) and i.exits]
+        if with_exits and not repeat and data.draw(st.sampled_from([False, True, True])):
+            item = data.draw(st.sampled_from(with_exits))  # the delete guard: refused while an exit exists
+        else:
+            item = self.choose(data, free, items)
         slug = item.slug if isinstance(item, HM) else "cash"
+        # DELETE-409 contract (web/lib/delete-guard.ts disables Delete on the same rule): a holding is
+        # refused with 409 exactly while it has at least one sale or settlement on record (the model's
+        # exit list: an undo removes the exit, so it is deletable again); otherwise it is deleted.
+        # Cash accounts have no exits of their own and are always deletable.
         if not item.live:
             want, prefix = (404,), None
         elif isinstance(item, HM) and item.exits:  # a sold or settled holding can't be deleted
@@ -693,10 +765,21 @@ class MoneyMachine(RuleBasedStateMachine):
             if f.active:  # the ideal ledger: the refund goes back whether or not the account is deleted
                 self.cash[f.cash_id].bal += f.amount
                 f.active = False
+        if repeat:
+            self.resend(f"delete {slug}", "DELETE", f"/api/assets/{slug}/{item.id}", (404,))
 
     @precondition(lambda self: any(not i.live for i in self.items()))
     @rule(data=st.data())
     def restore(self, data):
+        self.do_restore(data, repeat=False)
+
+    @precondition(lambda self: any(not i.live for i in self.items()))
+    @rule(data=st.data())
+    def restore_twice(self, data):
+        """Double submit: a restore, then the same request again (404: not deleted any more, no second debit)."""
+        self.do_restore(data, repeat=True)
+
+    def do_restore(self, data, repeat: bool):
         item = self.choose(data, [i for i in self.items() if not i.live], self.items())
         slug = item.slug if isinstance(item, HM) else "cash"
         want, prefix = (404,), None
@@ -717,6 +800,8 @@ class MoneyMachine(RuleBasedStateMachine):
                 self.cash[f.cash_id].bal -= f.amount
                 f.active = True
         self.touched = item.key if isinstance(item, HM) else None
+        if repeat:
+            self.resend(f"restore {slug}", "POST", f"/api/assets/{slug}/{item.id}/restore", (404,))
 
     # ---- SIPs ---------------------------------------------------------------------------------
     @rule(data=st.data())
@@ -745,8 +830,42 @@ class MoneyMachine(RuleBasedStateMachine):
         r = self.h.call("POST", "/api/sips", params={"confirm_duplicate": "true"}, json=body)
         if self.expect(r, (want,), "sip create") >= 400:
             return
-        self.sips[r.json()["id"]] = SipM(r.json()["id"])
+        self.sips[r.json()["id"]] = SipM(r.json()["id"], amount=body["amount"], day=body["day_of_month"])
         self.after_sip(frozen)
+
+    @precondition(lambda self: len(self.sips) < 3)
+    @rule(data=st.data())
+    def sip_create_twice(self, data):
+        """Double submit of a SIP create WITHOUT confirm_duplicate: 201 unless an active SIP with the same
+        scheme, day and amount exists (then 409 with those SIPs listed); the same request again is then
+        always 409 listing the new SIP, and adds no SIP and no instalment."""
+        self.refresh_mf()
+        body = {
+            "scheme_code": SCHEME, "platform": data.draw(st.sampled_from(["Groww", "Zerodha"])),
+            "amount": data.draw(st.sampled_from([100, 500, 2500])), "day_of_month": data.draw(st.sampled_from([5, 15, 28])),
+            "start_date": data.draw(st.sampled_from(["2026-01-05", "2026-03-01"])),
+            "include_past": data.draw(st.booleans()),
+        }  # fmt: skip
+        running = sorted(
+            s.id for s in self.sips.values()
+            if s.status == "active" and s.amount == body["amount"] and s.day == body["day_of_month"]
+        )  # fmt: skip
+        frozen = self.frozen()
+        r = self.h.call("POST", "/api/sips", json=body)
+        if running:
+            self.expect(r, (409,), "sip create (duplicate)")
+            ids = sorted(x["id"] for x in r.json()["duplicates"])
+            if ids != running:
+                self.fail(f"sip create: duplicates {ids} != the running SIPs {running}")
+            return
+        if self.expect(r, (201,), "sip create (plain)") >= 400:
+            return
+        sid = r.json()["id"]
+        self.sips[sid] = SipM(sid, amount=body["amount"], day=body["day_of_month"])
+        self.after_sip(frozen)
+        again = self.resend("sip create", "POST", "/api/sips", (409,), json=body)
+        if sorted(x["id"] for x in again.json()["duplicates"]) != sorted([*running, sid]):
+            self.fail(f"sip create again: duplicates {again.json()['duplicates']} do not list SIP {sid}")
 
     @rule()
     def post_due(self):
@@ -765,13 +884,219 @@ class MoneyMachine(RuleBasedStateMachine):
     @precondition(lambda self: bool(self.sips))
     @rule(data=st.data())
     def sip_toggle(self, data):
-        sip = self.sips[data.draw(st.sampled_from(sorted(self.sips)))]
-        right = "pause" if sip.status == "active" else "resume"
-        action = right if data.draw(st.sampled_from([True] * 6 + [False])) else {"pause": "resume", "resume": "pause"}[right]
+        self.do_toggle(data, repeat=False)
+
+    @precondition(lambda self: bool(self.sips))
+    @rule(data=st.data())
+    def sip_toggle_twice(self, data):
+        """Double submit: pause (or resume), then the same request again (409: wrong state now)."""
+        self.do_toggle(data, repeat=True)
+
+    def pick_sip(self, data) -> SipM:
+        """Mostly a SIP that is not cancelled (a cancelled one only allows refusals)."""
+        live = [s for s in sorted(self.sips) if self.sips[s].status != "stopped"]
+        pool = live if live and data.draw(st.sampled_from([True] * 6 + [False])) else sorted(self.sips)
+        return self.sips[data.draw(st.sampled_from(pool))]
+
+    def do_toggle(self, data, repeat: bool):
+        sip = self.pick_sip(data)
+        right = {"active": "pause", "paused": "resume"}.get(sip.status)  # a cancelled SIP allows neither
+        action = right if right and (repeat or data.draw(st.sampled_from([True] * 6 + [False]))) else (
+            data.draw(st.sampled_from(["pause", "resume"])) if right is None else {"pause": "resume", "resume": "pause"}[right]
+        )  # fmt: skip
         legal = action == right
         r = self.h.call("POST", f"/api/sips/{sip.id}/{action}")
         if self.expect(r, (200,) if legal else (409,), f"sip {action}") < 400:
             sip.status = "paused" if action == "pause" else "active"
+            if repeat:
+                self.resend(f"sip {action}", "POST", f"/api/sips/{sip.id}/{action}", (409,))
+
+    @precondition(lambda self: bool(self.sips))
+    @rule(data=st.data(), repeat=st.booleans())
+    def sip_stop(self, data, repeat):
+        """Cancel a SIP (409 when it already is); with repeat the same request is sent again (409)."""
+        if not data.draw(st.sampled_from([True, False, False])):
+            return  # cancelling is final and the machine allows only a few SIPs: keep it occasional
+        sip = self.pick_sip(data)
+        was_stopped = sip.status == "stopped"
+        r = self.h.call("POST", f"/api/sips/{sip.id}/stop")
+        if self.expect(r, (409,) if was_stopped else (200,), "sip stop") < 400:
+            sip.status = "stopped"
+            if repeat:
+                self.resend("sip stop", "POST", f"/api/sips/{sip.id}/stop", (409,))
+
+    # ---- double submit of a create ---------------------------------------------------------------
+    @rule(data=st.data())
+    def double_create(self, data):
+        """The same create twice without confirm_duplicate (SPEC §4 "Duplicate warnings"): names are unique,
+        so the first finds no match (201, or 422 when a Paid From can't be afforded); the same request again
+        is then 409 listing the first holding and changes nothing (also no second Paid From debit; when the
+        account can no longer afford it, the funding check comes first and says 422 instead). The same
+        request with confirm_duplicate=true then adds a second holding (the documented 'Add anyway')."""
+        slug = data.draw(st.sampled_from(["cash", "fd", "stock", "bond", "other"]))
+        if slug == "cash":
+            if len(self.cash) >= 4:
+                return
+            body = {
+                "name": self.name("Dup acct"), "kind": "savings",
+                "balance": sx(from_cents(data.draw(st.integers(0, 1_000_000)))), "balance_date": "2026-01-01",
+            }  # fmt: skip
+            r = self.h.call("POST", "/api/assets/cash", json=body)
+            if self.expect(r, (201,), "add cash (plain)") >= 400:
+                return
+            first = r.json()["id"]
+            self.cash[first] = CashM(first, body["name"], "savings", d(body["balance"]), d(body["balance"]))
+            again = self.resend("add cash", "POST", "/api/assets/cash", (409,), json=body)
+            if [x["id"] for x in again.json()["duplicates"]] != [first]:
+                self.fail(f"add cash again: duplicates {again.json()['duplicates']} != [{first}]")
+            return
+        mode = data.draw(st.sampled_from(["none", "paid", "paid"]))
+        pool = self.live_cash()
+        cash = data.draw(st.sampled_from(pool)) if pool and mode == "paid" else None
+        bal = int(cash.bal * 100) if cash is not None else 0
+        forced = data.draw(st.integers(1, bal)) if bal > 0 and data.draw(st.booleans()) else None
+        body, hold, amount = self.build(data, slug, forced)
+        if slug == "stock":
+            body.pop("master_id", None)  # a linked stock is compared by master and quantity, not by name
+            hold.master_id = None
+        template = replace(hold, exits=[], fundings=[])
+        status, payload = self.create(slug, body, hold, amount, cash, confirm=False)
+        if status >= 400:
+            return
+        if cash is not None and amount > cash.bal:
+            r = self.h.call("POST", f"/api/assets/{slug}", json=payload)  # the funding check comes first
+            self.expect(r, (422,), f"add {slug} again (short)", TOO_MUCH)
+        else:
+            again = self.resend(f"add {slug}", "POST", f"/api/assets/{slug}", (409,), json=payload)
+            if [x["id"] for x in again.json()["duplicates"]] != [hold.id]:
+                self.fail(f"add {slug} again: duplicates {again.json()['duplicates']} != [{hold.id}]")
+        if data.draw(st.booleans()):
+            self.create(slug, body, template, amount, cash, confirm=True)
+
+    # ---- the second user -----------------------------------------------------------------------
+    @precondition(lambda self: len(self.u2cash) + len(self.u2hold) < 6)
+    @rule(data=st.data())
+    def u2_add(self, data):
+        """The second user adds a cash account, an Other holding (with an amount invested) or a stock."""
+        kind = data.draw(st.sampled_from(["cash", "other", "stock", "stock"]))
+        cents = data.draw(st.integers(100, 2_000_000))
+        if kind == "cash":
+            body = {
+                "name": self.name("U2 acct"), "kind": "savings", "balance": sx(from_cents(cents)),
+                "balance_date": "2026-01-01",
+            }  # fmt: skip
+        elif kind == "other":
+            body = {
+                "name": self.name("U2 plot"), "category": "Property", "current_value": 80000,
+                "value_date": "2026-01-01", "invested_amount": sx(from_cents(cents)), "acquired_on": None,
+            }  # fmt: skip
+        else:
+            qty = data.draw(st.integers(2, 30))
+            body = {
+                "name": self.name("U2 stock"), "exchange": "NSE", "quantity": qty,
+                "avg_buy_price": sx(from_cents(cents)), "buy_date": "2025-01-01",
+            }  # fmt: skip
+        r = self.h.call("POST", f"/api/assets/{kind}", as_user=2, params={"confirm_duplicate": "true"}, json=body)
+        if self.expect(r, (201,), f"user 2 add {kind}") >= 400:
+            return
+        new = r.json()["id"]
+        if kind == "cash":
+            self.u2cash[new] = from_cents(cents)
+        elif kind == "other":
+            self.u2hold.append(("other", new, from_cents(cents), None))
+        else:
+            self.u2hold.append(("stock", new, q2(body["quantity"] * from_cents(cents)), Decimal(body["quantity"])))
+
+    @precondition(lambda self: bool(self.holds or self.cash or self.sips or self.u2hold))
+    @rule(data=st.data())
+    def cross_user(self, data):
+        """The second user (or, for the second user's ids, user 1) calls the API with ids that belong to
+        someone else. Every call is refused without effect: 404 for a holding, account, exit or SIP in the
+        path or a SIP's holding in the body, 422 "Choose one of your accounts" for a cash id in a body
+        (Paid From, from_exit_id, a sale's destination). The whole database is the same afterwards."""
+        from app.schemas.exits import CASH_ACCOUNT_ERROR
+
+        today = self.h.today.isoformat()
+        sale = {"date": today, "price": "10.00", "charges": "0", "destination": {"kind": "none"}}
+        other_body = {"name": "Cross", "category": "Property", "current_value": 10, "value_date": "2026-01-01"}
+        cases: list[tuple] = []  # (label, method, url, kwargs, want status, message prefix, acting user)
+        for item in self.items():
+            slug = item.slug if isinstance(item, HM) else "cash"
+            base = f"/api/assets/{slug}/{item.id}"
+            cases += [
+                (f"get {slug}", "GET", base, {}, 404, None, 2),
+                (f"detail {slug}", "GET", f"/api/holdings/{slug}/{item.id}", {}, 404, None, 2),
+                (f"exits of {slug}", "GET", f"/api/holdings/{slug}/{item.id}/exits", {}, 404, None, 2),
+                (f"delete {slug}", "DELETE", base, {}, 404, None, 2),
+                (f"restore {slug}", "POST", base + "/restore", {}, 404, None, 2),
+            ]  # fmt: skip
+            if item.live:
+                cases.append((f"put {slug}", "PUT", base, {"put": True}, 404, None, 2))
+            if slug in SELLABLE:
+                body = {**sale, "amount": "10.00"} if slug == "other" else {**sale, "quantity": 1}
+                body = {k: v for k, v in body.items() if not (slug == "other" and k in ("price", "quantity"))}
+                cases.append((f"sell {slug}", "POST", f"/api/holdings/{slug}/{item.id}/sell", {"json": body}, 404, None, 2))
+            if slug in ("fd", "bond"):
+                cases.append((f"settle {slug}", "POST", f"/api/holdings/{slug}/{item.id}/settle",
+                              {"json": {"destination": {"kind": "none"}}}, 404, None, 2))  # fmt: skip
+            if slug == "cash":
+                cases.append(("paid from another user's account", "POST", "/api/assets/other",
+                              {"json": {**other_body, "paid_from": {"cash_id": item.id}}}, 422, CASH_ACCOUNT_ERROR, 2))  # fmt: skip
+        for ex in self.exits.values():
+            cases.append((f"undo {ex.kind}", "DELETE", f"/api/exits/{ex.id}", {}, 404, None, 2))
+            for cid in self.u2cash:  # the second user's own account, the first user's exit
+                cases.append(("reinvest from another user's exit", "POST", "/api/assets/other",
+                              {"json": {**other_body, "paid_from": {"cash_id": cid, "from_exit_id": ex.id}}}, 422, CASH_ACCOUNT_ERROR, 2))  # fmt: skip
+                break
+        for sip in self.sips.values():
+            base = f"/api/sips/{sip.id}"
+            cases += [
+                ("sip pause", "POST", base + "/pause", {}, 404, None, 2),
+                ("sip resume", "POST", base + "/resume", {}, 404, None, 2),
+                ("sip stop", "POST", base + "/stop", {}, 404, None, 2),
+                ("sip skip", "POST", base + "/skip", {}, 404, None, 2),
+                ("sip unskip", "DELETE", base + "/skip/2026-04-05", {}, 404, None, 2),
+                ("sip put", "PUT", base, {"json": {"amount": 500, "day_of_month": 5}}, 404, None, 2),
+                ("sip delete", "DELETE", base, {}, 404, None, 2),
+            ]  # fmt: skip
+        for fund in self.holds_of("mf"):
+            body = {"scheme_code": SCHEME, "platform": "Groww", "amount": 500, "day_of_month": 5,
+                    "start_date": "2026-03-01", "include_past": False, "mutual_fund_id": fund.id}  # fmt: skip
+            cases.append(("sip create on another user's fund", "POST", "/api/sips", {"json": body}, 404, None, 2))
+        # the other direction: user 1 with the second user's ids
+        for slug, hid, _inv, _qty in self.u2hold:
+            base = f"/api/assets/{slug}/{hid}"
+            cases += [
+                (f"user 1 get {slug}", "GET", base, {}, 404, None, 1),
+                (f"user 1 delete {slug}", "DELETE", base, {}, 404, None, 1),
+                (f"user 1 detail {slug}", "GET", f"/api/holdings/{slug}/{hid}", {}, 404, None, 1),
+            ]  # fmt: skip
+        for slug, hid, _inv, qty in self.u2hold:
+            if slug == "stock" and self.live_cash():  # the second user's stock sold into user 1's account
+                cash = self.live_cash()[0]
+                body = {**sale, "quantity": 1, "destination": {"kind": "cash_existing", "cash_id": cash.id}}
+                cases.append(("sell into another user's account", "POST", f"/api/holdings/stock/{hid}/sell",
+                              {"json": body}, 422, CASH_ACCOUNT_ERROR, 2))  # fmt: skip
+                break
+        if not cases:
+            return
+        # first a kind of call, then one of its targets (a flat draw over all cases favours the first items)
+        label = data.draw(st.sampled_from(sorted({c[0] for c in cases})))
+        label, method, url, kwargs, want, prefix, who = data.draw(st.sampled_from([c for c in cases if c[0] == label]))
+        kwargs = dict(kwargs)
+        if kwargs.pop("put", False):
+            got = self.h.call("GET", url)
+            if got.status_code != 200:
+                self.fail(f"cross user: GET {url} -> {got.status_code}")
+            from app.routers.assets import REGISTRY
+
+            slug = url.split("/")[3]
+            kwargs["json"] = {k: v for k, v in got.json().items() if k in REGISTRY[slug][1].model_fields}
+        before = self.h.snapshot()
+        r = self.h.call(method, url, as_user=who, **kwargs)
+        self.expect(r, (want,), f"cross-user {label}", prefix)
+        if self.h.snapshot() != before:
+            self.fail(f"cross-user {label} ({r.status_code}) changed the database")
 
     # ---- market data (optional steps; values differ from invested once they exist) -------------
     # Each rule writes the latest row AND the history row for the same day, like the nightly
@@ -818,7 +1143,8 @@ class MoneyMachine(RuleBasedStateMachine):
         self.refresh_mf()
         h = self.h
         # cash: the model's balance is the app's balance, for every account
-        rows = {r.id: r for r in h.rows("SELECT id, balance, deleted_at FROM cash_holdings")}
+        u = h.uid  # user 2's rows are in the same tables: every comparison below is user 1's only
+        rows = {r.id: r for r in h.rows("SELECT id, balance, deleted_at FROM cash_holdings WHERE user_id = :u", u=u)}
         if set(rows) != set(self.cash):
             self.fail(f"cash accounts differ: app {sorted(rows)} model {sorted(self.cash)}")
         for cid, c in self.cash.items():
@@ -836,7 +1162,7 @@ class MoneyMachine(RuleBasedStateMachine):
         deleted: dict[tuple[str, int], bool] = {}
         for slug in ("fd", "stock", "bond", "mf", "gold", "other"):
             ids = {}
-            for r in h.rows(f"SELECT id, deleted_at FROM {TABLES[slug]}"):  # noqa: S608
+            for r in h.rows(f"SELECT id, deleted_at FROM {TABLES[slug]} WHERE user_id = :u", u=u):  # noqa: S608
                 ids[r.id] = r.deleted_at is not None
                 deleted[(slug, r.id)] = r.deleted_at is not None
             known = {k[1] for k in self.holds if k[0] == slug}
@@ -857,8 +1183,8 @@ class MoneyMachine(RuleBasedStateMachine):
         # exits and fundings: exactly the model's, no orphans, funding active exactly while live
         exit_rows = h.rows(
             "SELECT id, asset_type, holding_id, kind, cash_holding_id, cash_added, amount, cost "
-            "FROM holding_exits"
-        )
+            "FROM holding_exits WHERE user_id = :u", u=u,
+        )  # fmt: skip
         if {r.id for r in exit_rows} != set(self.exits):
             self.fail(f"exits differ: app {sorted(r.id for r in exit_rows)} model {sorted(self.exits)}")
         for r in exit_rows:
@@ -876,8 +1202,8 @@ class MoneyMachine(RuleBasedStateMachine):
             self.fail("a holding was settled twice")
         fund_rows = h.rows(
             "SELECT asset_type, holding_id, cash_holding_id, amount, refunded_at, from_exit_id "
-            "FROM holding_fundings"
-        )
+            "FROM holding_fundings WHERE user_id = :u", u=u,
+        )  # fmt: skip
         for r in fund_rows:
             if (r.asset_type, r.holding_id) not in deleted:
                 self.fail(f"orphaned funding on {r.asset_type} {r.holding_id}")
@@ -902,9 +1228,16 @@ class MoneyMachine(RuleBasedStateMachine):
 
         # funds: units vs transactions, closed_on, SIP links
         txns: dict[int, list] = {}
-        for r in h.rows("SELECT mutual_fund_id, kind, units, amount, txn_date FROM mf_transactions"):
+        for r in h.rows(
+            "SELECT t.mutual_fund_id, t.kind, t.units, t.amount, t.txn_date FROM mf_transactions t "
+            "JOIN mutual_funds f ON f.id = t.mutual_fund_id WHERE f.user_id = :u", u=u,
+        ):  # fmt: skip
             txns.setdefault(r.mutual_fund_id, []).append(r)
-        fund_state = {r.id: r for r in h.rows("SELECT id, units, invested_amount, closed_on, deleted_at FROM mutual_funds")}
+        fund_state = {
+            r.id: r for r in h.rows(
+                "SELECT id, units, invested_amount, closed_on, deleted_at FROM mutual_funds WHERE user_id = :u", u=u
+            )
+        }  # fmt: skip
         for fid, ts in txns.items():
             if fid not in fund_state:
                 self.fail(f"transactions of a missing fund {fid}")
@@ -917,7 +1250,9 @@ class MoneyMachine(RuleBasedStateMachine):
                 late = [t for t in ts if t.kind == "purchase" and t.txn_date > f.closed_on]
                 if late:
                     self.fail(f"fund {fid} closed on {f.closed_on} has a purchase dated {late[0].txn_date}")
-        sip_rows = h.rows("SELECT id, mutual_fund_id, status FROM mf_sips")
+        sip_rows = h.rows("SELECT id, mutual_fund_id, status FROM mf_sips WHERE user_id = :u", u=u)
+        if {s.id for s in sip_rows} != set(self.sips):
+            self.fail(f"SIPs differ: app {sorted(s.id for s in sip_rows)} model {sorted(self.sips)}")
         for s in sip_rows:
             if s.mutual_fund_id is not None and s.mutual_fund_id not in fund_state:
                 self.fail(f"SIP {s.id} points at a missing fund {s.mutual_fund_id}")
