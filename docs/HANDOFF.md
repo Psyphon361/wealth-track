@@ -1,6 +1,33 @@
 # HANDOFF — session resume notes (2026-11-08)
 
-## Resume here — 2026-11-08 night (testing Phase 1 pushed, CI gate verified green)
+## Resume here — 2026-11-09 (testing Phase 2 done, money-bug fixes committed, NOT pushed)
+
+Status: testing Phase 2 and the money-bug fixes are committed on `main` (HEAD `a1be995`); unpushed: see `git log origin/main..HEAD`. Nothing running.
+
+### What exists
+- Hypothesis profiles (`api/tests/hypothesis_profiles.py`), property tests (`api/tests/test_props_*.py`), contract tests (`api/tests/contract/`; refresh the snapshot with `cd api && .venv/bin/python -m tests.contract.update_snapshot`), the stateful money machine (`api/tests/stateful/`, `api/tests/pg/test_money_machine_pg.py`), purge hardening (`api/app/services/purge.py`, 503 on lock timeout).
+- Fixes: Paid From delete/restore against soft-deleted cash accounts; delete of a sold holding blocked (409). Details in STATUS.md and SPEC §4, §8b, §8c.
+
+### How to run everything
+- Non-pg: `cd api && .venv/bin/python -m pytest -q -m "not pg"` (CI-like: prefix `HYPOTHESIS_PROFILE=ci`).
+- Postgres: `cd api && scripts/pg_test_cluster.sh start && TEST_DATABASE_URL=$(scripts/pg_test_cluster.sh url) .venv/bin/python -m pytest -q -m pg`, then `scripts/pg_test_cluster.sh stop`.
+- Web: `cd web && npm run lint && npm test`.
+- Hunt: `HYPOTHESIS_PROFILE=hunt`; also `STATEFUL_EXAMPLES`, `STATEFUL_PG_EXAMPLES`. A failure is a finding: reproduce it as a deterministic test, never fix app code in a test task.
+
+### Push
+Awaiting the user's OK. A push touching `api/` starts the gated prod migrate and deploy (tests first).
+
+### Open
+- Owner: run `api/scripts/preflight_delete_refund.sql` on prod (SELECT-only); limit the GitHub `production` environment to `main`.
+- Net worth today-point drifts (strict xfails in `api/tests/test_networth_today_agreement.py`), `analytics_returns._q` half-even rounding, always-0 `sips_cancelled`.
+- Phase 3 testing; audit backlog #25, #26, #16, #23, #17, #18.
+
+### Next steps, in order
+1. Owner runs the preflight on prod.
+2. Decide the push.
+3. Phase 3 testing or the audit backlog.
+
+## Earlier — 2026-11-08 night (testing Phase 1 pushed, CI gate verified green)
 
 Status: testing Phase 1 is pushed to `origin/main` (2f53abd..69d3de2). The first real CI run on GitHub is green: API deploy run `42505519437` and CI Web run `42505519175`. One local commit is unpushed: the `actions/setup-node` bump to `@v7` in `ci-web.yml`. Nothing running.
 
