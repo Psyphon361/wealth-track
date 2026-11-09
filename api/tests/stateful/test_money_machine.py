@@ -2,15 +2,16 @@
 
 Hypothesis drives random sequences of API calls (add cash and holdings, Paid From, sell, settle,
 undo, reinvest, delete and restore of holdings and cash accounts, PUT of a balance, SIPs, the
-clock, a second user's holdings and calls with user 1's ids, and double submits) against the real app on an in-memory SQLite database, and checks the machine's own ledger
+clock, the purge after the retention period, a second user's holdings and calls with user 1's ids, and double submits) against the real app on an in-memory SQLite database, and checks the machine's own ledger
 after every step (see tests/stateful/machine.py).
 
 Known limits (by design):
-  * SQLite does not enforce foreign keys here, so ON DELETE CASCADE / SET NULL are not exercised
-    (tests/pg/test_money_machine_pg.py runs the same machine on Postgres).
-  * No concurrency (tests/pg/test_concurrency_pg.py covers it) and no purge.
-  * The clock is frozen to the harness date everywhere (tests/stateful/world.py), so the wall
-    clock affects nothing.
+  * SQLite does not enforce foreign keys here, so after a purge the harness applies ON DELETE
+    CASCADE / SET NULL by hand (tests/pg/test_money_machine_pg.py runs the same machine on Postgres
+    with the real foreign keys).
+  * No concurrency (tests/pg/test_concurrency_pg.py covers it).
+  * The clock is frozen to the harness date everywhere (tests/stateful/world.py); the purge is
+    the one exception: it reads the wall clock, so deleted rows are back-dated before it runs.
 
 Failures: a real bug found by the machine is reproduced as a deterministic plain test in
 test_known_bugs.py (fixed ones stay as regression tests). Never commit @reproduce_failure.

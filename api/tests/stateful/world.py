@@ -50,6 +50,8 @@ RESET_TABLES = (
     "stock_price_latest", "stock_price_history", "mf_nav_latest", "gold_rate_latest", "gold_rate_history",
 )  # fmt: skip
 
+CRON_SECRET = "stateful-cron-secret"
+
 CENT = Decimal("0.01")
 MILLI = Decimal("0.001")
 
@@ -112,6 +114,7 @@ class Harness:
         self.uid = user.id
         self.uid2 = user2.id if user2 is not None else None
         self.local_pg = local_pg
+        self.fk = local_pg  # foreign-key actions (CASCADE, SET NULL) are enforced by the database
         self.today = START_TODAY
         self.log: list[str] = []
         self.stock_masters: list[int] = []  # ids of the seeded stock masters
@@ -206,6 +209,57 @@ class Harness:
         self.assert_safe()
         with self.factory() as session:
             return sip_service.post_due(session, self.today)
+
+    # purge and the retention clock ---------------------------------------------------------------
+    def backdate_deleted(self, table: str, row_id: int, age_days: int) -> None:
+        """Make a soft-deleted row look `age_days` old to the purge, which measures age against the real
+        wall clock (datetime.now in services/purge.py; app code is not patched). The stamp is one hour
+        later than exactly `age_days` ago, so an age of exactly 30 days is NOT past retention and 31 is,
+        however long the test takes."""
+        from sqlalchemy import update
+
+        from app.db import Base
+
+        self.assert_safe()
+        stamp = datetime.now(timezone.utc) - timedelta(days=age_days) + timedelta(hours=1)
+        tbl = Base.metadata.tables[table]
+        with self.engine.begin() as conn:
+            conn.execute(update(tbl).where(tbl.c.id == row_id).values(deleted_at=stamp))
+
+    def purge(self, *, via_cron: bool) -> dict[str, int]:
+        """Run the purge: the service function (a session of the test factory) or GET /api/cron/purge
+        with the cron secret. On SQLite (foreign keys off) the database's ON DELETE actions are applied
+        by hand afterwards, so the rest of the checks see what Postgres would have left."""
+        from fastapi.testclient import TestClient
+
+        from app.main import app
+        from app.services import purge as purge_service
+
+        self.assert_safe()
+        self.log.append(f"purge via {'cron' if via_cron else 'service'}")
+        if via_cron:
+            response = TestClient(app).get("/api/cron/purge", headers={"Authorization": f"Bearer {CRON_SECRET}"})
+            if response.status_code != 200:
+                raise ServerError(f"GET /api/cron/purge -> {response.status_code} {response.text[:300]}\n{self.tail()}")
+            counts = response.json()
+        else:
+            with self.factory() as session:
+                counts = purge_service.purge_deleted(session)
+        if not self.fk:
+            with self.engine.begin() as conn:
+                for sql in (
+                    "DELETE FROM mf_transactions WHERE mutual_fund_id NOT IN (SELECT id FROM mutual_funds)",
+                    "UPDATE mf_sips SET mutual_fund_id = NULL WHERE mutual_fund_id IS NOT NULL "
+                    "AND mutual_fund_id NOT IN (SELECT id FROM mutual_funds)",
+                    "UPDATE holding_exits SET cash_holding_id = NULL WHERE cash_holding_id IS NOT NULL "
+                    "AND cash_holding_id NOT IN (SELECT id FROM cash_holdings)",
+                    "UPDATE holding_fundings SET cash_holding_id = NULL WHERE cash_holding_id IS NOT NULL "
+                    "AND cash_holding_id NOT IN (SELECT id FROM cash_holdings)",
+                    "UPDATE holding_fundings SET from_exit_id = NULL WHERE from_exit_id IS NOT NULL "
+                    "AND from_exit_id NOT IN (SELECT id FROM holding_exits)",
+                ):
+                    conn.execute(text(sql))
+        return counts
 
     # market data (latest and history rows, dated from the harness clock) -----------------------
     def nav_on(self, on: date) -> tuple[date, Decimal]:
@@ -315,6 +369,9 @@ def patch_clock_and_network(monkeypatch, harness: Harness) -> None:
 
     from app.services import sip as sip_service
 
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "cron_secret", CRON_SECRET)
     monkeypatch.setattr(sip_service, "today_ist", lambda: harness.today)
     monkeypatch.setattr(sip_service, "ensure_history", lambda session, code: None)
     frozen = make_frozen_date(harness)
@@ -421,6 +478,7 @@ def sqlite_harness(monkeypatch, *, foreign_keys: bool = False):
         seed_funds(factory)
         harness = Harness(engine, factory, user, local_pg=False, user2=user2)
         harness.stock_masters = seed_stock_masters(factory)
+        harness.fk = foreign_keys
         harness.assert_safe()
         patch_clock_and_network(monkeypatch, harness)
         yield harness

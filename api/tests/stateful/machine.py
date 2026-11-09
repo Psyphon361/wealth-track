@@ -21,8 +21,14 @@ invested; sell-then-undo restores quantity/units/weight, invested and closed_on 
 PUT of the same body returns 200 (409 for a closed holding); the row-derived ledger formula
 (initial + exits - fundings) as a secondary check.
 
-Known limits (documented, see test_money_machine.py): no concurrency (tests/pg covers it), no
-purge, SQLite does not enforce foreign keys (ON DELETE actions only run on Postgres).
+Purge and time: rules let days pass and run the purge (service or /api/cron/purge); deleted rows are
+back-dated to the age the harness clock gives them. The model predicts the counts, that rows past 30
+days go with their exits, fundings and MF transactions, that links to a purged cash account become
+NULL, that no balance changes and that restore of a purged row is 404.
+
+Known limits (documented, see test_money_machine.py): no concurrency (tests/pg covers it); SQLite
+does not enforce foreign keys, so the harness applies the ON DELETE actions by hand after a purge
+(Postgres enforces them for real).
 """
 
 from __future__ import annotations
@@ -64,11 +70,12 @@ class CashM:
     initial: Decimal
     live: bool = True
     put: bool = False
+    del_day: date | None = None  # the harness day it was soft-deleted (None while live)
 
 
 @dataclass
 class FundM:
-    cash_id: int
+    cash_id: int | None  # None once the account was purged (the link is set to NULL)
     amount: Decimal
     from_exit: int | None
     active: bool = True
@@ -87,6 +94,7 @@ class HM:
     master_id: int | None = None  # stock: the stock master it is linked to (a price can apply)
     metal: str = "gold"  # gold holdings: gold or silver
     live: bool = True
+    del_day: date | None = None  # the harness day it was soft-deleted (None while live)
     closed: bool = False  # sold in full (closed_on set)
     settled: bool = False
     invested0: Decimal = ZERO
@@ -136,6 +144,7 @@ TALLY: Counter = Counter()
 # Observed over 40 random seeds: the share of valid steps varies between 64% and ~80%, so 70% failed
 # on luck. 55% still catches strategies that have gone wild.
 MIN_VALID_SHARE = 0.55
+RETENTION_DAYS = 30  # SPEC §4: deleted holdings are kept for 30 days (the purge removes "more than 30")
 
 
 def _years_from_today(years: int) -> date:
@@ -736,12 +745,25 @@ class MoneyMachine(RuleBasedStateMachine):
         """Double submit: a delete, then the same request again (404: already deleted, no second refund)."""
         self.do_delete(data, repeat=True)
 
-    def do_delete(self, data, repeat: bool):
+    def linked_cash(self) -> list[CashM]:
+        """Live accounts an exit or a funding points at (what a purge of the account must set to NULL)."""
+        ids = {e.cash_id for e in self.exits.values()} | {f.cash_id for h in self.holds.values() for f in h.fundings}
+        return [c for c in self.live_cash() if c.id in ids]
+
+    @precondition(lambda self: bool(self.linked_cash()))
+    @rule(data=st.data())
+    def delete_linked_cash(self, data):
+        """Delete an account that exits or fundings point at (so a later purge has links to set to NULL)."""
+        self.do_delete(data, repeat=False, only=self.linked_cash())
+
+    def do_delete(self, data, repeat: bool, only: list | None = None):
         items = self.items()
         # Mostly holdings that can be deleted (no sale or settlement on record), sometimes any.
         free = [i for i in items if i.live and not (isinstance(i, HM) and i.exits)]
         with_exits = [i for i in items if i.live and isinstance(i, HM) and i.exits]
-        if with_exits and not repeat and data.draw(st.sampled_from([False, True, True])):
+        if only:
+            item = data.draw(st.sampled_from(only))
+        elif with_exits and not repeat and data.draw(st.sampled_from([False, True, True])):
             item = data.draw(st.sampled_from(with_exits))  # the delete guard: refused while an exit exists
         else:
             item = self.choose(data, free, items)
@@ -760,10 +782,11 @@ class MoneyMachine(RuleBasedStateMachine):
         r = self.h.call("DELETE", f"/api/assets/{slug}/{item.id}")
         if self.expect(r, want, f"delete {slug}", prefix) >= 400:
             return
-        item.live = False
+        item.live, item.del_day = False, self.h.today
         for f in getattr(item, "fundings", []):
             if f.active:  # the ideal ledger: the refund goes back whether or not the account is deleted
-                self.cash[f.cash_id].bal += f.amount
+                if f.cash_id is not None:  # a purged account: no money moves, only refunded_at is set
+                    self.cash[f.cash_id].bal += f.amount
                 f.active = False
         if repeat:
             self.resend(f"delete {slug}", "DELETE", f"/api/assets/{slug}/{item.id}", (404,))
@@ -786,7 +809,7 @@ class MoneyMachine(RuleBasedStateMachine):
         if not item.live:
             want, bal = (200,), {c.id: c.bal for c in self.cash.values()}
             for f in getattr(item, "fundings", []):
-                if not f.active:
+                if not f.active and f.cash_id is not None:
                     if bal[f.cash_id] < f.amount:
                         want, prefix = (409,), "Not enough in"
                         break
@@ -794,14 +817,119 @@ class MoneyMachine(RuleBasedStateMachine):
         r = self.h.call("POST", f"/api/assets/{slug}/{item.id}/restore")
         if self.expect(r, want, f"restore {slug}", prefix) >= 400:
             return
-        item.live = True
+        item.live, item.del_day = True, None
         for f in getattr(item, "fundings", []):
             if not f.active:
-                self.cash[f.cash_id].bal -= f.amount
+                if f.cash_id is not None:
+                    self.cash[f.cash_id].bal -= f.amount
                 f.active = True
         self.touched = item.key if isinstance(item, HM) else None
         if repeat:
             self.resend(f"restore {slug}", "POST", f"/api/assets/{slug}/{item.id}/restore", (404,))
+
+    # ---- purge (time passes, then the retention clean-up runs) ----------------------------------------
+    @rule(data=st.data())
+    def purge_after(self, data):
+        """Let days pass, then purge (SPEC §4 soft delete, §8b, §8c). The purge measures age against the real
+        wall clock, so before it runs every deleted row is back-dated to the age the harness clock gives it
+        (harness.backdate_deleted; app code is not patched). Past retention (more than 30 days; exactly 30 is
+        kept): the holding is gone for good with its exits, fundings and MF transactions (restore is then 404);
+        a purged cash account is gone and the exits and fundings that pointed at it stay with the link NULL,
+        no balance changes anywhere; everything deleted less than 30 days ago is untouched. The counts the
+        purge returns are the model's. A second run, through the other entry point, removes nothing."""
+        self.purge_run(data, data.draw(st.sampled_from([0, 1, 30, 31, 31, 45])))
+
+    @precondition(
+        lambda self: self.h.today <= LAST_TODAY - timedelta(days=31)
+        and any(e.cash_id in {c.id for c in self.live_cash()} for e in self.exits.values())
+    )
+    @rule(data=st.data())
+    def purge_exit_cash(self, data):
+        """Delete an account an exit paid into, wait past retention, purge: the exit stays with a NULL link."""
+        live = {c.id for c in self.live_cash()}
+        paid = [self.cash[e.cash_id] for e in self.exits.values() if e.cash_id in live]
+        self.do_delete(data, repeat=False, only=paid)
+        self.purge_run(data, 31)
+
+    def purge_run(self, data, days: int):
+        self.h.today +=timedelta(days=min(days, max(0, (LAST_TODAY - self.h.today).days)))
+        today = self.h.today
+        dead = [i for i in self.items() if not i.live]
+        for item in dead:
+            table = TABLES["cash" if isinstance(item, CashM) else item.slug]
+            self.h.backdate_deleted(table, item.id, (today - item.del_day).days)
+        old = [i for i in dead if (today - i.del_day).days > RETENTION_DAYS]
+        old_holds = [i for i in old if isinstance(i, HM)]
+        old_cash = [i for i in old if isinstance(i, CashM)]
+        want = {slug: 0 for slug in ("fd", "rd", "stock", "bond", "mf", "nps", "gold", "cash", "pf", "other")}
+        for i in old:
+            want["cash" if isinstance(i, CashM) else i.slug] += 1
+        want["exits"] = sum(len(hold.exits) for hold in old_holds)
+        want["fundings"] = sum(len(hold.fundings) for hold in old_holds)
+        balances = {c.id: c.bal for c in self.cash.values()}
+        TALLY["purge steps"] += 1
+        if old:
+            TALLY["purge removed something"] += 1
+        if old_cash:
+            TALLY["purge removed a cash account"] += 1
+        if any(f.cash_id in {c.id for c in old_cash} for hold in self.holds.values() for f in hold.fundings):
+            TALLY["purge nulled a funding's cash link"] += 1
+        if any(e.cash_id in {c.id for c in old_cash} for e in self.exits.values()):
+            TALLY["purge nulled an exit's cash link"] += 1
+        if any(hold.slug == "mf" for hold in old_holds):
+            TALLY["purge removed a fund"] += 1
+        if len(dead) > len(old):
+            TALLY["purge kept a recent deletion"] += 1
+
+        first_by_cron = data.draw(st.booleans())
+        counts = self.h.purge(via_cron=first_by_cron)
+        if counts != want:
+            self.fail(f"purge removed {counts}, the model expects {want}")
+
+        # the model after the purge
+        gone_ids = {e for hold in old_holds for e in hold.exits}
+        for e in gone_ids:
+            self.gone.append(e)
+            del self.exits[e]
+        for hold in old_holds:
+            del self.holds[hold.key]
+        for hold in self.holds.values():
+            for f in hold.fundings:
+                if f.from_exit in gone_ids:
+                    f.from_exit = None
+        dead_ids = {c.id for c in old_cash}
+        for c in old_cash:
+            del self.cash[c.id]
+        for e in self.exits.values():
+            if e.cash_id in dead_ids:
+                e.cash_id = None
+        for hold in self.holds.values():
+            for f in hold.fundings:
+                if f.cash_id in dead_ids:
+                    f.cash_id = None
+        if {c.id: c.bal for c in self.cash.values()} != {k: v for k, v in balances.items() if k not in dead_ids}:
+            self.fail("model error: a purge changed a balance")  # no money moves in a purge
+
+        # purged for good: restore, read and delete are 404 and change nothing
+        for item in [*old_holds, *old_cash][:6]:
+            slug = item.slug if isinstance(item, HM) else "cash"
+            self.resend(f"restore purged {slug}", "POST", f"/api/assets/{slug}/{item.id}/restore", (404,))
+            self.resend(f"get purged {slug}", "GET", f"/api/assets/{slug}/{item.id}", (404,))
+            self.resend(f"delete purged {slug}", "DELETE", f"/api/assets/{slug}/{item.id}", (404,))
+        fund_ids = [hold.id for hold in old_holds if hold.slug == "mf"]
+        if fund_ids and self.h.scalar(
+            "SELECT count(*) FROM mf_sips WHERE mutual_fund_id IN (%s)" % ",".join(str(i) for i in fund_ids)
+        ):
+            self.fail("a SIP still points at a purged fund")  # noqa: S608
+
+        # idempotent: the same purge again, through the other entry point, is a no-op
+        before = self.h.snapshot()
+        again = self.h.purge(via_cron=not first_by_cron)
+        if any(again.values()):
+            self.fail(f"the second purge removed {again}")
+        if self.h.snapshot() != before:
+            self.fail("the second purge changed the database")
+        self.touched = None
 
     # ---- SIPs ---------------------------------------------------------------------------------
     @rule(data=st.data())
@@ -1209,9 +1337,9 @@ class MoneyMachine(RuleBasedStateMachine):
                 self.fail(f"orphaned funding on {r.asset_type} {r.holding_id}")
             if (r.refunded_at is None) == deleted[(r.asset_type, r.holding_id)]:
                 self.fail(f"funding on {r.asset_type} {r.holding_id}: refunded_at={r.refunded_at} but deleted={deleted[(r.asset_type, r.holding_id)]}")
-        app_f = sorted((r.asset_type, r.holding_id, r.cash_holding_id, q2(r.amount), r.refunded_at is None, r.from_exit_id or 0) for r in fund_rows)
+        app_f = sorted((r.asset_type, r.holding_id, r.cash_holding_id or 0, q2(r.amount), r.refunded_at is None, r.from_exit_id or 0) for r in fund_rows)
         model_f = sorted(
-            (hold.slug, hold.id, f.cash_id, f.amount, f.active, f.from_exit or 0)
+            (hold.slug, hold.id, f.cash_id or 0, f.amount, f.active, f.from_exit or 0)
             for hold in self.holds.values() for f in hold.fundings
         )
         if app_f != model_f:
@@ -1250,6 +1378,11 @@ class MoneyMachine(RuleBasedStateMachine):
                 late = [t for t in ts if t.kind == "purchase" and t.txn_date > f.closed_on]
                 if late:
                     self.fail(f"fund {fid} closed on {f.closed_on} has a purchase dated {late[0].txn_date}")
+        if h.scalar(
+            "SELECT count(*) FROM mf_transactions t LEFT JOIN mutual_funds f ON f.id = t.mutual_fund_id "
+            "WHERE f.id IS NULL"
+        ):
+            self.fail("a transaction of a fund that no longer exists (purge must take them along)")
         sip_rows = h.rows("SELECT id, mutual_fund_id, status FROM mf_sips WHERE user_id = :u", u=u)
         if {s.id for s in sip_rows} != set(self.sips):
             self.fail(f"SIPs differ: app {sorted(s.id for s in sip_rows)} model {sorted(self.sips)}")
