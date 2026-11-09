@@ -149,6 +149,32 @@ def test_partial_mf_sale_splits_by_fifo(gc, users):
     assert round(first["gain"] + second["gain"], 2) == 1800
 
 
+def test_edited_fund_partial_sale_keeps_real_lot_dates(gc, users):
+    a, a_id, _, _ = users
+    fund_id = add(gc, a, "mf", FUND)
+    with gc.factory() as s:
+        s.add(MFTransaction(mutual_fund_id=fund_id, txn_date=date(2023, 1, 10), kind="purchase", units=D(60), amount=D(2000)))
+        s.add(MFTransaction(mutual_fund_id=fund_id, txn_date=date(2025, 6, 1), kind="purchase", units=D(40), amount=D(2000)))
+        red = MFTransaction(mutual_fund_id=fund_id, txn_date=date(2025, 12, 1), kind="redemption", units=D(80), amount=D(4800))
+        s.add(red)
+        s.commit()
+        red_id = red.id
+    body = {**FUND, "invested_amount": 6000, "avg_nav": 60}
+    r = gc.put(f"/api/assets/mf/{fund_id}", json=body, headers=a)
+    assert r.status_code == 200, r.json()
+    put_exit(
+        gc, a_id, "mf", fund_id, date(2025, 12, 1), D("4800"), D("4800"), quantity=80,
+        mf_transaction_id=red_id,
+    )  # fmt: skip  (pro rata of the edited 6,000: 80/100)
+    sale = get(gc, a, 2025).json()["sales"][0]
+    first, second = sale["lots"]
+    assert (first["bought_on"], first["quantity"], first["term"]) == ("2023-01-10", 60, "long")
+    assert (second["bought_on"], second["quantity"], second["term"]) == ("2025-06-01", 20, "short")
+    # FIFO costs 2,000 and 1,000 are scaled to the exit cost of 4,800
+    assert (first["cost"], second["cost"]) == (3200, 1600)
+    assert sale["gain"] == 0
+
+
 def bond(c, headers, name, master_id=2, **fields):
     """A bond (10 x 1,000 face, 10,000 invested, bought 2025-01-01) linked to a bond_master row."""
     body = {**BOND, "name": name, **fields}

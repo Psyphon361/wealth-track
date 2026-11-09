@@ -12,9 +12,12 @@ Lots: a sale of a stock, bond, gold or Other holding is one lot. A fund sale is 
 the fund's transactions (same rule as exits.fifo_cost: oldest purchases first, earlier
 redemptions consume first; purchases before redemptions on the same day, then id) into the lots
 that redemption consumed. Proceeds (the exit amount, after charges) are split by units, the last
-lot taking the rounding remainder. When the redemption is not found, or the FIFO cost differs
-from the exit cost by more than 1.00, the sale is one lot at the holding's purchase date with
-the exit cost.
+lot taking the rounding remainder. When the FIFO cost differs from the exit cost by more than 1.00
+(an edited invested amount sold pro rata, or changed transactions) and the lots' units add up to
+the sale quantity, the lots keep their dates and units and their costs are scaled to sum exactly
+to the exit cost (cumulative rounding, proceeds split by units the same way); the total gain is
+unchanged. When the redemption is not found, or those units do not add up, the sale is one lot at
+the holding's purchase date with the exit cost.
 
 Term: a lot is long term when it is sold AFTER buy date + N months (month-end clamped). Cut-off
 date 23 Jul 2024 (sold on or after it, new rates):
@@ -334,8 +337,37 @@ def split_lots(sale: SaleInput) -> list[dict[str, Any]]:
         return single
     total_units = sum((u for _, u, _ in taken), _ZERO)
     total_cost = sum((c for _, _, c in taken), _ZERO)
-    if total_units <= 0 or abs(money(total_cost) - cost) > FIFO_TOLERANCE:
+    if total_units <= 0:
         return single
+    if abs(money(total_cost) - cost) > FIFO_TOLERANCE:
+        # The exit cost is not the FIFO cost (an edited invested amount, changed transactions):
+        # keep the real lots (dates, units) and scale their costs to the exit cost.
+        if total_cost <= 0 or sale.quantity is None or abs(total_units - sale.quantity) > Decimal("0.01"):
+            return single
+        scaled: list[dict[str, Any]] = []
+        cum_cost = _ZERO
+        cum_proceeds = _ZERO
+        cum_units = _ZERO
+        cum_fifo = _ZERO
+        prev_cost = _ZERO
+        prev_proceeds = _ZERO
+        for i, (bought, units, lot_cost) in enumerate(taken):
+            cum_units += units
+            cum_fifo += lot_cost
+            last = i == len(taken) - 1
+            cum_cost = cost if last else money(cost * cum_fifo / total_cost)
+            cum_proceeds = proceeds if last else money(proceeds * cum_units / total_units)
+            scaled.append(
+                {
+                    "bought_on": bought,
+                    "quantity": units.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP),
+                    "cost": cum_cost - prev_cost,
+                    "proceeds": cum_proceeds - prev_proceeds,
+                }
+            )
+            prev_cost = cum_cost
+            prev_proceeds = cum_proceeds
+        return scaled
     lots: list[dict[str, Any]] = []
     given = _ZERO
     cost_given = _ZERO

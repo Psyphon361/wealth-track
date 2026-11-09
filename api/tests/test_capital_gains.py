@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -244,14 +245,69 @@ def test_mf_lot_gains_sum_to_sale_gain():
     assert sum(l["proceeds"] - l["cost"] for l in lots) == D("411.11") - D("300.20")
 
 
-def test_mf_fifo_mismatch_falls_back():
+def test_mf_fifo_mismatch_scales_the_lot_costs():
     s = mf_sale(cost="2500", proceeds="4500")  # FIFO says 2000
     lots = cg.build_sale(s)["lots"]
-    assert len(lots) == 1
-    assert lots[0]["bought_on"] == date(2023, 1, 10)
-    assert lots[0]["cost"] == D("2500.00") and lots[0]["gain"] == D("2000.00")
+    assert [l["bought_on"] for l in lots] == [date(2023, 1, 10), date(2024, 6, 10)]
+    assert [l["quantity"] for l in lots] == [D(10), D(5)]
+    assert [l["cost"] for l in lots] == [D("1250.00"), D("1250.00")]
+    assert [l["proceeds"] for l in lots] == [D("3000.00"), D("1500.00")]
+    assert sum(l["gain"] for l in lots) == D("2000.00")
     # within 1.00 tolerance keeps FIFO
-    assert len(cg.build_sale(mf_sale(cost="2000.80", proceeds="4500"))["lots"]) == 2
+    near = cg.build_sale(mf_sale(cost="2000.80", proceeds="4500"))["lots"]
+    assert [l["cost"] for l in near] == [D("1000.00"), D("1000.80")]
+
+
+def test_mf_scaled_three_lots_keep_short_and_long_terms():
+    txns = [
+        MfTxn(1, date(2023, 1, 10), "purchase", D(10), D(1000)),
+        MfTxn(2, date(2024, 3, 10), "purchase", D(10), D(1000)),
+        MfTxn(3, date(2024, 12, 20), "purchase", D(10), D(1000)),
+        MfTxn(9, date(2025, 1, 10), "redemption", D(30), D(6000)),
+    ]
+    s = mf_sale(cost="4000", proceeds="6000", txns=txns)
+    s = replace(s, quantity=D(30))
+    lots = cg.build_sale(s)["lots"]
+    assert [l["term"] for l in lots] == ["long", "short", "short"]
+    assert [l["bought_on"] for l in lots] == [date(2023, 1, 10), date(2024, 3, 10), date(2024, 12, 20)]
+    assert [l["cost"] for l in lots] == [D("1333.33"), D("1333.34"), D("1333.33")]
+    assert sum(l["cost"] for l in lots) == D("4000.00")
+    assert sum(l["proceeds"] for l in lots) == D("6000.00")
+
+
+def test_mf_scaled_needs_units_that_add_up():
+    s = mf_sale(cost="2500", proceeds="4500")
+    off = replace(s, quantity=D(14))
+    lots = cg.split_lots(off)
+    assert len(lots) == 1 and lots[0]["bought_on"] == date(2023, 1, 10) and lots[0]["cost"] == D("2500.00")
+
+
+def test_mf_scaled_property():
+    from hypothesis import assume, given
+    from hypothesis import strategies as st
+
+    units = st.integers(1, 5000).map(lambda n: D(n) / 100)
+    amounts = st.integers(1, 10_000_000).map(lambda n: D(n) / 100)
+    cents = st.integers(0, 100_000_000).map(lambda n: D(n) / 100)
+
+    @given(st.lists(st.tuples(units, amounts), min_size=1, max_size=6), cents, cents)
+    def check(rows, cost, proceeds):
+        assume(abs(sum((a for _, a in rows), D(0)) - cost) > 2)  # the scaled path
+        txns = [
+            MfTxn(i + 1, date(2020 + i // 2, 1 + 5 * (i % 2), 1), "purchase", u, a)
+            for i, (u, a) in enumerate(rows)
+        ]
+        total = sum((u for u, _ in rows), D(0))
+        txns.append(MfTxn(99, date(2025, 6, 1), "redemption", total, proceeds))
+        s = replace(mf_sale(cost=str(cost), proceeds=str(proceeds), txns=txns, redemption_id=99), quantity=total)
+        lots = cg.split_lots(s)
+        assert len(lots) == len(rows)
+        assert all(l["cost"] >= 0 and l["proceeds"] >= 0 for l in lots)
+        assert sum(l["cost"] for l in lots) == cost
+        assert sum(l["proceeds"] for l in lots) == proceeds
+        assert sum(l["quantity"] for l in lots) == total
+
+    check()
 
 
 def test_mf_missing_redemption_falls_back():
