@@ -25,6 +25,13 @@ invested; sell-then-undo restores quantity/units/weight, invested and closed_on 
 PUT of the same body returns 200 (409 for a closed holding); the row-derived ledger formula
 (initial + exits - fundings) as a secondary check.
 
+Asset types: fd, rd, stock, bond, mf, nps, gold, pf, other (plus cash accounts) are added, edited, deleted, restored
+and purged. Sell: stock, bond, mf, gold, other. Settle (matured only): fd, rd, bond. An RD's invested amount is its
+monthly instalment times the instalments paid on the harness clock (it grows as days pass; the Paid From amount is
+that figure at creation). Editing RD, NPS and EPF & PPF (rule edit_running) moves no money and leaves the funding as
+it was; editing the cost of the other types moves the account (rule edit_funded). NPS needs the seeded scheme master
+(world.py; NAV only after the market rule ran, else valued at contributed).
+
 Purge and time: rules let days pass and run the purge (service or /api/cron/purge); deleted rows are
 back-dated to the age the harness clock gives them. The model predicts the counts, that rows past 30
 days go with their exits, fundings and MF transactions, that links to a purged cash account become
@@ -47,14 +54,18 @@ from hypothesis import event
 from hypothesis.stateful import RuleBasedStateMachine, invariant, precondition, rule
 
 from tests.stateful.world import (
-    LAST_TODAY, SCHEME, START_TODAY, Harness, d, from_cents, from_milli, q2, q3, reason, sx,
+    LAST_TODAY, SCHEME, START_TODAY, Harness, d, from_cents, from_milli, q2, q3, rd_count, reason, sx,
 )  # fmt: skip
 
 SELLABLE = ("stock", "bond", "mf", "gold", "other")
-ADD_SLUGS = ("fd", "stock", "bond", "mf", "gold", "other")
+SETTLEABLE = ("fd", "rd", "bond")  # SPEC §8b: a matured deposit or bond is settled; nps and pf have no exits
+ADD_SLUGS = ("fd", "rd", "stock", "bond", "mf", "nps", "gold", "pf", "other")
+ADJ_SLUGS = ("fd", "stock", "bond", "mf", "gold", "other")  # a cost edit moves money (SPEC §8c "Edit")
+RUNNING_SLUGS = ("rd", "nps", "pf")  # a cost edit moves NO money and the funding keeps its amount
 TABLES = {
-    "fd": "fixed_deposits", "stock": "stocks", "bond": "bonds", "mf": "mutual_funds",
-    "gold": "gold_holdings", "other": "other_holdings", "cash": "cash_holdings",
+    "fd": "fixed_deposits", "rd": "recurring_deposits", "stock": "stocks", "bond": "bonds",
+    "mf": "mutual_funds", "nps": "nps_holdings", "gold": "gold_holdings", "pf": "pf_holdings",
+    "other": "other_holdings", "cash": "cash_holdings",
 }  # fmt: skip
 ZERO = Decimal("0")
 CENT = Decimal("0.01")
@@ -103,6 +114,11 @@ class HM:
     settled: bool = False
     cost_edited: bool = False  # a PUT changed the cost: a fund's cost no longer equals its transactions
     invested0: Decimal = ZERO
+    monthly: Decimal | None = None  # rd: the monthly instalment
+    months: int = 0  # rd: tenure in months (the number of instalments a full term pays)
+    bal: Decimal | None = None  # pf: balance, interest rate and balance date (invested = contributed or current)
+    rate: Decimal | None = None
+    bdate: date | None = None
     exits: list[int] = field(default_factory=list)
     fundings: list[FundM] = field(default_factory=list)
 
@@ -344,6 +360,66 @@ class MoneyMachine(RuleBasedStateMachine):
             hold = HM("gold", 0, from_milli(milli), invested, date(2025, 1, 1), metal=metal)
             hold.invested0 = invested
             return body, hold, invested
+        if slug == "rd":
+            today = self.h.today
+            # (start, tenure years, tenure months, matured): the matured ones ended long before the machine's
+            # clock; the others run for years, from a month ago or from this day of the month
+            start, years, months, matured = draw(st.sampled_from([
+                (date(2023, 1, 1), 1, 0, True), (date(2025, 1, 1), 0, 6, True),
+                (START_TODAY - timedelta(days=30), 5, 0, False),
+                (START_TODAY - timedelta(days=30), 5, 0, False),
+                (date(today.year, today.month, min(today.day, 28)), 5, 0, False),
+            ]))  # fmt: skip
+            total = years * 12 + months
+            count = rd_count(start, total, today)
+            if forced and forced % count == 0:
+                cents = forced // count  # exactly the balance (or one cent over): the edge cases
+            elif forced:
+                cents = draw(st.integers(1, max(1, forced // count)))
+            else:
+                cents = draw(st.integers(100, 50_000))
+            monthly = from_cents(cents)
+            body = {
+                "bank": self.name("RD Bank"), "monthly_instalment": sx(monthly), "rate": 7,
+                "start_date": start.isoformat(), "compounding": "quarterly",
+                "tenure_years": years, "tenure_months": months,
+            }  # fmt: skip
+            hold = HM("rd", 0, None, None, start, matured=matured, monthly=monthly, months=total)
+            return body, hold, q2(monthly * count)
+        if slug == "nps":
+            units = from_cents(draw(st.integers(1_000, 500_000))).scaleb(-2)  # 4 dp: 0.1 .. 500
+            cents = forced or draw(st.integers(100, 3_000_000))
+            # a start date no other holding has: two holdings of one scheme and day are a duplicate warning
+            start = date(2015, 1, 1) + timedelta(days=self.n + 1)
+            self.name("NPS")
+            body = {
+                "scheme_id": draw(st.sampled_from(self.h.nps_schemes)), "units": sx(units),
+                "contributed": sx(from_cents(cents)), "start_date": start.isoformat(),
+            }  # fmt: skip
+            hold = HM("nps", 0, units, from_cents(cents), start)
+            hold.invested0 = from_cents(cents)
+            return body, hold, from_cents(cents)
+        if slug == "pf":
+            kind = draw(st.sampled_from(["epf", "vpf", "ppf"]))
+            has_contributed = draw(st.sampled_from([True, True, False]))
+            balance_cents = draw(st.integers(100, 5_000_000))
+            contributed_cents = draw(st.integers(100, 3_000_000))
+            if forced and has_contributed:
+                contributed_cents = forced
+            elif forced:
+                balance_cents = forced
+            rate = Decimal(draw(st.sampled_from(["7.1", "8.25", "8.15"])))
+            body = {
+                "name": self.name("PF"), "kind": kind, "balance": sx(from_cents(balance_cents)),
+                "balance_date": "2026-01-01", "interest_rate": sx(rate),
+                "contributed": sx(from_cents(contributed_cents)) if has_contributed else None,
+                "opened_on": draw(st.sampled_from(["2005-04-01", "2015-04-01"])) if kind == "ppf" else None,
+            }  # fmt: skip
+            contributed = from_cents(contributed_cents) if has_contributed else None
+            hold = HM("pf", 0, None, contributed, date(2026, 1, 1), bal=from_cents(balance_cents), rate=rate,
+                      bdate=date(2026, 1, 1))  # fmt: skip
+            hold.invested0 = contributed or ZERO
+            return body, hold, contributed if contributed is not None else from_cents(balance_cents)
         # other
         has_invested = bool(forced) or draw(st.sampled_from([True, True, True, False]))
         cents = forced or draw(st.integers(100, 5_000_000))
@@ -491,7 +567,7 @@ class MoneyMachine(RuleBasedStateMachine):
             body["invested_amount"] = sx(cost)
         return body, cost
 
-    @precondition(lambda self: bool(self.holds_of(*ADD_SLUGS)))
+    @precondition(lambda self: bool(self.holds_of(*ADJ_SLUGS)))
     @rule(data=st.data())
     def edit_funded(self, data):
         """PUT a new cost for a holding (mostly one bought with Paid From): SPEC §8c "Edit". The model applies
@@ -513,10 +589,10 @@ class MoneyMachine(RuleBasedStateMachine):
 
         self.refresh_mf()  # SIP posting changes a fund's cost behind the funding's back
         open_funded = [
-            h for h in self.holds_of(*ADD_SLUGS, live=True)
+            h for h in self.holds_of(*ADJ_SLUGS, live=True)
             if any(f.active for f in h.fundings) and not h.closed and not h.settled
         ]  # fmt: skip
-        hold = self.choose(data, open_funded, self.holds_of(*ADD_SLUGS))
+        hold = self.choose(data, open_funded, self.holds_of(*ADJ_SLUGS))
         slug = hold.slug
         funding = next((f for f in hold.fundings if f.active), None) if hold.live else None
         cash = self.cash.get(funding.cash_id) if funding and funding.cash_id is not None else None
@@ -613,6 +689,64 @@ class MoneyMachine(RuleBasedStateMachine):
             else:
                 hold.invested = new
                 hold.invested0 = new if new is not None else ZERO
+        self.touched = hold.key
+
+    @precondition(lambda self: bool(self.holds_of(*RUNNING_SLUGS)))
+    @rule(data=st.data())
+    def edit_running(self, data):
+        """PUT new values for an RD, NPS or EPF/PPF holding (SPEC §8c "Edit": their amount is a running figure, so
+        an edit moves NO money, takes no funding lock and leaves the funding as it was, also when the new cost
+        no longer matches what was paid; the description carries no account note). 404 when deleted, 409 once an
+        RD is settled (RD, NPS and PF have no partial sales, so no sold-in-part guard). The invariants then check
+        that no balance moved and every funding is the model's."""
+        from app.routers.assets import REGISTRY
+
+        open_ = [h for h in self.holds_of(*RUNNING_SLUGS, live=True) if not h.settled]
+        paid = [h for h in open_ if any(f.active for f in h.fundings)]  # the ones that matter most: Paid From
+        hold = self.choose(data, paid if paid and data.draw(st.booleans()) else open_, self.holds_of(*RUNNING_SLUGS))
+        slug = hold.slug
+        if hold.live:
+            got = self.h.call("GET", f"/api/assets/{slug}/{hold.id}")
+            if got.status_code != 200:
+                self.fail(f"edit {slug}: GET -> {got.status_code}")
+            fields = REGISTRY[slug][1].model_fields
+            body = {k: v for k, v in got.json().items() if k in fields}
+        else:
+            body = self.build(data, slug)[0]  # any valid body: a deleted holding is 404
+        new: dict = {}
+        if data.draw(st.sampled_from(["change", "change", "change", "same"])) == "same":
+            body["notes"] = "edited"
+        elif slug == "rd":
+            new["monthly"] = from_cents(data.draw(st.integers(100, 200_000)))
+            body["monthly_instalment"] = sx(new["monthly"])
+            body["rate"] = data.draw(st.sampled_from([6, 7, 9]))
+        elif slug == "nps":
+            new["units"] = from_cents(data.draw(st.integers(1_000, 500_000))).scaleb(-2)
+            new["invested"] = from_cents(data.draw(st.integers(100, 3_000_000)))
+            body["units"], body["contributed"] = sx(new["units"]), sx(new["invested"])
+        else:  # pf
+            new["bal"] = from_cents(data.draw(st.integers(100, 5_000_000)))
+            new["invested"] = from_cents(data.draw(st.integers(100, 3_000_000))) if data.draw(st.booleans()) else None
+            new["rate"] = Decimal(data.draw(st.sampled_from(["7.1", "8.25", "8.15"])))
+            body["balance"], body["interest_rate"] = sx(new["bal"]), sx(new["rate"])
+            body["contributed"] = sx(new["invested"]) if new["invested"] is not None else None
+        want = 404 if not hold.live else 409 if hold.settled else 200
+        funded = any(f.active for f in hold.fundings)
+        r = self.h.call("PUT", f"/api/assets/{slug}/{hold.id}", json=body)
+        if self.expect(r, (want,), f"edit running {slug}") >= 400:
+            return
+        if " · " in (r.json().get("description") or ""):
+            self.fail(f"edit {slug}: description {r.json().get('description')!r} has an account note, none expected")
+        if "monthly" in new:
+            hold.monthly = new["monthly"]
+        if "units" in new:
+            hold.qty = new["units"]
+        if "invested" in new:
+            hold.invested = new["invested"]
+            hold.invested0 = new["invested"] or ZERO
+        if slug == "pf" and new:
+            hold.bal, hold.rate = new["bal"], new["rate"]
+        TALLY[f"edit running {slug}: {'changed' if new else 'unchanged'}{', paid from an account' if funded else ''}"] += 1
         self.touched = hold.key
 
     # ---- sell ---------------------------------------------------------------------------------
@@ -768,20 +902,20 @@ class MoneyMachine(RuleBasedStateMachine):
             self.resend(f"sell {slug}", "POST", f"/api/holdings/{slug}/{hold.id}/sell", (409,), json=body)
 
     # ---- settle -------------------------------------------------------------------------------
-    @precondition(lambda self: bool(self.holds_of("fd", "bond")))
+    @precondition(lambda self: bool(self.holds_of(*SETTLEABLE)))
     @rule(data=st.data())
     def settle(self, data):
         self.do_settle(data, repeat=False)
 
-    @precondition(lambda self: bool(self.holds_of("fd", "bond")))
+    @precondition(lambda self: bool(self.holds_of(*SETTLEABLE)))
     @rule(data=st.data())
     def settle_twice(self, data):
         """Double submit: a settlement, then the same request again (409: already settled)."""
         self.do_settle(data, repeat=True)
 
     def do_settle(self, data, repeat: bool):
-        good = [h for h in self.holds_of("fd", "bond", live=True) if h.matured and not h.settled]
-        hold = self.choose(data, good, self.holds_of("fd", "bond"))
+        good = [h for h in self.holds_of(*SETTLEABLE, live=True) if h.matured and not h.settled]
+        hold = self.choose(data, good, self.holds_of(*SETTLEABLE))
         dest, cash, how = self.pick_dest(data)
         explicit = data.draw(st.sampled_from([True, True, True, False]))
         body: dict = {"destination": dest}
@@ -1224,7 +1358,7 @@ class MoneyMachine(RuleBasedStateMachine):
         is then 409 listing the first holding and changes nothing (also no second Paid From debit; when the
         account can no longer afford it, the funding check comes first and says 422 instead). The same
         request with confirm_duplicate=true then adds a second holding (the documented 'Add anyway')."""
-        slug = data.draw(st.sampled_from(["cash", "fd", "stock", "bond", "other"]))
+        slug = data.draw(st.sampled_from(["cash", "fd", "rd", "stock", "bond", "nps", "pf", "other"]))
         if slug == "cash":
             if len(self.cash) >= 4:
                 return
@@ -1264,12 +1398,48 @@ class MoneyMachine(RuleBasedStateMachine):
         if data.draw(st.booleans()):
             self.create(slug, body, template, amount, cash, confirm=True)
 
+    @rule(data=st.data())
+    def add_rules_of_new_types(self, data):
+        """Creates the API refuses or reshapes without any effect on money: a PPF without an opening date is 422
+        (SPEC §2), an unknown NPS scheme is 422 "Choose a scheme", and an EPF or VPF given an opening date is saved
+        with none (the date belongs to a PPF only). A refused create, even with Paid From, changes no row."""
+        from app.schemas.assets import NPS_SCHEME_ERROR, PPF_OPENED_ERROR
+
+        if not data.draw(st.sampled_from([True, False, False, False])):
+            return  # a side check: keep it occasional so the valid share stays healthy
+        which =data.draw(st.sampled_from(["ppf", "scheme", "opened"]))
+        pool = self.live_cash()
+        paid = {"cash_id": data.draw(st.sampled_from(pool)).id} if pool and data.draw(st.booleans()) else None
+        extra = {"paid_from": paid} if paid else {}
+        if which == "opened":
+            body, hold, amount = self.build(data, "pf")
+            body["kind"], body["opened_on"] = data.draw(st.sampled_from(["epf", "vpf"])), "2015-04-01"
+            cash = self.cash[paid["cash_id"]] if paid else None
+            if self.create("pf", body, hold, amount, cash)[0] < 400:
+                got = self.h.call("GET", f"/api/assets/pf/{hold.id}")
+                if got.status_code != 200 or got.json()["opened_on"] is not None:
+                    self.fail(f"an {body['kind']} kept its opening date: {got.text[:200]}")
+            return
+        if which == "ppf":
+            body = self.build(data, "pf")[0]
+            body["kind"], body["opened_on"] = "ppf", None
+            slug, prefix = "pf", PPF_OPENED_ERROR
+        else:
+            body = self.build(data, "nps")[0]
+            body["scheme_id"] = "NOSUCHSCHEME"
+            slug, prefix = "nps", NPS_SCHEME_ERROR
+        before = self.h.snapshot()
+        r = self.h.call("POST", f"/api/assets/{slug}", params={"confirm_duplicate": "true"}, json={**body, **extra})
+        self.expect(r, (422,), f"add {slug} (invalid)", prefix)
+        if self.h.snapshot() != before:
+            self.fail(f"a refused {slug} create changed the database")
+
     # ---- the second user -----------------------------------------------------------------------
     @precondition(lambda self: len(self.u2cash) + len(self.u2hold) < 6)
     @rule(data=st.data())
     def u2_add(self, data):
-        """The second user adds a cash account, an Other holding (with an amount invested) or a stock."""
-        kind = data.draw(st.sampled_from(["cash", "other", "stock", "stock"]))
+        """The second user adds a cash account, an Other holding (with an amount invested), a stock, an NPS or an EPF."""
+        kind = data.draw(st.sampled_from(["cash", "other", "stock", "stock", "nps", "pf"]))
         cents = data.draw(st.integers(100, 2_000_000))
         if kind == "cash":
             body = {
@@ -1280,6 +1450,16 @@ class MoneyMachine(RuleBasedStateMachine):
             body = {
                 "name": self.name("U2 plot"), "category": "Property", "current_value": 80000,
                 "value_date": "2026-01-01", "invested_amount": sx(from_cents(cents)), "acquired_on": None,
+            }  # fmt: skip
+        elif kind == "nps":
+            body = {
+                "scheme_id": data.draw(st.sampled_from(self.h.nps_schemes)), "units": "12.5000",
+                "contributed": sx(from_cents(cents)), "start_date": "2024-01-01",
+            }  # fmt: skip
+        elif kind == "pf":
+            body = {
+                "name": self.name("U2 pf"), "kind": "epf", "balance": "50000.00", "balance_date": "2026-01-01",
+                "interest_rate": 8.25, "contributed": sx(from_cents(cents)),
             }  # fmt: skip
         else:
             qty = data.draw(st.integers(2, 30))
@@ -1293,8 +1473,8 @@ class MoneyMachine(RuleBasedStateMachine):
         new = r.json()["id"]
         if kind == "cash":
             self.u2cash[new] = from_cents(cents)
-        elif kind == "other":
-            self.u2hold.append(("other", new, from_cents(cents), None))
+        elif kind in ("other", "nps", "pf"):
+            self.u2hold.append((kind, new, from_cents(cents), None))
         else:
             self.u2hold.append(("stock", new, q2(body["quantity"] * from_cents(cents)), Decimal(body["quantity"])))
 
@@ -1327,7 +1507,7 @@ class MoneyMachine(RuleBasedStateMachine):
                 body = {**sale, "amount": "10.00"} if slug == "other" else {**sale, "quantity": 1}
                 body = {k: v for k, v in body.items() if not (slug == "other" and k in ("price", "quantity"))}
                 cases.append((f"sell {slug}", "POST", f"/api/holdings/{slug}/{item.id}/sell", {"json": body}, 404, None, 2))
-            if slug in ("fd", "bond"):
+            if slug in SETTLEABLE:
                 cases.append((f"settle {slug}", "POST", f"/api/holdings/{slug}/{item.id}/settle",
                               {"json": {"destination": {"kind": "none"}}}, 404, None, 2))  # fmt: skip
             if slug == "cash":
@@ -1409,6 +1589,13 @@ class MoneyMachine(RuleBasedStateMachine):
         TALLY["market mf nav"] += 1
 
     @rule(data=st.data())
+    def set_nps_nav(self, data):
+        scheme = data.draw(st.sampled_from(self.h.nps_schemes))
+        nav = from_cents(data.draw(st.integers(1_000, 20_000))).quantize(Decimal("0.0001"))
+        self.h.set_nps_nav(scheme, nav, self.h.today - timedelta(days=data.draw(st.sampled_from([0, 0, 1, 3]))))
+        TALLY["market nps nav"] += 1
+
+    @rule(data=st.data())
     def set_metal_rate(self, data):
         metal = data.draw(st.sampled_from(["gold", "silver"]))
         rate = from_cents(data.draw(st.integers(500, 1_500_000)))
@@ -1451,7 +1638,7 @@ class MoneyMachine(RuleBasedStateMachine):
 
         # holdings
         deleted: dict[tuple[str, int], bool] = {}
-        for slug in ("fd", "stock", "bond", "mf", "gold", "other"):
+        for slug in ("fd", "rd", "stock", "bond", "mf", "nps", "gold", "pf", "other"):
             ids = {}
             for r in h.rows(f"SELECT id, deleted_at FROM {TABLES[slug]} WHERE user_id = :u", u=u):  # noqa: S608
                 ids[r.id] = r.deleted_at is not None

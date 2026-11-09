@@ -1,6 +1,6 @@
 """The money-conservation state machine on real Postgres (small budget).
 
-Same machine as tests/stateful (see tests/stateful/machine.py), run against the throwaway local
+Same machine as tests/stateful (see tests/stateful/machine.py; all ten asset types, incl. RD, NPS and EPF & PPF), run against the throwaway local
 `wt_test_*` database of the `pg_app` fixture. It adds what SQLite cannot: foreign keys and their
 ON DELETE actions, CHECK and partial unique indexes as Postgres enforces them, and Numeric
 columns that come back as Decimal. The machine's purge rules run here too, so the cascades and

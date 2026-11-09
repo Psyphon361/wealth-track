@@ -14,6 +14,10 @@ and GET /api/holdings/{slug} (every page) for each type it has created, and chec
      drifts hidden by it are pinned in tests/test_networth_today_agreement.py.
  (c) the cash total is the model's live balances, on every endpoint.
 
+All ten types are read. An RD's invested amount follows the clock (monthly instalment x instalments paid, counted
+independently in world.rd_count), an EPF/PPF without a contributed amount is invested at its current value
+(world.pf_current), and matured RDs are listed like matured FDs and bonds.
+
 Tolerance: n x 0.005 for n summed rows (each row is rounded to the cent on its own).
 """
 
@@ -22,11 +26,12 @@ from __future__ import annotations
 import os
 from decimal import Decimal
 
-from tests.stateful.world import d
+from tests.stateful.world import d, pf_current, q2, rd_count
 
 HALF_CENT = Decimal("0.005")
 ALL_SLUGS = ("fd", "rd", "stock", "bond", "mf", "nps", "gold", "cash", "pf", "other")
-GRID_SLUGS = ("fd", "stock", "bond", "mf", "gold", "other", "cash")
+GRID_SLUGS = ("fd", "rd", "stock", "bond", "mf", "nps", "gold", "pf", "other", "cash")
+SETTLEABLE = ("fd", "rd", "bond")
 OTHER_CURRENT = Decimal("80000.00")  # the machine's Other holdings: current value 80000
 # Run the full check after every Nth invariant run, and always at the end of a run (teardown). One
 # check is ~30 ms (about 10 requests); at 1 the SQLite machine took 85 s, at 5 it stays near 25 s.
@@ -36,12 +41,18 @@ EVERY = int(os.environ.get("STATEFUL_READ_EVERY", "5"))
 
 def counted(h) -> bool:
     """Is the holding in the active totals? (sold-out, settled and matured ones are not)"""
-    return h.live and not h.closed and not h.settled and not (h.slug in ("fd", "bond") and h.matured)
+    return h.live and not h.closed and not h.settled and not (h.slug in SETTLEABLE and h.matured)
 
 
-def model_invested(h) -> Decimal:
+def model_invested(h, today) -> Decimal:
+    """What the machine expects as the holding's invested amount today. An RD pays one instalment a month
+    (its count follows the clock); an EPF/PPF with no contributed amount is invested at its current value."""
     if h.slug == "fd":
         return h.invested0
+    if h.slug == "rd":
+        return q2(h.monthly * rd_count(h.start, h.months, today))
+    if h.slug == "pf" and h.invested is None:
+        return q2(pf_current(h.bal, h.rate, h.bdate, today))
     if h.slug == "stock":
         return h.inv()
     if h.slug == "other":
@@ -139,9 +150,9 @@ def check_reads(m, force: bool = False) -> None:
             live = [h for h in m.holds.values() if h.slug == slug and h.live]
             want_ids = {h.id for h in live}
             active_ids = {h.id for h in live if counted(h)}
-            want_invested = sum((model_invested(h) for h in live if counted(h)), Decimal(0))
+            want_invested = sum((model_invested(h, m.h.today) for h in live if counted(h)), Decimal(0))
             unsettled_model |= {
-                (slug, h.id) for h in live if slug in ("fd", "bond") and h.matured and not h.settled
+                (slug, h.id) for h in live if slug in SETTLEABLE and h.matured and not h.settled
             }
         n = len(active_ids)
 
@@ -159,7 +170,7 @@ def check_reads(m, force: bool = False) -> None:
         else:
             for h in live:
                 if counted(h):
-                    near(m, f"{slug} {h.id} invested in the portfolio", items[h.id]["invested"], model_invested(h))
+                    near(m, f"{slug} {h.id} invested in the portfolio", items[h.id]["invested"], model_invested(h, m.h.today))
         active_items = [i for i in group["items"] if i["status"] == "active"]
         near(m, f"{slug} portfolio invested total", group["totals"]["invested"], want_invested, n)
         if group["count"] != n:
@@ -191,7 +202,7 @@ def check_reads(m, force: bool = False) -> None:
             near(m, f"{slug} grid summary invested vs the model", summary["invested"], want_invested, n)
             if summary["count"] != n:
                 m.fail(f"read oracle: {slug} grid count {summary['count']} != model {n}")
-            priced = [i for i in active_items if slug in ("stock", "mf", "gold") and d(i["current_value"]) != d(i["invested"])]
+            priced = [i for i in active_items if slug in ("stock", "mf", "nps", "gold") and d(i["current_value"]) != d(i["invested"])]
             if priced:
                 TALLY[f"read: {slug} valued away from invested"] += 1
 

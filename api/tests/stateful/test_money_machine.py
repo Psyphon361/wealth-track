@@ -1,6 +1,7 @@
 """Stateful money-conservation test on SQLite (no network, no real database).
 
-Hypothesis drives random sequences of API calls (add cash and holdings, Paid From, sell, settle,
+Hypothesis drives random sequences of API calls (add cash and holdings of all ten asset types (fd, rd, stock, bond, mf,
+nps, gold, cash, pf, other), Paid From, edits of RD/NPS/EPF & PPF that move no money, settling matured FDs, RDs and bonds, sell, settle,
 undo, reinvest, delete and restore of holdings and cash accounts, PUT of a balance, PUT of the cost of a Paid From holding (the account moves by the difference), SIPs, the
 clock, the purge after the retention period, a second user's holdings and calls with user 1's ids, and double submits) against the real app on an in-memory SQLite database, and checks the machine's own ledger
 after every step (see tests/stateful/machine.py).

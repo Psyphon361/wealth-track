@@ -17,7 +17,8 @@ take their `date` from `FROZEN_DATE_MODULES`, whose `date.today()` is `harness.t
 real wall clock affects no value. Market data (a stock price, the MF latest NAV, a gold or silver
 rate; latest and history rows) exists only after the machine's market rules ran, dated from
 `harness.today`; until then holdings are valued at invested. Two stock masters are seeded once
-(`harness.stock_masters`) so stocks can be linked to a price.
+(`harness.stock_masters`) so stocks can be linked to a price, and two NPS schemes (`harness.nps_schemes`; a
+NAV only after the market rule ran). The NPS background history sync (network) is patched to a no-op.
 
 The database is reused across Hypothesis examples. `reset()` deletes the holding data in reverse
 `sorted_tables` order; users, the MF master and the NAV history stay (the user is created ONCE:
@@ -48,6 +49,7 @@ RESET_TABLES = (
     "gold_holdings", "cash_holdings", "pf_holdings", "other_holdings",
     # market data written by the machine's market rules (masters and the NAV history stay)
     "stock_price_latest", "stock_price_history", "mf_nav_latest", "gold_rate_latest", "gold_rate_history",
+    "nps_nav_latest",
 )  # fmt: skip
 
 CRON_SECRET = "stateful-cron-secret"
@@ -81,6 +83,24 @@ def from_milli(milli: int) -> Decimal:
 
 def sx(value: Decimal) -> str:
     return format(value, "f")
+
+
+def rd_count(start: date, months: int, today: date) -> int:
+    """Instalments an RD has paid by `today` (SPEC §3): one on start + k months while that date is before
+    maturity (start + `months`) and not after today. Whole-month arithmetic, start days are 1..28."""
+    if today < start:
+        return 0
+    passed = (today.year - start.year) * 12 + today.month - start.month
+    if today.day < start.day:
+        passed -= 1
+    return max(0, min(passed + 1, months))
+
+
+def pf_current(balance: Decimal, rate: Decimal, balance_date: date, today: date) -> Decimal:
+    """EPF/PPF value: balance plus simple interest since its balance date (SPEC §3). Valid for spans under
+    a year (the machine's clock), where the effective day count is the plain day count."""
+    days = max(0, (today - balance_date).days)
+    return balance + q2(balance * rate / 100 * days / 365)
 
 
 def reason(response) -> str:
@@ -118,6 +138,7 @@ class Harness:
         self.today = START_TODAY
         self.log: list[str] = []
         self.stock_masters: list[int] = []  # ids of the seeded stock masters
+        self.nps_schemes: list[str] = []  # scheme ids of the seeded NPS schemes
         self._issue = create_access_token
         self._token_at = 0.0
         self.headers: dict[str, str] = {}
@@ -183,8 +204,8 @@ class Harness:
         rows included, updated_at included): equal before and after a call means it changed nothing."""
         out = []
         for table in (
-            "cash_holdings", "fixed_deposits", "stocks", "bonds", "mutual_funds", "gold_holdings",
-            "other_holdings", "holding_exits", "holding_fundings", "mf_sips", "mf_sip_skips", "mf_transactions",
+            "cash_holdings", "fixed_deposits", "recurring_deposits", "stocks", "bonds", "mutual_funds",
+            "nps_holdings", "gold_holdings", "pf_holdings", "other_holdings", "holding_exits", "holding_fundings", "mf_sips", "mf_sip_skips", "mf_transactions",
         ):  # fmt: skip
             out.append((table, [tuple(row) for row in self.rows(f"SELECT * FROM {table} ORDER BY id")]))  # noqa: S608
         return out
@@ -298,6 +319,15 @@ class Harness:
             session.commit()
         return nav
 
+    def set_nps_nav(self, scheme_id: str, nav: Decimal, nav_date: date) -> None:
+        """Latest NAV of an NPS scheme (replaced)."""
+        from app.models import NpsNavLatest
+
+        self.assert_safe()
+        with self.factory() as session:
+            session.merge(NpsNavLatest(scheme_id=scheme_id, nav=nav, nav_date=nav_date))
+            session.commit()
+
     def set_metal_rate(self, metal: str, purity: str, rate: Decimal, rate_date: date) -> None:
         """Latest rate (replaced) and the history row of its date (added)."""
         from app.models import GoldRateHistory, GoldRateLatest
@@ -367,11 +397,14 @@ def patch_clock_and_network(monkeypatch, harness: Harness) -> None:
     """One clock: every date source follows harness.today; no NAV history fetch."""
     import importlib
 
+    from app.services import nps as nps_service
     from app.services import sip as sip_service
 
     from app.config import settings
 
     monkeypatch.setattr(settings, "cron_secret", CRON_SECRET)
+    # saving an NPS holding schedules a background NAV history sync (network): never in these tests
+    monkeypatch.setattr(nps_service, "sync_scheme_safely", lambda scheme_id: None)
     monkeypatch.setattr(sip_service, "today_ist", lambda: harness.today)
     monkeypatch.setattr(sip_service, "ensure_history", lambda session, code: None)
     frozen = make_frozen_date(harness)
@@ -417,6 +450,23 @@ def seed_stock_masters(factory: sessionmaker) -> list[int]:
         session.add_all(masters)
         session.commit()
         return [m.id for m in masters]
+
+
+def seed_nps_schemes(factory: sessionmaker) -> list[str]:
+    """Two NPS schemes a holding can be linked to (no NAV until the machine's market rule runs)."""
+    from app.models import NpsMaster
+
+    with factory() as session:
+        schemes = [
+            NpsMaster(
+                scheme_id=f"SMSTATE00{i}", pfm_code=f"PFMST{i}", pfm_name=f"State Pension Fund {i}",
+                scheme_name=f"STATE PENSION FUND {i} SCHEME E - TIER I", tier="I", asset_class="E",
+            )
+            for i in (1, 2)
+        ]  # fmt: skip
+        session.add_all(schemes)
+        session.commit()
+        return [s.scheme_id for s in schemes]
 
 
 def _make_user(factory: sessionmaker, email: str):
@@ -478,6 +528,7 @@ def sqlite_harness(monkeypatch, *, foreign_keys: bool = False):
         seed_funds(factory)
         harness = Harness(engine, factory, user, local_pg=False, user2=user2)
         harness.stock_masters = seed_stock_masters(factory)
+        harness.nps_schemes = seed_nps_schemes(factory)
         harness.fk = foreign_keys
         harness.assert_safe()
         patch_clock_and_network(monkeypatch, harness)
@@ -497,6 +548,7 @@ def pg_harness(pg_app, monkeypatch) -> Harness:
     )  # fmt: skip
     seed_funds(pg_app.session)
     harness.stock_masters = seed_stock_masters(pg_app.session)
+    harness.nps_schemes = seed_nps_schemes(pg_app.session)
     harness.assert_safe()
     patch_clock_and_network(monkeypatch, harness)
     return harness
