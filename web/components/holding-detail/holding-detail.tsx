@@ -25,7 +25,9 @@ import { stockConfig } from "@/components/portfolio/grid/configs/stock";
 import type { GridConfig } from "@/components/portfolio/grid/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiDelete } from "@/lib/api";
+import { deleteBlockedReason } from "@/lib/delete-guard";
 import { canEdit } from "@/lib/edit-guards";
 import {
   CASH_PAID_FROM_INFO,
@@ -143,6 +145,7 @@ function TypedDetail<TRow extends HoldingRow>({
     item.status === "sold";
   const sellable = canSell(config.type, item);
   const settleable = canSettle(config.type, item);
+  const deleteReason = deleteBlockedReason(item);
   const paidFrom = paidFromText(item);
   const hasExits =isSellableType(config.type) || isSettleableType(config.type);
 
@@ -202,15 +205,34 @@ function TypedDetail<TRow extends HoldingRow>({
               Edit
             </Button>
           ) : null}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => setDeleting({ type: config.type, id: item.id, name, paidFrom: !!item.paid_from })}
-          >
-            <Trash2 aria-hidden />
-            Delete
-          </Button>
+          {deleteReason ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={<span className="inline-flex" tabIndex={0} />}
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled
+                  className="text-destructive"
+                >
+                  <Trash2 aria-hidden />
+                  Delete
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{deleteReason.message}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-destructive hover:text-destructive"
+              onClick={() => setDeleting({ type: config.type, id: item.id, name, paidFrom: !!item.paid_from })}
+            >
+              <Trash2 aria-hidden />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
 

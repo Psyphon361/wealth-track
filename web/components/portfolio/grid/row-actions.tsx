@@ -25,6 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { deleteBlockedReason, isDeleteBlocked } from "@/lib/delete-guard";
 import { canEdit } from "@/lib/edit-guards";
 import { canSell, canSettle } from "@/lib/exits";
 import type { AssetType, HoldingRow } from "@/lib/types";
@@ -39,6 +40,8 @@ interface MenuEntry {
   icon: ReactNode;
   destructive?: boolean;
   separatorBefore?: boolean;
+  /** Set when the item is disabled; shown in a tooltip. */
+  blockedReason?: string;
   run: () => void;
 }
 
@@ -85,13 +88,18 @@ export function RowActions({
       run: onEdit,
     });
   }
+  // Sold or settled holdings can't be deleted until the exit is undone.
+  const deleteReason = deleteBlockedReason(row);
   entries.push({
     key: "delete",
     label: "Delete",
     icon: <Trash2 />,
     destructive: true,
     separatorBefore: canEdit(row) || entries.length > 0,
-    run: onDelete,
+    blockedReason: deleteReason?.message,
+    run: () => {
+      if (!isDeleteBlocked(row)) onDelete();
+    },
   });
 
   return (
@@ -144,13 +152,33 @@ export function RowActions({
           {entries.map((e) => (
             <div key={e.key} className="contents">
               {e.separatorBefore ? <DropdownMenuSeparator /> : null}
-              <DropdownMenuItem
-                variant={e.destructive ? "destructive" : "default"}
-                onClick={e.run}
-              >
-                {e.icon}
-                {e.label}
-              </DropdownMenuItem>
+              {e.blockedReason ? (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <DropdownMenuItem
+                        variant={e.destructive ? "destructive" : "default"}
+                        aria-disabled
+                        closeOnClick={false}
+                        className="cursor-not-allowed opacity-50"
+                        onClick={() => {}}
+                      />
+                    }
+                  >
+                    {e.icon}
+                    {e.label}
+                  </TooltipTrigger>
+                  <TooltipContent side="left">{e.blockedReason}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <DropdownMenuItem
+                  variant={e.destructive ? "destructive" : "default"}
+                  onClick={e.run}
+                >
+                  {e.icon}
+                  {e.label}
+                </DropdownMenuItem>
+              )}
             </div>
           ))}
         </DropdownMenuContent>

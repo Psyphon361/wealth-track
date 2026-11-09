@@ -16,6 +16,7 @@ import { formatINR, formatIstDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AssetType, HoldingRow, HoldingsSummary } from "@/lib/types";
 import { addLabel as addLabelFor, refreshAssetTabCounts } from "./asset-tabs";
+import { isDeleteBlocked } from "@/lib/delete-guard";
 import { DeleteDialog, type DeleteTarget } from "./delete-dialog";
 import { EditDialog } from "./edit-dialog";
 import { bondConfig } from "./grid/configs/bond";
@@ -165,13 +166,15 @@ function TypedPortfolio<TRow extends HoldingRow>({
 
   const onEdit = useCallback((row: TRow) => setEditing(row), []);
   const onDelete = useCallback(
-    (row: TRow) =>
+    (row: TRow) => {
+      if (isDeleteBlocked(row)) return;
       setDeleting({
         type: config.type,
         id: row.id,
         name: config.rowName(row),
         paidFrom: !!row.paid_from,
-      }),
+      });
+    },
     [config],
   );
 
