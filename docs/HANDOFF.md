@@ -1,6 +1,40 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-09 night (testing Phase 3 Wave A pushed; Wave B committed locally, NOT pushed)
+
+### Git state
+- Pushed to origin/main: up to `21041d2` (Wave A: T1-T4, T6, T7, delete guard). Its gated deploy was green.
+- Committed, NOT pushed (`git log origin/main..HEAD`): `61050df` API: editing the cost of a Paid From holding adjusts the cash account (T5a); `d383e7d` Web: the Edit dialog shows what a cost edit does to the Paid From account (T5b); `caa2bef` Tests: the machine edits the cost of Paid From holdings (T5c); `3ba658f` Tests: the machine covers rd, nps and pf (T9); `d383a5c` Tests: the machine spends cash and then undoes the sale (T10); plus the docs commit that adds this section. Pushing to main triggers the gated deploy (tests -> migrate -> deploy; the migrate is a no-op, there is no new migration); ASK the user first.
+- Full suites at the last commit: `HYPOTHESIS_PROFILE=ci -m "not pg"` 2493 passed + 1 xfailed; `-m pg` (REQUIRE_PG=1) 204 passed; web vitest 407 passed.
+
+### What Wave B did
+- T5 (user decision 2026-11-09): editing the cost of a Paid-From holding adjusts the cash account. Rules in SPEC §8c "Edit": only fd, stock, bond, mf, gold, other; cash, pf, nps, rd move no money; money moves only when the holding is "in sync" (amount for the stored values equals the funding amount), otherwise the edit saves and a note says the account was not changed; order of checks: cost unchanged, new cost <= 0 (422), in sync, then purged (saves) / deleted (422 "Restore ... first") / short (422 on the cost field). Lock order holding -> funding -> cash. The API's paid_from carries `adjustable` and `reason`; the Edit dialog shows a live effect line and a red shortfall line. Advisor reviewed the plan three times (v1 and v2 were NOT OK) and the T5a diff (approved). Browser-checked on the probe account (effect line, red line, 422 with the same wording, a saved increase).
+- T8 calibration (re-injecting 4 past bugs into `git archive` copies; table in the scratchpad `calibration-results.md`): the machine caught the deleted-cash-account bug and (SQLite) the SIP bug under ci; it missed "undo when cash is short" (fixed by T10) and the purge-lock race (only the pg concurrency tests catch it; no machine rule can).
+- T9: rd, nps, pf in the machine (add, Paid From, edit_running = no money moves, delete/restore/purge, RD settle/undo, NPS scheme master seeded in world.py, read oracle on all ten types).
+- T10: rule `spend_then_undo` (plus chaining after one in four sales); both injected bugs (undo cash-short refusal removed; NPS amount +1) now fail under ci.
+
+### Open decisions and findings
+- Possible issue, not investigated: after the user edits a fund's invested amount, a full sale recorded a cost (1902.95) that differed from the edited invested amount (1880.09). The sale cost follows the transactions, not the user's edit (or later SIP postings). The machine's sale-cost check skips its purchase-sum expectation for funds whose cost was edited. Ask the user whether the sale cost should follow the edited amount.
+- Thin coverage: paid NPS adds on the pg machine are rare at the 25x25 budget (raising it costs > 45 s).
+- Duplicate vs funding order (UX call, from before): with Paid From, a repeated create without `confirm_duplicate` returns 422 "More than this account's balance" when the account can no longer afford it.
+- Known net worth drifts stay pinned as strict xfails (`api/tests/test_networth_today_agreement.py`).
+- The user asked about implicit state machines; I offered a read-only inventory `docs/STATE-MACHINES.md` (holding lifecycle, funding, exit, SIP, cash account, auth, import sync markers: states, transitions, where each guard lives, gaps vs invariants and the machine). Not answered yet; offer it again.
+- Owner tasks: run `api/scripts/preflight_delete_refund.sql` on prod (SELECT-only); limit the GitHub `production` environment to `main`; watch the first nightly invariant run (21:00 UTC).
+- Analytics: the user DISCARDED "rename Interest & TDS tab to Tax"; the remaining analytics list is in docs/STATUS.md "Open (analytics)".
+
+### Next steps
+1. Ask the user whether to push the local commits; after a push check `gh run list --branch main --limit 3` once.
+2. Offer: the state-machine inventory; the sale-cost-after-edit question; analytics items (from STATUS).
+
+### Working notes
+- Rules: orchestrator + advisor + builders; builders Sonnet effort medium, max 3 parallel; advisor only for plan reviews and high-risk diffs; when the advisor says NOT OK, revise and send it back to the advisor BEFORE showing the user a plan (the user called this out). Commits only as `git add <paths> && git commit -F <file>`, as ONE command with no `&&` after it and from the repo root (`cd` alone first if the shell is elsewhere). Never push without the user's OK. The user wants the wind-up on request or at 96% of the 5-hour window (tell them at 85%).
+- pg cluster (port 5544) is orchestrator-owned; it is still running at the time of writing: `cd api && scripts/pg_test_cluster.sh stop` when done (`start` again before pg tests).
+- Probe account for browser checks: probe-ui3@example.test; the password is in `~/.config/wealth-track/probe.env` (outside the repo) and in the orchestrator's private memory `probe-account`; never write it into committed files. The user confirmed probe accounts hold no real holdings and may be used freely on local test servers.
+- Browser check recipe when the user's dev server (3000/8000) runs: the orchestrator cannot write project files or start a second `next dev` inside `web/`. Have a builder copy `web/` (without node_modules and .next) to the scratchpad with a node_modules symlink, set `turbopack.root: "/"` in the copy's next.config.ts, run the API on 8010 (`cd api && .venv/bin/uvicorn app.main:app --port 8010`) and `API_URL=http://localhost:8010 npx next dev --port 3010` in the copy; webpack mode renders no CSS (no postcss config), use turbopack. Create probe rows with unique names through the app's own API and delete them by exact id afterwards; stop both servers.
+
 ## Resume here — 2026-11-09 later (testing Phase 3 Wave A: T1, T2, T3, T6, T7 and the Delete guard committed; T4 half built, UNCOMMITTED; 5 commits unpushed)
+
+(Superseded for git state and Wave A status by the section above; the Wave A task details below are still accurate.)
 
 This section replaces the "Resume here — 2026-11-09 (testing Phase 3 Wave A…)" section below it for T1-T3 status; read both. Plan file (scratchpad, may be gone): `/private/tmp/claude-501/-Users-psy--claude-spares-spare-7qVS1Z/b85cc2c3-b50e-4717-8edd-bc54059e3674/scratchpad/plan-testing-phase3.md` (v2, advisor-reviewed). The user approved Wave A only; Wave B only after Wave A is verified and pushed.
 
