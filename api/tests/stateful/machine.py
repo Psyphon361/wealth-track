@@ -37,7 +37,7 @@ from hypothesis import event
 from hypothesis.stateful import RuleBasedStateMachine, invariant, precondition, rule
 
 from tests.stateful.world import (
-    LAST_TODAY, SCHEME, Harness, d, from_cents, from_milli, q2, q3, reason, sx,
+    LAST_TODAY, SCHEME, START_TODAY, Harness, d, from_cents, from_milli, q2, q3, reason, sx,
 )  # fmt: skip
 
 SELLABLE = ("stock", "bond", "mf", "gold", "other")
@@ -84,6 +84,8 @@ class HM:
     price: Decimal | None = None  # stock average price
     matured: bool = False  # fd/bond: past maturity (can be settled, a bond can't be sold)
     platform: str = ""
+    master_id: int | None = None  # stock: the stock master it is linked to (a price can apply)
+    metal: str = "gold"  # gold holdings: gold or silver
     live: bool = True
     closed: bool = False  # sold in full (closed_on set)
     settled: bool = False
@@ -135,9 +137,8 @@ MIN_VALID_SHARE = 0.55
 
 
 def _years_from_today(years: int) -> date:
-    """The real today plus whole years (29 Feb becomes 28 Feb)."""
-    today = date.today()
-    return date(today.year + years, today.month, min(today.day, 28))
+    """The machine's first day plus whole years (fixed, not the wall clock)."""
+    return date(START_TODAY.year + years, START_TODAY.month, min(START_TODAY.day, 28))
 
 
 def report_and_check_valid_share(label: str) -> None:
@@ -172,6 +173,8 @@ class MoneyMachine(RuleBasedStateMachine):
         self.sips: dict[int, SipM] = {}
         self.touched: tuple[str, int] | None = None
         self.n = 0
+        self.rate_dates: dict[tuple[str, str], date] = {}  # latest rate date per metal (never goes back)
+        self.steps = 0  # invariant runs, for the read oracle's cadence
 
     # ---- plumbing ---------------------------------------------------------------------------
     def fail(self, message: str):
@@ -252,13 +255,14 @@ class MoneyMachine(RuleBasedStateMachine):
             cents = forced or draw(st.integers(100, 2_000_000))
             body = {
                 "bank": self.name("Bank"), "principal": sx(from_cents(cents)), "rate": 7,
-                # not matured: starts 30 days before the REAL today and runs 5 years, so it is
-                # never matured for valuation (date.today()) however far the calendar moves
-                "start_date": "2023-01-01" if matured else (date.today() - timedelta(days=30)).isoformat(),
+                # not matured: starts 30 days before the machine's first day and runs 5 years, so
+                # it is never matured however far the (frozen) calendar moves
+                "start_date": "2023-01-01" if matured else (START_TODAY - timedelta(days=30)).isoformat(),
                 "compounding": "quarterly",
                 "payout_type": "cumulative", "tenure_years": 1 if matured else 5,
             }  # fmt: skip
             hold = HM("fd", 0, None, None, None, matured=matured)
+            hold.invested0 = from_cents(cents)  # the principal (what the read oracle expects)
             return body, hold, from_cents(cents)
         if slug == "stock":
             qty = 1 if forced else draw(st.integers(1, 60))
@@ -267,7 +271,10 @@ class MoneyMachine(RuleBasedStateMachine):
                 "name": self.name("Stock"), "exchange": "NSE", "quantity": qty,
                 "avg_buy_price": sx(from_cents(cents)), "buy_date": "2025-01-01",
             }  # fmt: skip
-            hold = HM("stock", 0, Decimal(qty), None, date(2025, 1, 1), price=from_cents(cents))
+            master = draw(st.sampled_from([None, *self.h.stock_masters]))
+            if master is not None:  # linked: the market rule's price applies (the name comes from the master)
+                body["master_id"] = master
+            hold = HM("stock", 0, Decimal(qty), None, date(2025, 1, 1), price=from_cents(cents), master_id=master)
             hold.invested0 = q2(hold.qty * hold.price)
             return body, hold, hold.invested0
         if slug == "bond":
@@ -281,7 +288,7 @@ class MoneyMachine(RuleBasedStateMachine):
                 "quantity": qty, "face_value": 1000, "purchase_price": sx(price),
                 "invested_amount": sx(invested), "ytm": 8,
                 "purchase_date": "2022-01-01" if matured else "2025-01-01",
-                # not matured: 5 years after the REAL today (valuation uses date.today())
+                # not matured: 5 years after the machine's first day
                 "maturity_date": "2024-01-01" if matured else _years_from_today(5).isoformat(),
             }  # fmt: skip
             hold = HM("bond", 0, Decimal(qty), invested, date(2022, 1, 1) if matured else date(2025, 1, 1),
@@ -306,12 +313,13 @@ class MoneyMachine(RuleBasedStateMachine):
             milli = draw(st.integers(1_000, 100_000))
             cents = forced or draw(st.integers(10_000, 5_000_000))
             invested = from_cents(cents)
+            metal = draw(st.sampled_from(["gold", "gold", "silver"]))
             body = {
-                "name": self.name("Gold"), "form": "coin", "metal": "gold", "purity": "999",
+                "name": self.name("Gold"), "form": "coin", "metal": metal, "purity": "999",
                 "weight_grams": sx(from_milli(milli)), "purchase_date": "2025-01-01",
                 "invested_amount": sx(invested),
             }  # fmt: skip
-            hold = HM("gold", 0, from_milli(milli), invested, date(2025, 1, 1))
+            hold = HM("gold", 0, from_milli(milli), invested, date(2025, 1, 1), metal=metal)
             hold.invested0 = invested
             return body, hold, invested
         # other
@@ -765,6 +773,43 @@ class MoneyMachine(RuleBasedStateMachine):
         if self.expect(r, (200,) if legal else (409,), f"sip {action}") < 400:
             sip.status = "paused" if action == "pause" else "active"
 
+    # ---- market data (optional steps; values differ from invested once they exist) -------------
+    # Each rule writes the latest row AND the history row for the same day, like the nightly
+    # imports, so latest and history never disagree. Known drifts (a stock with a latest price but
+    # no history close; gold carried past 7 days) are pinned in tests/test_networth_today_agreement.py
+    # and cannot be seen here anyway: the history's last point is overwritten by the dashboard total.
+    @rule(data=st.data())
+    def set_stock_price(self, data):
+        master = data.draw(st.sampled_from(self.h.stock_masters))
+        price = from_cents(data.draw(st.integers(100, 500_000)))
+        prev = from_cents(data.draw(st.integers(100, 500_000)))
+        self.h.set_stock_price(master, price, prev)
+        TALLY["market stock price"] += 1
+
+    @rule(data=st.data())
+    def set_mf_nav(self, data):
+        lag = data.draw(st.sampled_from([0, 0, 0, 1, 3]))  # a weekend or holiday lag
+        self.h.set_mf_latest_nav(self.h.today - timedelta(days=lag))
+        TALLY["market mf nav"] += 1
+
+    @rule(data=st.data())
+    def set_metal_rate(self, data):
+        metal = data.draw(st.sampled_from(["gold", "silver"]))
+        rate = from_cents(data.draw(st.integers(500, 1_500_000)))
+        # Days without a rate: the rate may be dated up to 20 days back (never before the last one),
+        # and most days have no rate at all (the clock moves without this rule running).
+        age = data.draw(st.sampled_from([0, 0, 1, 3, 8, 20]))
+        rate_date = max(self.h.today - timedelta(days=age), self.rate_dates.get((metal, "999"), date.min))
+        self.h.set_metal_rate(metal, "999", rate, rate_date)
+        self.rate_dates[(metal, "999")] = rate_date
+        TALLY["market metal rate"] += 1
+
+    def teardown(self) -> None:
+        from tests.stateful import reads
+
+        if hasattr(self, "holds"):
+            reads.check_reads(self, force=True)
+
     # ---- invariants ---------------------------------------------------------------------------
     @invariant()
     def check(self) -> None:
@@ -904,6 +949,11 @@ class MoneyMachine(RuleBasedStateMachine):
         if self.touched is not None:
             key, self.touched = self.touched, None
             self.roundtrip(key)
+
+        # the read side: dashboard, portfolio, net worth and the grids agree with the model
+        from tests.stateful import reads
+
+        reads.check_reads(self)
 
     def roundtrip(self, key: tuple[str, int]) -> None:
         from app.routers.assets import REGISTRY

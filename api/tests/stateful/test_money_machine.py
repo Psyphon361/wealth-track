@@ -9,7 +9,8 @@ Known limits (by design):
   * SQLite does not enforce foreign keys here, so ON DELETE CASCADE / SET NULL are not exercised
     (tests/pg/test_money_machine_pg.py runs the same machine on Postgres).
   * No concurrency (tests/pg/test_concurrency_pg.py covers it) and no purge.
-  * Settle uses the wall clock through valuation, so every maturity used is well in the past.
+  * The clock is frozen to the harness date everywhere (tests/stateful/world.py), so the wall
+    clock affects nothing.
 
 Failures: a real bug found by the machine is reproduced as a deterministic plain test in
 test_known_bugs.py (fixed ones stay as regression tests). Never commit @reproduce_failure.
