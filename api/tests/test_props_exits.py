@@ -176,13 +176,54 @@ def test_sale_cost_never_exceeds_invested(slug, invested, hp, full):
 
 
 @given(purchases(), st.data())
-def test_sale_cost_of_a_fund_with_transactions_is_fifo_and_capped(txns, data):
+def test_sale_cost_of_a_fund_with_consistent_invested_is_fifo_and_capped(txns, data):
     held = sum((t.units for t in txns), D(0))
-    invested = cents(data.draw(st.integers(0, 10**10)))
+    lots_cost = exits.fifo_cost(txns, held)
+    # invested within 1.00 of the cost of the units held
+    invested = max(lots_cost + cents(data.draw(st.integers(-100, 100))), D(0))
     qty = thou(data.draw(st.integers(1, int(held * 1000))))
     cost = exits.sale_cost("mf", held=held, invested=invested, quantity=qty, full=False, txns=txns)
     assert 0 <= cost <= exits.money(invested)
     assert cost == min(exits.fifo_cost(txns, qty), exits.money(invested))
+
+
+@given(purchases(), st.data())
+def test_sale_cost_of_an_edited_fund_is_pro_rata_and_capped(txns, data):
+    held = sum((t.units for t in txns), D(0))
+    lots_cost = exits.fifo_cost(txns, held)
+    gap = cents(data.draw(st.integers(101, 10**9)))  # more than 1.00 away
+    invested = lots_cost + gap if data.draw(st.booleans()) else max(lots_cost - gap, D(0))
+    if abs(invested - lots_cost) <= D("1.00"):  # clipped at zero for a cheap fund
+        return
+    qty = thou(data.draw(st.integers(1, int(held * 1000))))
+    cost = exits.sale_cost("mf", held=held, invested=invested, quantity=qty, full=False, txns=txns)
+    assert cost == min(exits.proportional_cost(invested, held, qty), exits.money(invested))
+
+
+@given(purchases(), st.integers(1, 6), st.data())
+def test_chain_of_partial_sales_on_an_unedited_fund_stays_fifo_and_sums_exactly(txns, steps, data):
+    """Rounding drift after each sale never flips the branch; costs telescope to the purchases."""
+    txns = list(txns)
+    held = sum((t.units for t in txns), D(0))
+    invested = sum((t.amount for t in txns), D(0))
+    total_cost = invested
+    day = date(2030, 1, 1)
+    costs = []
+    for i in range(steps):
+        if held <= thou(1):
+            break
+        qty = thou(data.draw(st.integers(1, int(held * 1000) - 1)))
+        assert exits.invested_matches_lots(txns, held, invested)
+        cost = exits.sale_cost(
+            "mf", held=held, invested=invested, quantity=qty, full=False, txns=txns
+        )
+        assert cost == min(exits.fifo_cost(txns, qty), exits.money(invested))
+        costs.append(cost)
+        held, invested, _ = exits.remaining_after("mf", held, invested, qty, cost)
+        day += timedelta(days=1)
+        txns.append(_txn(day, "redemption", qty, D(1), 100 + i))
+    final = exits.sale_cost("mf", held=held, invested=invested, quantity=held, full=True, txns=txns)
+    assert sum(costs, D(0)) + final == total_cost
 
 
 # --- remaining_after / remainder floor ----------------------------------------------------------------

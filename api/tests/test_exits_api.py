@@ -1041,3 +1041,98 @@ def test_a_refused_undo_of_a_full_fund_sale_changes_nothing(sc, users, auth_engi
         assert s.get(MutualFund, fund_id).closed_on is not None
         assert s.get(MfSip, sip["id"]).status == "stopped"
         assert s.get(Cash, cash_id).balance == 10
+
+
+# --- partial fund sales after an edit of the invested amount -----------------------------------
+
+
+def lots_fund(sc, headers, engine, lots=((date(2025, 6, 1), 10, 1000), (date(2025, 7, 1), 10, 2000))):  # noqa: F811
+    """A fund whose stored transactions are `lots` (date, units, amount); units and invested match."""
+    total_units = sum(u for _, u, _ in lots)
+    total_cost = sum(a for _, _, a in lots)
+    body = {
+        **FUND, "units": total_units, "avg_nav": total_cost / total_units,
+        "invested_amount": total_cost,
+    }  # fmt: skip
+    fund_id = add(sc, headers, "mf", body)
+    with sessionmaker(bind=engine)() as s:
+        for day, units, amount in lots:
+            s.add(MFTransaction(mutual_fund_id=fund_id, txn_date=day, kind="purchase",
+                                amount=amount, units=units))  # fmt: skip
+        s.commit()
+    return fund_id
+
+
+def edit_fund(sc, headers, fund_id, **changes):  # noqa: F811
+    stored = asset(sc, headers, "mf", fund_id)
+    body = {key: stored[key] for key in FUND if key in stored}
+    r = sc.put(f"/api/assets/mf/{fund_id}", json={**body, **changes}, headers=headers)
+    assert r.status_code == 200, r.json()
+
+
+def test_edited_fund_sale_is_pro_rata_of_the_edited_invested_amount(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    fund_id = lots_fund(sc, a, auth_engine)
+    edit_fund(sc, a, fund_id, invested_amount=4000, avg_nav=200)
+    r = sell(sc, a, "mf", fund_id, quantity=15, price=200)
+    assert r.status_code == 201, r.json()
+    assert r.json()["cost"] == 3000  # 4,000 x 15/20, not the oldest-first 2,000
+    held = asset(sc, a, "mf", fund_id)
+    assert (held["units"], held["invested_amount"]) == (5, 1000)
+
+
+def test_saving_a_fund_without_changing_the_invested_amount_keeps_fifo(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    fund_id = lots_fund(sc, a, auth_engine)
+    edit_fund(sc, a, fund_id, platform="Zerodha")
+    r = sell(sc, a, "mf", fund_id, quantity=15, price=200)
+    assert r.json()["cost"] == 2000
+
+
+def test_a_sip_instalment_after_an_edit_leaves_the_fund_pro_rata(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    fund_id = lots_fund(sc, a, auth_engine)
+    edit_fund(sc, a, fund_id, invested_amount=4000, avg_nav=200)
+    sip = sc.post("/api/sips", json=SIP_BODY, headers=a).json()
+    assert sip["mutual_fund_id"] == fund_id and sip["instalments_added"] == 3
+    held = asset(sc, a, "mf", fund_id)
+    assert (held["units"], held["invested_amount"]) == (319.985, 19000)
+    r = sell(sc, a, "mf", fund_id, quantity=100, price=60)
+    assert r.status_code == 201, r.json()
+    # The 1,000 gap to the lots' 18,000 persists, so: invested pro rata, 19,000 x 100 / 319.985.
+    expected = (Decimal(19000) * 100 / Decimal("319.985")).quantize(Decimal("0.01"), "ROUND_HALF_UP")
+    assert Decimal(str(r.json()["cost"])) == expected
+
+
+def test_sale_undo_and_sale_again_costs_the_same_for_an_edited_fund(sc, users, auth_engine):  # noqa: F811
+    a = users[0]
+    fund_id = lots_fund(sc, a, auth_engine)
+    edit_fund(sc, a, fund_id, invested_amount=4000, avg_nav=200)
+    first = sell(sc, a, "mf", fund_id, quantity=15, price=200)
+    assert first.json()["cost"] == 3000
+    assert sc.delete(f"/api/exits/{first.json()['id']}", headers=a).status_code == 200
+    held = asset(sc, a, "mf", fund_id)
+    assert (held["units"], held["invested_amount"]) == (20, 4000)
+    again = sell(sc, a, "mf", fund_id, quantity=15, price=200)
+    assert again.json()["cost"] == 3000
+
+
+def test_a_backdated_sale_larger_than_the_lots_held_that_day_may_turn_pro_rata(sc, users, auth_engine):  # noqa: F811
+    # Known limit. Lots: 10 for 1,000 (1 Jun), 10 for 3,000 (1 Jul), 10 for 5,000 (1 Aug).
+    a = users[0]
+    lots = (
+        (date(2025, 6, 1), 10, 1000), (date(2025, 7, 1), 10, 3000), (date(2025, 8, 1), 10, 5000),
+    )  # fmt: skip
+    fund_id = lots_fund(sc, a, auth_engine, lots)
+    # 25 units sold on 15 Jun, when only 10 were held: costed over all lots, 1,000 + 3,000 + 2,500.
+    first = sell(sc, a, "mf", fund_id, date="2025-06-15", quantity=25, price=100)
+    assert first.status_code == 201, first.json()
+    assert first.json()["cost"] == 6500
+    held = asset(sc, a, "mf", fund_id)
+    assert (held["units"], held["invested_amount"]) == (5, 2500)
+    # The next sale recomputes the lots up to each redemption's date: the 15 Jun redemption only
+    # consumes the first lot, so the remaining lots no longer match invested (1,500 vs 2,500) and
+    # the cost is pro rata (2,500 x 2/5 = 1,000) instead of oldest-first (600).
+    second = sell(sc, a, "mf", fund_id, date="2025-09-01", quantity=2, price=100)
+    assert second.status_code == 201, second.json()
+    assert second.json()["cost"] == 1000

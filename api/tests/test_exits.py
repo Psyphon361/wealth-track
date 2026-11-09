@@ -118,6 +118,74 @@ def test_cost_never_exceeds_the_invested_amount():
         "mf", held=D("20"), invested=D("2500"), quantity=D("20"), full=False, txns=two_lots()
     )
     assert cost == D("2500.00")
+    # FIFO branch (invested within 1.00 of the lots' 3,000): still capped at invested.
+    cost = exits.sale_cost(
+        "mf", held=D("20"), invested=D("2999.50"), quantity=D("20"), full=False, txns=two_lots()
+    )
+    assert cost == D("2999.50")
+
+
+def fund_cost(invested, quantity="15", held="20", txns=None):
+    return exits.sale_cost(
+        "mf",
+        held=D(held),
+        invested=D(invested),
+        quantity=D(quantity),
+        full=False,
+        txns=two_lots() if txns is None else txns,
+    )
+
+
+def test_unedited_fund_uses_fifo():
+    assert fund_cost("3000") == D("2000.00")  # not 3000 x 15/20 = 2250
+
+
+def test_edited_fund_is_pro_rata_of_the_edited_amount():
+    assert fund_cost("4000") == D("3000.00")  # 4000 x 15/20
+    assert fund_cost("2000") == D("1500.00")
+
+
+def test_invested_within_a_rupee_of_the_lots_is_still_fifo():
+    assert fund_cost("3000.50") == D("2000.00")
+    assert fund_cost("2999.50") == D("2000.00")
+
+
+def test_invested_exactly_one_rupee_off_is_fifo_and_a_paisa_more_is_pro_rata():
+    assert fund_cost("3001.00") == D("2000.00")
+    assert fund_cost("2999.00") == D("2000.00")
+    assert fund_cost("3001.01") == D("2250.76")  # 3001.01 x 15/20 = 2250.7575
+    assert fund_cost("2998.99") == D("2249.24")  # 2998.99 x 15/20 = 2249.2425
+
+
+def test_fund_with_an_earlier_redemption_is_fifo_when_invested_is_the_remaining_cost():
+    txns = [*two_lots(), txn(date(2026, 3, 1), "redemption", "5", "700")]
+    # 15 units left: 5 at 100, 10 at 200 = 2,500. Sell 10: 500 + 5 x 200 = 1,500.
+    assert fund_cost("2500", quantity="10", held="15", txns=txns) == D("1500.00")
+    # Invested edited to 3,000 (the purchase sum): pro rata, 3000 x 10/15.
+    assert fund_cost("3000", quantity="10", held="15", txns=txns) == D("2000.00")
+
+
+def test_fund_whose_transactions_do_not_match_the_units_is_pro_rata():
+    assert fund_cost("3000", quantity="5", held="25") == D("600.00")
+    assert fund_cost("3000", quantity="5", held="19.5") == D("769.23")
+
+
+def test_fund_without_transactions_is_pro_rata():
+    assert fund_cost("3000", txns=[]) == D("2250.00")
+
+
+def test_full_sale_of_an_edited_fund_costs_the_invested_amount():
+    cost = exits.sale_cost(
+        "mf", held=D("20"), invested=D("4000"), quantity=D("20"), full=True, txns=two_lots()
+    )
+    assert cost == D("4000.00")
+
+
+def test_invested_matches_lots_helper():
+    assert exits.invested_matches_lots(two_lots(), D("20"), D("3000")) is True
+    assert exits.invested_matches_lots(two_lots(), D("20"), D("3001.01")) is False
+    with pytest.raises(ValueError):
+        exits.invested_matches_lots(two_lots(), D("25"), D("3000"))
 
 
 def test_fund_remaining_after_a_partial_sale_recomputes_average_nav():
@@ -141,12 +209,17 @@ def test_remainder_floor_is_a_paisa_or_half_a_hundredth_of_a_paisa_a_unit_for_fu
 
 
 def test_fifo_partial_sale_that_takes_all_the_cost_is_refused():
+    # Lots cost 1,000.00 + 0.01; invested 1,000.00 is within 1.00 of that, so FIFO applies.
+    lots = [
+        txn(date(2026, 1, 1), "purchase", "10", "1000"),
+        txn(date(2026, 2, 1), "purchase", "10", "0.01"),
+    ]
     cost = exits.sale_cost(
-        "mf", held=D("20"), invested=D("2000"), quantity=D("15"), full=False, txns=two_lots()
+        "mf", held=D("20"), invested=D("1000"), quantity=D("10"), full=False, txns=lots
     )
-    assert cost == D("2000.00")  # the whole invested amount, 5 units still held
+    assert cost == D("1000.00")  # the whole invested amount, 10 units still held
     with pytest.raises(exits.ExitRefused) as caught:
-        exits.check_remainder("mf", D("20"), D("2000"), D("15"), cost)
+        exits.check_remainder("mf", D("20"), D("1000"), D("10"), cost)
     assert caught.value.loc == ("quantity",)
     assert caught.value.message == "Can't sell part of this holding"
     assert caught.value.description == (

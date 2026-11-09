@@ -79,6 +79,8 @@ _NAV = Decimal("0.0001")
 _ZERO = Decimal("0")
 # Net units of a fund's transactions may differ from the holding's by this much (as in XIRR).
 _UNITS_TOLERANCE = Decimal("0.01")
+# A fund's invested amount counts as "not edited" when it is this close to its remaining lots' cost.
+_COST_TOLERANCE = Decimal("1.00")
 
 
 class ExitError(Exception):
@@ -194,16 +196,29 @@ def sale_cost(
     full: bool,
     txns: Sequence[Any] = (),
 ) -> Decimal:
-    """Cost basis of what is sold. All of it: the invested amount. Part of a fund with matching
-    transactions: FIFO. Anything else: the invested amount pro rata. Never more than invested."""
+    """Cost basis of what is sold. All of it: the invested amount. Part of a fund: FIFO over its
+    transactions only when their net units match the units held AND the invested amount equals the
+    cost of the units still held per those transactions (within 1.00), i.e. it was not edited.
+    Anything else: the invested amount pro rata. Never more than invested."""
     invested = money(invested)
     if full or quantity is None:
         return invested
+    cost: Decimal | None = None
     if slug == "mf" and txns and abs(net_units(txns) - held) <= _UNITS_TOLERANCE:
-        cost = fifo_cost(txns, quantity)
-    else:
+        try:
+            if invested_matches_lots(txns, held, invested):
+                cost = fifo_cost(txns, quantity)
+        except ValueError:
+            cost = None
+    if cost is None:
         cost = proportional_cost(invested, held, quantity)
     return min(cost, invested)
+
+
+def invested_matches_lots(txns: Sequence[Any], held: Decimal, invested: Decimal) -> bool:
+    """True when `invested` equals the FIFO cost of all `held` units still in the transactions
+    (within _COST_TOLERANCE). Raises ValueError when fewer units than `held` remain."""
+    return abs(fifo_cost(txns, held) - money(invested)) <= _COST_TOLERANCE
 
 
 def remaining_after(
