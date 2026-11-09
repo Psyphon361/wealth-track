@@ -339,7 +339,7 @@ function SellForm({
             </p>
             {summary.estimated ? (
               <p className="text-[13.2px] text-muted-foreground">
-                Cost is an estimate. The oldest units are sold first.
+                Cost is an estimate. For a fund it follows your purchases, oldest first, unless you changed the invested amount.
               </p>
             ) : null}
           </>

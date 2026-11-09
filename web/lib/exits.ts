@@ -151,7 +151,7 @@ export interface SaleSummary {
   gainPct: number | null;
   /** True when every unit is sold. */
   full: boolean;
-  /** Funds are costed first-in-first-out on the server, so a partial sale is an estimate here. */
+  /** A fund partial sale is costed first-in-first-out on the server unless the invested amount was edited, so the preview is an estimate. */
   estimated: boolean;
 }
 
