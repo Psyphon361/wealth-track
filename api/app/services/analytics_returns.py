@@ -227,6 +227,24 @@ def return_of(
     return (_q(rate * HUNDRED) if rate is not None else None), True
 
 
+def holding_xirr(
+    asset_type: str, item: Mapping[str, Any], today: date, exits: Sequence[Any] = ()
+) -> Decimal | None:
+    """XIRR % of one active holding for its grid row and details page (the same flows and solver
+    as the returns endpoint). None when the holding is not active, has no usable flows, its
+    earliest flow is under MIN_ANNUALISED_DAYS old, or the solver doesn't converge."""
+    if item.get("status") != "active":
+        return None
+    built = holding_flows(asset_type, item, today, (), exits)
+    if built.reason is not None or not built.flows:
+        return None
+    earliest = min(d for d, _ in built.flows)
+    if (today - earliest).days < MIN_ANNUALISED_DAYS:
+        return None
+    rate = xirr(built.flows)
+    return _q(rate * HUNDRED) if rate is not None else None
+
+
 def _group(
     key: str, label: str, members: Sequence[dict[str, Any]], today: date
 ) -> dict[str, Any]:

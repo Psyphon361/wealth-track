@@ -28,6 +28,11 @@ from app.models import (
 from app.schemas.assets import (
     HOLDING_CLOSED_DESCRIPTION,
     HOLDING_CLOSED_MESSAGE,
+    OTHER_ACQUIRED_AFTER_VALUE_ERROR,
+    CashUpdateValue,
+    NpsUpdateValue,
+    OtherUpdateValue,
+    PfUpdateValue,
     SOLD_IN_PART_ERROR,
     SOLD_IN_PART_FIELDS,
 )
@@ -70,6 +75,15 @@ ASSET_LABELS = {
     "cash": "Cash & Savings",
     "pf": "EPF & PPF",
     "other": "Other",
+}
+
+
+# slug -> (update-value body, success message) for the quick refresh endpoint
+UPDATE_VALUE = {
+    "cash": (CashUpdateValue, "Balance updated"),
+    "pf": (PfUpdateValue, "Balance updated"),
+    "other": (OtherUpdateValue, "Value updated"),
+    "nps": (NpsUpdateValue, "Units updated"),
 }
 
 
@@ -345,6 +359,67 @@ def _build_router(slug: str, model, create, read) -> APIRouter:
         if slug == "nps":
             background.add_task(nps.sync_scheme_safely, obj.scheme_id)
         return Outcome(message=f"{_label(obj)} restored", description=_holding_name(obj))
+
+    if slug in UPDATE_VALUE:
+        update_body, update_message = UPDATE_VALUE[slug]
+
+        @sub.post("/{item_id}/update-value", response_model=result)
+        def update_value(
+            item_id: int,
+            body: update_body,  # type: ignore[valid-type]
+            db: Session = Depends(get_db),
+            user: User = Depends(current_user),
+        ):
+            """Quick refresh of the figure that goes stale: only those fields (and updated_at)."""
+            obj = db.scalars(
+                select(model)
+                .where(model.id == item_id, model.user_id == user.id)
+                .with_for_update(of=model)
+            ).first()
+            if obj is None:
+                raise HTTPException(status_code=404, detail="Not found")
+            if getattr(obj, "closed_on", None) is not None:
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "message": HOLDING_CLOSED_MESSAGE,
+                        "description": HOLDING_CLOSED_DESCRIPTION,
+                    },
+                )
+            values = body.model_dump()
+            date_field = next((f for f in ("balance_date", "value_date") if f in values), None)
+            if date_field is not None and values[date_field] is None:
+                values[date_field] = sip_service.today_ist()
+            if (
+                slug == "other"
+                and obj.acquired_on is not None
+                and obj.acquired_on > values["value_date"]
+            ):
+                db.rollback()
+                raise RequestValidationError(
+                    [
+                        {
+                            "type": "value_error",
+                            "loc": ("body", "value_date"),
+                            "msg": OTHER_ACQUIRED_AFTER_VALUE_ERROR,
+                            "input": str(values["value_date"]),
+                        }
+                    ]
+                )
+            for key, value in values.items():
+                setattr(obj, key, value)
+            obj.updated_at = func.now()
+            db.commit()
+            db.refresh(obj)
+            figure = (
+                f"{values['units'].normalize():f} units"
+                if slug == "nps"
+                else sip_service.format_inr(values.get("balance", values.get("current_value")))
+            )
+            out = _with_message(obj, update_message)
+            out.description = f"{out.description} · {figure}"
+            return out
 
     return sub
 

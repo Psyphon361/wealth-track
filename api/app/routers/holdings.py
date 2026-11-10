@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import current_user
+from app.models.holding_exit import HoldingExit
 from app.models.mf_transaction import MFTransaction
 from app.models.mutual_fund import MutualFund
 from app.models.user import User
@@ -21,6 +22,7 @@ from app.schemas.market_master import (
 )
 from app.schemas.mf_scheme import MFSchemeRead
 from app.schemas.sip import SipTransactionsResponse
+from app.services import analytics_returns
 from app.services import amfi, bond_master, fd_issuers, nps, stock_master, valuation
 from app.services import sip as sip_service
 
@@ -136,23 +138,23 @@ OPEN_DEFAULT_SORT = "current_value"
 
 FdSort = Literal[
     "bank", "principal", "rate", "compounding", "start_date", "maturity_date",
-    "current_value", "gain", "gain_pct", "status",
+    "current_value", "gain", "gain_pct", "status", "xirr",
     "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 RdSort = Literal[
     "bank", "monthly_instalment", "rate", "start_date", "maturity_date", "invested",
-    "current_value", "gain", "gain_pct", "status",
+    "current_value", "gain", "gain_pct", "status", "xirr",
     "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 StockSort = Literal[
     "name", "exchange", "broker", "quantity", "avg_buy_price", "invested",
-    "current_value", "gain", "gain_pct", "buy_date",
+    "current_value", "gain", "gain_pct", "buy_date", "xirr",
     "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 BondSort = Literal[
     "name", "issuer", "bond_type", "platform", "quantity", "face_value", "purchase_price",
     "ytm", "purchase_date", "maturity_date", "invested", "current_value", "gain",
-    "gain_pct", "status",
+    "gain_pct", "status", "xirr",
     "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 MfSort = Literal[
@@ -179,7 +181,7 @@ PfSort = Literal[
 ]
 
 OtherSort = Literal[
-    "name", "category", "current_value", "invested", "gain", "value_date",
+    "name", "category", "current_value", "invested", "gain", "value_date", "xirr",
     "closed_on", "received", "realised_gain",
 ]  # fmt: skip
 
@@ -242,6 +244,36 @@ def add_mf_xirr(db: Session, items: list[dict[str, Any]]) -> list[dict[str, Any]
     return enriched
 
 
+XIRR_TYPES = ("fd", "rd", "stock", "bond", "other")
+SALE_TYPES = ("stock", "bond", "other")
+
+
+def add_holding_xirr(
+    db: Session, slug: str, user_id: int, items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Items of a deposit, stock, bond or Other type with `xirr` (percent or None). One query for
+    the sale exits of all the items (none for deposits, which are never sold)."""
+    sales: dict[int, list[HoldingExit]] = {}
+    if slug in SALE_TYPES and items:
+        rows = db.scalars(
+            select(HoldingExit)
+            .where(
+                HoldingExit.user_id == user_id,
+                HoldingExit.asset_type == slug,
+                HoldingExit.kind == "sale",
+                HoldingExit.holding_id.in_([i["id"] for i in items]),
+            )
+            .order_by(HoldingExit.exit_date, HoldingExit.id)
+        ).all()
+        for e in rows:
+            sales.setdefault(e.holding_id, []).append(e)
+    today = date.today()
+    return [
+        {**i, "xirr": analytics_returns.holding_xirr(slug, i, today, sales.get(i["id"], ()))}
+        for i in items
+    ]
+
+
 def _canonical_categories(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Group categories case-insensitively: each shows the spelling of its newest holding."""
     newest: dict[str, str] = {}
@@ -271,6 +303,8 @@ def _run(
     rows: list[dict[str, Any]] = group["items"]
     if slug == "mf":
         rows = add_mf_xirr(db, rows)
+    if slug in XIRR_TYPES:
+        rows = add_holding_xirr(db, slug, user_id, rows)
     if slug == "other":
         rows = _canonical_categories(rows)
     needle = (q or "").strip().lower()
@@ -668,4 +702,6 @@ def get_holding_detail(
     record, item = loaded
     if slug == "mf":
         item = add_mf_xirr(db, [item])[0]
+    if slug in XIRR_TYPES:
+        item = add_holding_xirr(db, slug, user.id, [item])[0]
     return {"item": item, "master": linked_master(db, slug, record)}

@@ -721,3 +721,27 @@ class NpsRead(NpsBase, _Read):
     pfm_name: str
     tier: str | None = None
     asset_class: str
+
+
+# --- Quick "update value" bodies (POST /api/assets/{cash|pf|other|nps}/{id}/update-value) -------
+# Same field types as the full forms, so the wording is identical. A missing date means today.
+
+
+class CashUpdateValue(BaseModel):
+    balance: CashBalance
+    balance_date: TradeDate | None = None
+
+
+class PfUpdateValue(BaseModel):
+    balance: Money
+    balance_date: TradeDate | None = None
+
+
+class OtherUpdateValue(BaseModel):
+    current_value: Money
+    value_date: TradeDate | None = None
+
+
+class NpsUpdateValue(BaseModel):
+    units: NpsUnits
+    contributed: Money

@@ -1460,6 +1460,18 @@ def test_data_health_stale_uses_the_calendar_month_end_correctly():
     assert [i["id"] for i in stale["items"]] == [2]
 
 
+def test_is_stale_boundaries():
+    assert analytics.is_stale(date(2026, 5, 2), TODAY) is False  # exactly six months
+    assert analytics.is_stale(date(2026, 5, 1), TODAY) is True  # six months and a day
+    assert analytics.is_stale(None, TODAY) is False
+    assert analytics.is_stale(TODAY, TODAY) is False
+    # 31 Aug minus six months clamps to 28 Feb 2026 and 29 Feb 2028 (a leap year).
+    assert analytics.is_stale(date(2026, 2, 28), date(2026, 8, 31)) is False
+    assert analytics.is_stale(date(2026, 2, 27), date(2026, 8, 31)) is True
+    assert analytics.is_stale(date(2028, 2, 29), date(2028, 8, 31)) is False
+    assert analytics.is_stale(date(2028, 2, 28), date(2028, 8, 31)) is True
+
+
 def test_data_health_matured_open_lists_matured_holdings_only():
     groups = groups_of(
         h("fd", 1, 100.0, status="matured", maturity_date="2026-10-01"),

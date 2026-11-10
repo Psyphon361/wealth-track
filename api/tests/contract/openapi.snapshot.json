@@ -643,6 +643,78 @@
         "title": "AnalyticsTax",
         "type": "object"
       },
+      "AnalyticsUnrealised": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "available_fys": {
+            "items": {
+              "$ref": "#/components/schemas/GainsFy"
+            },
+            "title": "Available Fys",
+            "type": "array"
+          },
+          "buckets": {
+            "items": {
+              "$ref": "#/components/schemas/UnrealisedBucket"
+            },
+            "title": "Buckets",
+            "type": "array"
+          },
+          "excluded": {
+            "$ref": "#/components/schemas/UnrealisedExcluded"
+          },
+          "fy": {
+            "title": "Fy",
+            "type": "string"
+          },
+          "fy_end": {
+            "format": "date",
+            "title": "Fy End",
+            "type": "string"
+          },
+          "fy_start": {
+            "format": "date",
+            "title": "Fy Start",
+            "type": "string"
+          },
+          "harvest": {
+            "$ref": "#/components/schemas/UnrealisedHarvest"
+          },
+          "holdings": {
+            "items": {
+              "$ref": "#/components/schemas/UnrealisedHolding"
+            },
+            "title": "Holdings",
+            "type": "array"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/UnrealisedSummary"
+          }
+        },
+        "required": [
+          "fy",
+          "fy_start",
+          "fy_end",
+          "as_of",
+          "is_current",
+          "available_fys",
+          "summary",
+          "buckets",
+          "harvest",
+          "holdings",
+          "excluded"
+        ],
+        "title": "AnalyticsUnrealised",
+        "type": "object"
+      },
       "AtCost": {
         "properties": {
           "count": {
@@ -662,6 +734,220 @@
           "items"
         ],
         "title": "AtCost",
+        "type": "object"
+      },
+      "Attention": {
+        "description": "What needs a look soon: maturities in 30 days, stale hand-entered values, SIPs due in 7\ndays. Each list holds at most 20 rows; counts hold the true totals.",
+        "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/AttentionCounts",
+            "default": {
+              "maturing": 0,
+              "sips": 0,
+              "stale": 0
+            }
+          },
+          "maturing": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttentionMaturing"
+            },
+            "title": "Maturing",
+            "type": "array"
+          },
+          "sips": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttentionSip"
+            },
+            "title": "Sips",
+            "type": "array"
+          },
+          "stale": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AttentionStale"
+            },
+            "title": "Stale",
+            "type": "array"
+          }
+        },
+        "title": "Attention",
+        "type": "object"
+      },
+      "AttentionCounts": {
+        "properties": {
+          "maturing": {
+            "default": 0,
+            "title": "Maturing",
+            "type": "integer"
+          },
+          "sips": {
+            "default": 0,
+            "title": "Sips",
+            "type": "integer"
+          },
+          "stale": {
+            "default": 0,
+            "title": "Stale",
+            "type": "integer"
+          }
+        },
+        "title": "AttentionCounts",
+        "type": "object"
+      },
+      "AttentionMaturing": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "approximate": {
+            "title": "Approximate",
+            "type": "boolean"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "days_left": {
+            "title": "Days Left",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "type": {
+            "enum": [
+              "fd",
+              "rd",
+              "stock",
+              "bond",
+              "mf",
+              "nps",
+              "gold",
+              "cash",
+              "pf",
+              "other"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name",
+          "date",
+          "days_left",
+          "approximate"
+        ],
+        "title": "AttentionMaturing",
+        "type": "object"
+      },
+      "AttentionSip": {
+        "properties": {
+          "amount": {
+            "title": "Amount",
+            "type": "number"
+          },
+          "fund_name": {
+            "title": "Fund Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "mutual_fund_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mutual Fund Id"
+          },
+          "next_date": {
+            "format": "date",
+            "title": "Next Date",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "fund_name",
+          "amount",
+          "next_date"
+        ],
+        "title": "AttentionSip",
+        "type": "object"
+      },
+      "AttentionStale": {
+        "properties": {
+          "as_of": {
+            "format": "date",
+            "title": "As Of",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "fd",
+              "rd",
+              "stock",
+              "bond",
+              "mf",
+              "nps",
+              "gold",
+              "cash",
+              "pf",
+              "other"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "id",
+          "name",
+          "as_of"
+        ],
+        "title": "AttentionStale",
         "type": "object"
       },
       "BankHolding": {
@@ -2983,6 +3269,38 @@
         "title": "CashReadResult",
         "type": "object"
       },
+      "CashUpdateValue": {
+        "properties": {
+          "balance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Balance"
+          },
+          "balance_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Date"
+          }
+        },
+        "required": [
+          "balance"
+        ],
+        "title": "CashUpdateValue",
+        "type": "object"
+      },
       "ComingUpSection": {
         "properties": {
           "already_matured": {
@@ -3217,6 +3535,19 @@
       },
       "DashboardResponse": {
         "properties": {
+          "attention": {
+            "$ref": "#/components/schemas/Attention",
+            "default": {
+              "counts": {
+                "maturing": 0,
+                "sips": 0,
+                "stale": 0
+              },
+              "maturing": [],
+              "sips": [],
+              "stale": []
+            }
+          },
           "by_type": {
             "items": {
               "$ref": "#/components/schemas/DashboardByType"
@@ -5934,6 +6265,91 @@
         "title": "LoginIn",
         "type": "object"
       },
+      "LossLot": {
+        "properties": {
+          "asset_type": {
+            "enum": [
+              "stock",
+              "bond",
+              "mf",
+              "gold",
+              "other"
+            ],
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "bought_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bought On"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "holding_id": {
+            "title": "Holding Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "term": {
+            "anyOf": [
+              {
+                "enum": [
+                  "short",
+                  "long",
+                  "flat"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term"
+          }
+        },
+        "required": [
+          "asset_type",
+          "holding_id",
+          "name",
+          "gain"
+        ],
+        "title": "LossLot",
+        "type": "object"
+      },
       "MFNavOnDate": {
         "properties": {
           "nav": {
@@ -7312,6 +7728,38 @@
         "title": "NpsReadResult",
         "type": "object"
       },
+      "NpsUpdateValue": {
+        "properties": {
+          "contributed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Contributed"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Units"
+          }
+        },
+        "required": [
+          "units",
+          "contributed"
+        ],
+        "title": "NpsUpdateValue",
+        "type": "object"
+      },
       "OtherCreate": {
         "properties": {
           "acquired_on": {
@@ -7660,6 +8108,38 @@
           "value_date"
         ],
         "title": "OtherReadResult",
+        "type": "object"
+      },
+      "OtherUpdateValue": {
+        "properties": {
+          "current_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Current Value"
+          },
+          "value_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Date"
+          }
+        },
+        "required": [
+          "current_value"
+        ],
+        "title": "OtherUpdateValue",
         "type": "object"
       },
       "Outcome": {
@@ -8083,6 +8563,38 @@
           "interest_rate"
         ],
         "title": "PfReadResult",
+        "type": "object"
+      },
+      "PfUpdateValue": {
+        "properties": {
+          "balance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Balance"
+          },
+          "balance_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance Date"
+          }
+        },
+        "required": [
+          "balance"
+        ],
+        "title": "PfUpdateValue",
         "type": "object"
       },
       "PortfolioGroup": {
@@ -10848,6 +11360,440 @@
         "title": "Totals",
         "type": "object"
       },
+      "TurningLot": {
+        "properties": {
+          "asset_type": {
+            "enum": [
+              "stock",
+              "bond",
+              "mf",
+              "gold",
+              "other"
+            ],
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "bought_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bought On"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket"
+          },
+          "bucket_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket After"
+          },
+          "days_to_long_term": {
+            "title": "Days To Long Term",
+            "type": "integer"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "holding_id": {
+            "title": "Holding Id",
+            "type": "integer"
+          },
+          "long_term_on": {
+            "format": "date",
+            "title": "Long Term On",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          }
+        },
+        "required": [
+          "asset_type",
+          "holding_id",
+          "name",
+          "gain",
+          "long_term_on",
+          "days_to_long_term"
+        ],
+        "title": "TurningLot",
+        "type": "object"
+      },
+      "UnrealisedBucket": {
+        "properties": {
+          "gains": {
+            "title": "Gains",
+            "type": "number"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "losses": {
+            "title": "Losses",
+            "type": "number"
+          },
+          "net": {
+            "title": "Net",
+            "type": "number"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "term": {
+            "enum": [
+              "short",
+              "long",
+              "flat"
+            ],
+            "title": "Term",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "term",
+          "gains",
+          "losses",
+          "net"
+        ],
+        "title": "UnrealisedBucket",
+        "type": "object"
+      },
+      "UnrealisedExcluded": {
+        "properties": {
+          "at_cost": {
+            "title": "At Cost",
+            "type": "integer"
+          },
+          "bonds_no_face": {
+            "title": "Bonds No Face",
+            "type": "integer"
+          },
+          "no_invested_amount": {
+            "title": "No Invested Amount",
+            "type": "integer"
+          },
+          "no_purchase_date": {
+            "title": "No Purchase Date",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "at_cost",
+          "no_invested_amount",
+          "bonds_no_face",
+          "no_purchase_date"
+        ],
+        "title": "UnrealisedExcluded",
+        "type": "object"
+      },
+      "UnrealisedHarvest": {
+        "properties": {
+          "exemption_limit": {
+            "title": "Exemption Limit",
+            "type": "number"
+          },
+          "exemption_room": {
+            "title": "Exemption Room",
+            "type": "number"
+          },
+          "exemption_used": {
+            "title": "Exemption Used",
+            "type": "number"
+          },
+          "loss_lots": {
+            "items": {
+              "$ref": "#/components/schemas/LossLot"
+            },
+            "title": "Loss Lots",
+            "type": "array"
+          },
+          "turning_long_term": {
+            "items": {
+              "$ref": "#/components/schemas/TurningLot"
+            },
+            "title": "Turning Long Term",
+            "type": "array"
+          },
+          "unrealised_equity_lt_gain": {
+            "title": "Unrealised Equity Lt Gain",
+            "type": "number"
+          }
+        },
+        "required": [
+          "exemption_limit",
+          "exemption_used",
+          "exemption_room",
+          "unrealised_equity_lt_gain",
+          "turning_long_term",
+          "loss_lots"
+        ],
+        "title": "UnrealisedHarvest",
+        "type": "object"
+      },
+      "UnrealisedHolding": {
+        "properties": {
+          "asset_type": {
+            "enum": [
+              "stock",
+              "bond",
+              "mf",
+              "gold",
+              "other"
+            ],
+            "title": "Asset Type",
+            "type": "string"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "number"
+          },
+          "flags": {
+            "items": {
+              "enum": [
+                "grandfathering",
+                "no_purchase_date",
+                "guessed_class",
+                "old_rules",
+                "multi_asset",
+                "estimated",
+                "single_lot_average",
+                "single_lot_fallback"
+              ],
+              "type": "string"
+            },
+            "title": "Flags",
+            "type": "array"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "holding_id": {
+            "title": "Holding Id",
+            "type": "integer"
+          },
+          "lots": {
+            "items": {
+              "$ref": "#/components/schemas/UnrealisedLot"
+            },
+            "title": "Lots",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "asset_type",
+          "holding_id",
+          "name",
+          "cost",
+          "value",
+          "gain",
+          "flags",
+          "lots"
+        ],
+        "title": "UnrealisedHolding",
+        "type": "object"
+      },
+      "UnrealisedLot": {
+        "properties": {
+          "bought_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bought On"
+          },
+          "bucket": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket"
+          },
+          "bucket_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bucket After"
+          },
+          "cost": {
+            "title": "Cost",
+            "type": "number"
+          },
+          "days_held": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days Held"
+          },
+          "days_to_long_term": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Days To Long Term"
+          },
+          "gain": {
+            "title": "Gain",
+            "type": "number"
+          },
+          "long_term_on": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Term On"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "term": {
+            "anyOf": [
+              {
+                "enum": [
+                  "short",
+                  "long",
+                  "flat"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "cost",
+          "value",
+          "gain"
+        ],
+        "title": "UnrealisedLot",
+        "type": "object"
+      },
+      "UnrealisedSummary": {
+        "properties": {
+          "long_term_net": {
+            "title": "Long Term Net",
+            "type": "number"
+          },
+          "short_term_net": {
+            "title": "Short Term Net",
+            "type": "number"
+          },
+          "total_gain": {
+            "title": "Total Gain",
+            "type": "number"
+          },
+          "uncounted_lots": {
+            "title": "Uncounted Lots",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_gain",
+          "short_term_net",
+          "long_term_net",
+          "uncounted_lots"
+        ],
+        "title": "UnrealisedSummary",
+        "type": "object"
+      },
       "Unsettled": {
         "description": "Matured deposits and bonds whose payout has not been recorded yet.",
         "properties": {
@@ -11244,6 +12190,56 @@
           }
         },
         "summary": "Get Tax",
+        "tags": [
+          "analytics"
+        ]
+      }
+    },
+    "/api/analytics/unrealised": {
+      "get": {
+        "description": "What the user's open holdings would be taxed as if closed in full today at their current\nvalue (informational, SPEC §9). `fy` only selects the financial year whose realised usage of\nthe equity long-term exemption is shown; the unrealised side is always as of today.",
+        "operationId": "get_unrealised_api_analytics_unrealised_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fy",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fy"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsUnrealised"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Unrealised",
         "tags": [
           "analytics"
         ]
@@ -11744,6 +12740,59 @@
           }
         },
         "summary": "Restore Item",
+        "tags": [
+          "cash"
+        ]
+      }
+    },
+    "/api/assets/cash/{item_id}/update-value": {
+      "post": {
+        "description": "Quick refresh of the figure that goes stale: only those fields (and updated_at).",
+        "operationId": "update_value_api_assets_cash__item_id__update_value_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashUpdateValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashReadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Value",
         "tags": [
           "cash"
         ]
@@ -12749,6 +13798,59 @@
         ]
       }
     },
+    "/api/assets/nps/{item_id}/update-value": {
+      "post": {
+        "description": "Quick refresh of the figure that goes stale: only those fields (and updated_at).",
+        "operationId": "update_value_api_assets_nps__item_id__update_value_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NpsUpdateValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NpsReadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Value",
+        "tags": [
+          "nps"
+        ]
+      }
+    },
     "/api/assets/other": {
       "get": {
         "operationId": "list_items_api_assets_other_get",
@@ -12999,6 +14101,59 @@
         ]
       }
     },
+    "/api/assets/other/{item_id}/update-value": {
+      "post": {
+        "description": "Quick refresh of the figure that goes stale: only those fields (and updated_at).",
+        "operationId": "update_value_api_assets_other__item_id__update_value_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OtherUpdateValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OtherReadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Value",
+        "tags": [
+          "other"
+        ]
+      }
+    },
     "/api/assets/pf": {
       "get": {
         "operationId": "list_items_api_assets_pf_get",
@@ -13244,6 +14399,59 @@
           }
         },
         "summary": "Restore Item",
+        "tags": [
+          "pf"
+        ]
+      }
+    },
+    "/api/assets/pf/{item_id}/update-value": {
+      "post": {
+        "description": "Quick refresh of the figure that goes stale: only those fields (and updated_at).",
+        "operationId": "update_value_api_assets_pf__item_id__update_value_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PfUpdateValue"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PfReadResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Value",
         "tags": [
           "pf"
         ]
@@ -14461,6 +15669,7 @@
                     "gain",
                     "gain_pct",
                     "status",
+                    "xirr",
                     "closed_on",
                     "received",
                     "realised_gain"
@@ -14867,6 +16076,7 @@
                     "gain",
                     "gain_pct",
                     "status",
+                    "xirr",
                     "closed_on",
                     "received",
                     "realised_gain"
@@ -15649,6 +16859,7 @@
                     "invested",
                     "gain",
                     "value_date",
+                    "xirr",
                     "closed_on",
                     "received",
                     "realised_gain"
@@ -16006,6 +17217,7 @@
                     "gain",
                     "gain_pct",
                     "status",
+                    "xirr",
                     "closed_on",
                     "received",
                     "realised_gain"
@@ -16185,6 +17397,7 @@
                     "gain",
                     "gain_pct",
                     "buy_date",
+                    "xirr",
                     "closed_on",
                     "received",
                     "realised_gain"

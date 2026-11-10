@@ -416,6 +416,7 @@ def test_dashboard_matured_only_types_have_null_gain_and_stay_out_of_totals():
 
 def _summary(monkeypatch, group):
     monkeypatch.setattr(holdings, "load_group", lambda db, slug, user_id: group)
+    monkeypatch.setattr(holdings, "add_holding_xirr", lambda db, slug, user_id, items: items)
     return holdings._run(
         None, 1, "stock", q=None, sort="current_value", dir="desc", page=1, multi={}
     )["summary"]

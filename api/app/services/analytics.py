@@ -1012,6 +1012,16 @@ _LATEST_FIELD = {
 _BALANCE_DATE_FIELD = {"cash": "balance_date", "pf": "balance_date", "other": "value_date"}
 
 
+def is_stale(as_of: date | None, today: date) -> bool:
+    """A hand-entered balance or value date more than STALE_MONTHS calendar months before `today`.
+
+    Exactly 6 months back is not stale; None (no date) is not stale.
+    """
+    if as_of is None:
+        return False
+    return as_of < today - relativedelta(months=STALE_MONTHS)
+
+
 def data_health(groups: Sequence[Mapping[str, Any]], today: date) -> dict[str, Any]:
     """Counts and lists of holdings that make the numbers less trustworthy.
 
@@ -1026,7 +1036,6 @@ def data_health(groups: Sequence[Mapping[str, Any]], today: date) -> dict[str, A
       latest           {"stock_price", "mf_nav", "nps_nav", "gold_rate"}: the newest such date
                        among held items, None when nothing has one
     """
-    stale_before = today - relativedelta(months=STALE_MONTHS)
     at_cost: list[dict[str, Any]] = []
     stale: list[dict[str, Any]] = []
     matured: list[dict[str, Any]] = []
@@ -1048,7 +1057,7 @@ def data_health(groups: Sequence[Mapping[str, Any]], today: date) -> dict[str, A
                 at_cost.append(ref)
             if asset_type in _BALANCE_DATE_FIELD:
                 as_of = _to_date(item.get(_BALANCE_DATE_FIELD[asset_type]))
-                if as_of is not None and as_of < stale_before:
+                if is_stale(as_of, today):
                     stale.append({**ref, "as_of": as_of})
     return {
         "at_cost": {"count": len(at_cost), "items": at_cost},

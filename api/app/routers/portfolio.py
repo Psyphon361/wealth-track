@@ -1,26 +1,28 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date
+from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db, read_bind
 from app.deps import current_user
 from app.models.user import User
 from app.models.gold import Gold
-from app.models.mf_master import MFNavLatest
+from app.models.mf_master import MFMaster, MFNavLatest
+from app.models.mf_sip import MfSip, MfSipSkip
 from app.models.mutual_fund import MutualFund
 from app.models.nps import Nps
 from app.models.nps_master import NpsNavLatest
 from app.models.stock_price import StockPriceLatest
 from app.routers.assets import REGISTRY
 from app.schemas.summary import DashboardResponse, PortfolioResponse
+from app.services import analytics
 from app.services import exits as exits_service
 from app.services import fundings as fundings_service
-from app.services import gold_rates, nav_history, nps as nps_service, stock_prices, valuation
+from app.services import gold_rates, nav_history, sip as sip_service, nps as nps_service, stock_prices, valuation
 
 router = APIRouter(tags=["portfolio"])
 
@@ -48,6 +50,8 @@ _VALUERS = {
     "pf": valuation.value_pf,
     "other": valuation.value_other,
 }
+# Hand-entered types: the date their figure was last read (drives the `stale` flag on items).
+_STALE_FIELD = {"cash": "balance_date", "pf": "balance_date", "other": "value_date"}
 _CENT = Decimal("0.01")
 
 
@@ -222,6 +226,12 @@ def build_groups(
             _item(r, read_schema, c)
             for r, c in zip(records_by_type.get(slug, []), computed, strict=True)
         ]
+        if slug in _STALE_FIELD:
+            for item, c in zip(items, computed, strict=True):
+                # Only an active holding can be stale (a closed Other is "sold").
+                item["stale"] = c["status"] == "active" and analytics.is_stale(
+                    date.fromisoformat(item[_STALE_FIELD[slug]]), today
+                )
         for item in items:
             # Filled in by exits_service.apply_exit_info once the exits are loaded.
             item.setdefault("closed_on", None)
@@ -445,11 +455,117 @@ def add_day_change(
     }
 
 
+ATTENTION_CAP = 20
+ATTENTION_MATURING_DAYS = 30
+ATTENTION_SIP_DAYS = 7
+
+
+def _fetch_attention_sips(bind: Any, user_id: int, sip_today: date) -> list[tuple[MfSip, set[date]]]:
+    """The user's active SIPs with their skipped due dates in the next 7 days: one query."""
+    until = sip_today + timedelta(days=ATTENTION_SIP_DAYS)
+    stmt = (
+        select(MfSip, MfSipSkip.due_date)
+        .outerjoin(
+            MfSipSkip,
+            and_(
+                MfSipSkip.sip_id == MfSip.id,
+                MfSipSkip.due_date >= sip_today,
+                MfSipSkip.due_date <= until,
+            ),
+        )
+        .where(MfSip.user_id == user_id, MfSip.status == sip_service.ACTIVE)
+        .order_by(MfSip.id)
+    )
+    sips: dict[int, tuple[MfSip, set[date]]] = {}
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        for sip, skipped in session.execute(stmt).all():
+            entry = sips.setdefault(sip.id, (sip, set()))
+            if skipped is not None:
+                entry[1].add(skipped)
+    return list(sips.values())
+
+
+def _fund_names(bind: Any, scheme_codes: set[int]) -> dict[int, str]:
+    if not scheme_codes:
+        return {}
+    with Session(bind, autoflush=False, expire_on_commit=False) as session:
+        rows = session.execute(
+            select(MFMaster.scheme_code, MFMaster.name).where(MFMaster.scheme_code.in_(scheme_codes))
+        ).all()
+    return {code: name for code, name in rows}
+
+
+def due_sips(sips: list[tuple[MfSip, set[date]]], sip_today: date) -> list[tuple[date, MfSip]]:
+    """(next date, SIP) of active SIPs whose next instalment is within 7 days and not skipped,
+    by date then id."""
+    until = sip_today + timedelta(days=ATTENTION_SIP_DAYS)
+    out = []
+    for sip, skipped in sips:
+        next_date = sip_service.next_date_of(sip, sip_today)
+        if next_date is not None and next_date <= until and next_date not in skipped:
+            out.append((next_date, sip))
+    return sorted(out, key=lambda r: (r[0], r[1].id))
+
+
+def build_attention(
+    groups: list[dict[str, Any]],
+    today: date,
+    sip_rows: list[tuple[date, MfSip]],
+    fund_names: dict[int, str],
+) -> dict[str, Any]:
+    """Maturing, stale and SIP rows for the dashboard, each capped, with the true counts."""
+    # No bond masters: an SGB is recognised by the holding's own bond_type (the master only
+    # matters for a holding saved with another type, which costs a query the dashboard skips).
+    maturing = analytics.coming_up(groups, today)["next_30_days"]["rows"]
+    stale = sorted(
+        analytics.data_health(groups, today)["stale_balances"]["items"],
+        key=lambda r: (r["as_of"], r["type"], r["id"]),
+    )
+    return {
+        "maturing": [
+            {
+                "type": r["type"],
+                "id": r["id"],
+                "name": r["name"],
+                "date": r["maturity_date"],
+                "days_left": r["days_left"],
+                "amount": r["amount"],
+                "approximate": r["approximate"],
+                "rate": r["rate"],
+            }
+            for r in maturing[:ATTENTION_CAP]
+        ],
+        "stale": stale[:ATTENTION_CAP],
+        "sips": [
+            {
+                "id": sip.id,
+                "fund_name": fund_names.get(sip.scheme_code, ""),
+                "mutual_fund_id": sip.mutual_fund_id,
+                "amount": sip.amount,
+                "next_date": next_date,
+            }
+            for next_date, sip in sip_rows[:ATTENTION_CAP]
+        ],
+        "counts": {"maturing": len(maturing), "stale": len(stale), "sips": len(sip_rows)},
+    }
+
+
 @router.get("/dashboard", response_model=DashboardResponse)
 def get_dashboard(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    # The previous gold rates run alongside load_groups' own concurrent queries.
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        prev_future = pool.submit(_fetch_gold_prev_rates, read_bind(db), user.id)
-        groups = load_groups(db, user.id)
+    today = date.today()
+    sip_today = sip_service.today_ist()
+    bind = read_bind(db)
+    # The previous gold rates and the SIPs run alongside load_groups' own concurrent queries.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        prev_future = pool.submit(_fetch_gold_prev_rates, bind, user.id)
+        sips_future = pool.submit(_fetch_attention_sips, bind, user.id, sip_today)
+        groups = load_groups(db, user.id, today)
         prev_rates = prev_future.result()
-    return add_day_change(build_dashboard(groups), groups, prev_rates)
+        sip_rows = due_sips(sips_future.result(), sip_today)
+    # One more query (fund names), and only when a SIP is due.
+    names = _fund_names(bind, {sip.scheme_code for _, sip in sip_rows})
+    attention = build_attention(groups, today, sip_rows, names)
+    return {
+        **add_day_change(build_dashboard(groups), groups, prev_rates),
+        "attention": attention,
+    }

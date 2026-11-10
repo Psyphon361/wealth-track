@@ -747,6 +747,47 @@ class MoneyMachine(RuleBasedStateMachine):
         TALLY[f"edit running {slug}: {'changed' if new else 'unchanged'}{', paid from an account' if funded else ''}"] += 1
         self.touched = hold.key
 
+    @precondition(lambda self: bool(self.live_cash() or self.holds_of("nps", "pf", "other")))
+    @rule(data=st.data())
+    def update_value(self, data):
+        """POST update-value for a cash account, NPS, EPF/PPF or Other holding (the quick refresh): only the
+        figure and its date change, no money moves and no funding changes (the invariants check both). 404 when
+        deleted, 409 for an Other that was sold in full. A missing date means the harness day. The Other
+        value stays 80000 (the oracle's constant); only its date moves."""
+        picks = [("cash", c) for c in self.live_cash()] + [("hold", h) for h in self.holds_of("nps", "pf", "other")]
+        kind, target = data.draw(st.sampled_from(picks))
+        date_text = data.draw(st.sampled_from(["2026-02-01", None]))
+        when = date.fromisoformat(date_text) if date_text else self.h.today
+        if kind == "cash":
+            slug, hid, live, want = "cash", target.id, True, 200
+            cents = data.draw(st.one_of(st.just(0), st.integers(0, 3_000_000)))
+            body = {"balance": sx(from_cents(cents))}
+        else:
+            slug, hid, live = target.slug, target.id, target.live
+            want = 404 if not live else 409 if target.closed else 200
+            if slug == "nps":
+                units = from_cents(data.draw(st.integers(1_000, 500_000))).scaleb(-2)
+                invested = from_cents(data.draw(st.integers(100, 3_000_000)))
+                body = {"units": sx(units), "contributed": sx(invested)}
+            elif slug == "pf":
+                balance = from_cents(data.draw(st.integers(100, 5_000_000)))
+                body = {"balance": sx(balance)}
+            else:
+                body = {"current_value": 80000}
+        if slug != "nps" and date_text:
+            body["balance_date" if slug in ("cash", "pf") else "value_date"] = date_text
+        r = self.h.call("POST", f"/api/assets/{slug}/{hid}/update-value", json=body)
+        if self.expect(r, (want,), f"update value {slug}") >= 400:
+            return
+        if kind == "cash":
+            target.bal, target.put = from_cents(cents), True
+        elif slug == "nps":
+            target.qty, target.invested, target.invested0 = units, invested, invested
+        elif slug == "pf":
+            target.bal, target.bdate = balance, when
+        TALLY[f"update value {slug}: {'dated' if date_text else 'dated today'}"] += 1
+        self.touched = ("cash", hid) if kind == "cash" else target.key
+
     # ---- sell ---------------------------------------------------------------------------------
     def mf_model_cost(self, hold: HM, qty: Decimal) -> Decimal:
         """The cost of selling `qty` of a fund in part, from the machine's own bookkeeping (an oracle, kept

@@ -52,6 +52,48 @@ class DashboardByType(BaseModel):
     allocation_pct: Amount
 
 
+class AttentionMaturing(BaseModel):
+    type: AssetType
+    id: int
+    name: str
+    date: date
+    days_left: int
+    amount: Amount | None = None
+    approximate: bool
+    rate: Amount | None = None
+
+
+class AttentionStale(BaseModel):
+    type: AssetType
+    id: int
+    name: str
+    as_of: date
+
+
+class AttentionSip(BaseModel):
+    id: int
+    fund_name: str
+    mutual_fund_id: int | None = None
+    amount: Amount
+    next_date: date
+
+
+class AttentionCounts(BaseModel):
+    maturing: int = 0
+    stale: int = 0
+    sips: int = 0
+
+
+class Attention(BaseModel):
+    """What needs a look soon: maturities in 30 days, stale hand-entered values, SIPs due in 7
+    days. Each list holds at most 20 rows; counts hold the true totals."""
+
+    maturing: list[AttentionMaturing] = []
+    stale: list[AttentionStale] = []
+    sips: list[AttentionSip] = []
+    counts: AttentionCounts = AttentionCounts()
+
+
 class DashboardResponse(BaseModel):
     total_invested: Amount
     total_current: Amount
@@ -64,3 +106,4 @@ class DashboardResponse(BaseModel):
     by_type: list[DashboardByType]
     # Matured deposits and bonds whose payout has not been recorded yet.
     unsettled: Unsettled = Unsettled()
+    attention: Attention = Attention()
