@@ -29,11 +29,6 @@ def add_fund(client, headers):
     ).json()  # fmt: skip
 
 
-def user_id_of(engine, holding_id):
-    with sessionmaker(bind=engine)() as session:
-        return session.get(MutualFund, holding_id).user_id
-
-
 def record_sale(engine, holding_id):
     with sessionmaker(bind=engine)() as session:
         row = HoldingExit(

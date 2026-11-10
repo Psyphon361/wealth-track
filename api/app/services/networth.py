@@ -12,7 +12,6 @@ from dateutil.relativedelta import relativedelta
 
 from app.services import valuation
 
-RANGES = ("1m", "6m", "1y", "all")
 MAX_YEARS = 10
 UNITS_TOLERANCE = Decimal("0.001")
 _CENT = Decimal("0.01")

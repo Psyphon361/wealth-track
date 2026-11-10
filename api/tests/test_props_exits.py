@@ -24,10 +24,6 @@ def thou(n: int) -> Decimal:
     return D(n) / 1000
 
 
-def ten_k(n: int) -> Decimal:
-    return D(n) / 10000
-
-
 invested_st = st.integers(min_value=0, max_value=10**10).map(cents)  # up to 100 crore
 held_st = st.integers(min_value=1, max_value=10**8).map(thou)
 SLUGS = st.sampled_from(["stock", "mf", "bond", "gold"])

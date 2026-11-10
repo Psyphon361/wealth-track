@@ -57,7 +57,6 @@ TYPE_CATEGORY = {
     "S-UCB": "urban_coop",
     "O-UCB": "urban_coop",
 }
-BANK_CATEGORIES = tuple(dict.fromkeys(TYPE_CATEGORY.values()))
 # Search order of categories (everything else sorts last)
 CATEGORY_PRIORITY = (
     "public_sector", "private_sector", "small_finance", "foreign", "nbfc", "hfc", "post_office",

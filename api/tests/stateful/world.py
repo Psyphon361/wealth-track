@@ -132,7 +132,6 @@ class Harness:
         self.user = user
         self.user2 = user2  # the second user: owns a few holdings, tries user 1's ids
         self.uid = user.id
-        self.uid2 = user2.id if user2 is not None else None
         self.local_pg = local_pg
         self.fk = local_pg  # foreign-key actions (CASCADE, SET NULL) are enforced by the database
         self.today = START_TODAY

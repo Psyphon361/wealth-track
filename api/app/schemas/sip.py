@@ -115,10 +115,6 @@ class DuplicateSip(BaseModel):
     name: str
 
 
-class SipDuplicateResponse(Outcome):
-    duplicates: list[DuplicateSip]
-
-
 class SipTransaction(BaseModel):
     id: int
     date: Day
@@ -135,13 +131,3 @@ class SipTransactionsResponse(BaseModel):
     page: int
     page_size: int
     page_count: int
-
-
-class SipSummary(BaseModel):
-    """The SIP shown on an MF holding row or detail page."""
-
-    id: int
-    amount: Annotated[Decimal, Number]
-    day_of_month: int
-    status: str
-    next_date: date | None

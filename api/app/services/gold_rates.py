@@ -37,7 +37,6 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 FETCH_TIMEOUT = 30
-METALS = ("gold", "silver")
 PURITIES = ("999", "995", "916", "750", "585")  # gold purities
 SILVER_PURITIES = ("999", "925")
 SILVER_STORED = "999"  # the only silver purity IBJA publishes

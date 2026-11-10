@@ -191,9 +191,6 @@ def floor_of(slug: str, left: Decimal) -> Decimal:
 
 
 class MoneyMachine(RuleBasedStateMachine):
-    # Rules named here are left out (a known bug excluded until it is fixed, see test_known_bugs).
-    excluded_rules: frozenset[str] = frozenset()
-
     def __init__(self, harness: Harness) -> None:
         super().__init__()
         self.h = harness
