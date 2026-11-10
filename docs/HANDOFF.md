@@ -1,5 +1,37 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-10 (end of session: quick-wins batch built, browser-verified and committed locally; NOTHING PUSHED)
+
+### Git state
+- Local `main` is ahead of origin/main by 8 commits, none pushed (the user has not been asked to push yet): `fafa618` docs wind-up, `3504bed` two dead-code leftovers removed, `2ecb1af` API unrealised endpoint (T7), `732afa1` API update-value + stale flag + dashboard attention + per-holding XIRR + snapshot (T1, T3, T5), `2af444c` web "If You Sold Today" cards (T8), `e469c4b` API: xirr sent as a JSON number (bug found in the browser: FD/stock grids crashed with `n.toFixed is not a function`; gold had the same string bug and is fixed too), `3581798` web Update dialog + Stale pill + XIRR columns + Needs Attention card (T2, T4, T6), and the docs commit on top of these (SPEC §4/§5/§9, STATUS, AGENTS.md, this file).
+- Checks last run on the code (2026-11-10, before the docs commit): API `-m "not pg"` 2641 passed, 204 deselected, 1 xfailed; web tsc clean, lint clean, vitest 423. pg tests were NOT run locally (CI runs them on push; the new stateful `update_value` rule is exercised there too).
+- Reviews: advisor (Opus high) reviewed T1 and T7 diffs (T7 NOT OK once: fund lot costs not reconciled with the invested amount, fixed, re-review OK); plan was reviewed by the `fable` alias and accepted by the user. T3/T5/T2/T4/T6/T8 had no advisor review (not high-risk).
+- Browser-verified on the spare servers as the probe account: update dialog (pending state, "Required" validation, API toast), Stale pill and details line, Needs Attention card (all three groups, Update flow, count drops after save, mobile and desktop), XIRR on the FD and stock grids and on the stock details KPI tile, the Capital Gains "If You Sold Today" cards.
+
+### What exists now
+- `POST /api/assets/{cash|pf|other|nps}/{id}/update-value`; `stale` flag on cash/EPF-PPF/Other items (shared `is_stale`, 6-month rule); `attention` on `GET /api/dashboard`; per-holding `xirr` for FD, RD, stock, bond, Other (null under 365 days; MF and gold unchanged); `GET /api/analytics/unrealised?fy=` and the web cards. Details are in SPEC §4, §5 and §9 and AGENTS.md.
+
+### Open points (none blocking)
+1. The user has not been asked about pushing: ask for explicit OK, then `git push`, then watch CI (API deploy workflow runs the pg suite and migration gate).
+2. REMIND the user: they asked to discuss dead-code cleanup phases 3 and 4 after this batch (see the older "Dead-code cleanup: what is left" section below and memory `cleanup-phases-3-4-reminder`; phase 4 needs their read-only prod query first, then an advisor diff review).
+3. Polish: in the dashboard Needs Attention card the maturing row subtitle "Matures <date> · In N days" is truncated on narrow widths; the XIRR column is visible by default on all five grids (stock grid has 11 columns, there is no hidden-by-default mechanism); MF and gold show the XIRR tile on the details page in addition to their existing holding-section row; saving from the card briefly shows the dashboard skeleton; Vite warns that `web/vitest.config.ts` uses ESM syntax.
+4. Known limit: the dashboard `attention` block recognises an SGB from the holding's own `bond_type` only (no bond-master query); an SGB saved as non-SGB gets face value x quantity there instead of its current value.
+5. `docs/ANALYTICS.md` was not checked for the stale "stock sales are missing" note.
+6. Older open items: SIP regression test, Sell dialog hint browser check, state-machine follow-ups (see the 2026-11-09 sections below). Next feature candidates: ranking items 5 onward (Buy more needs a design pass first), see the ranking table in the older section below.
+
+### Probe rows left in the dev DB (probe account probe-ui3@example.test only; mine, delete by exact id or leave)
+Cash 18 "ZZ probe T2 cash" and 19 "ZZ probe T4 stale cash"; Other 5 "ZZ probe T2 other"; stocks 24 and 25 (named "Reliance Industries Limited"); FDs 28 "ZZ probe T4 bank soon" and 29 "ZZ probe T6 bank old"; SIP 3 (Parag Parikh Flexi Cap, Rs 500 on the 13th).
+
+### Rules that bite and traps
+- Orchestrator hook: the main agent cannot edit project files or run inline `python -c`, `rm -rf`, `printf >` etc.; commit only as `git add <paths> && git commit -F <file>` from the repo root (run `cd /Users/psy/dev/mvp_wealth_track` alone first). Never push without the user's OK. Never touch ports 3000/8000.
+- Spare servers: API `cd api && .venv/bin/uvicorn app.main:app --port 8010`; `next dev` refuses a second server in the same folder, so have a Haiku builder `cp -Rc web/. <scratchpad>/webcopy/` (delete its `.next`), then run `API_URL=http://localhost:8010 npx next dev -p 3010` from the copy. Browser cookies are shared across localhost ports; the pane was already signed in as the probe account. Restart the API after backend changes (no reload). Stop both afterwards.
+- Decimal inside `dict[str, Any]` items serialises as a JSON string: use floats for any number added to grid or detail items, and assert the JSON type in an API-level test.
+- Shared files (`routers/portfolio.py`, `routers/holdings.py`, `web/lib/types.ts`, the OpenAPI snapshot) prevent per-task commits without interactive staging: plan commits by file group.
+- Advisor models: only Opus high (global rules) from now on.
+
+### Usage at wind-up
+- 5-hour window about 92% at the end of the session (resets 19:20 UTC, 2026-11-10); the user's wind-up rule is 96%.
+
 ## Resume here — 2026-11-10 (wind-up: dead-code cleanup phases 1 and 2 pushed and green; next-feature ranking done, nothing planned yet)
 
 ### Git state
