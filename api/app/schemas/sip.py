@@ -110,11 +110,6 @@ class SipResult(SipRead, Outcome):
     """A SIP plus the outcome text of the operation."""
 
 
-class DuplicateSip(BaseModel):
-    id: int
-    name: str
-
-
 class SipTransaction(BaseModel):
     id: int
     date: Day

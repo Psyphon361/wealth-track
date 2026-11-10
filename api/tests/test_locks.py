@@ -22,7 +22,7 @@ from app.routers.exits import MODELS, _get_holding
 from app.schemas.fundings import PaidFromBody
 from app.services.fundings import plan
 from app.services.sip import _post_one, post_due
-from tests.test_exits_api import BOND, FD, STOCK, add, asset, sell, settle
+from tests.test_exits_api import BOND, FD, STOCK, add, sell, settle
 from tests.test_paid_from import (  # noqa: F401  (fixtures)
     NPS,
     add_paid,

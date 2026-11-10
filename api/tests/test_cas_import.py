@@ -8,7 +8,7 @@ from casparser.exceptions import IncorrectPasswordError
 from casparser.types import CASData
 from sqlalchemy.orm import sessionmaker
 
-from app.models import MFMaster, MutualFund
+from app.models import MFMaster
 from app.services import cas_import
 from tests.test_scoping import client, users  # noqa: F401
 

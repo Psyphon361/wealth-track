@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func, literal, select, union_all
@@ -9,7 +9,7 @@ from app.deps import current_user
 from app.models import User
 from app.models.nps import Nps
 from app.models.nps_master import NpsMaster
-from app.routers.assets import REGISTRY, _holding_name
+from app.routers.assets import REGISTRY
 from app.routers.portfolio import LABELS
 from app.schemas.deleted import DeletedHolding
 from app.services.purge import RETENTION_DAYS
@@ -17,17 +17,10 @@ from app.services.purge import RETENTION_DAYS
 router = APIRouter(tags=["deleted"])
 
 
-def deleted_item(slug: str, obj, now: datetime) -> DeletedHolding:
-    purge_on = (obj.deleted_at + timedelta(days=RETENTION_DAYS)).date()
-    return DeletedHolding(
-        type=slug,
-        type_label=LABELS[slug],
-        id=obj.id,
-        name=_holding_name(obj),
-        deleted_at=obj.deleted_at,
-        purge_on=purge_on,
-        days_left=max(0, (purge_on - now.date()).days),
-    )
+def purge_dates(deleted_at: datetime, now: datetime) -> tuple[date, int]:
+    """(purge_on, days_left): the day a deleted holding is purged and the days until then."""
+    purge_on = (deleted_at + timedelta(days=RETENTION_DAYS)).date()
+    return purge_on, max(0, (purge_on - now.date()).days)
 
 
 def name_expr(model):
@@ -73,7 +66,7 @@ def list_deleted(db: Session = Depends(get_db), user: User = Depends(current_use
     rows = db.execute(deleted_union(user.id, cutoff)).all()
     items = []
     for row in rows:
-        purge_on = (row.deleted_at + timedelta(days=RETENTION_DAYS)).date()
+        purge_on, days_left = purge_dates(row.deleted_at, now)
         items.append(
             DeletedHolding(
                 type=row.type,
@@ -82,7 +75,7 @@ def list_deleted(db: Session = Depends(get_db), user: User = Depends(current_use
                 name=row.name,
                 deleted_at=row.deleted_at,
                 purge_on=purge_on,
-                days_left=max(0, (purge_on - now.date()).days),
+                days_left=days_left,
             )
         )
     return items

@@ -126,11 +126,6 @@ def gross_amount(quantity: Decimal, price: Decimal) -> Decimal:
     return money(Decimal(str(quantity)) * Decimal(str(price)))
 
 
-def net_amount(quantity: Decimal, price: Decimal, charges: Decimal) -> Decimal:
-    """Money received: quantity x price less charges, 2 dp."""
-    return gross_amount(quantity, price) - money(charges)
-
-
 def proportional_cost(invested: Decimal, held: Decimal, sold: Decimal) -> Decimal:
     """The share of the invested amount that belongs to `sold` of `held` units, 2 dp."""
     if held <= 0:

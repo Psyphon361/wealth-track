@@ -15,9 +15,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models import Cash
 from app.routers import analytics_tax as tax_router
-from app.routers import portfolio
 from app.services import analytics_tax as tax
-from app.services import valuation
+from app.services import bond_schedule, valuation
 from tests.test_analytics_api import TODAY as API_TODAY
 from tests.test_analytics_api import fixed_today, seeded, tables  # noqa: F401  (fixtures)
 from tests.test_scoping import client, users  # noqa: F401  (fixtures)
@@ -332,7 +331,10 @@ def bmaster(*, rate=9.5, frequency="monthly", bond_type="corporate", issuer="Acm
 
 
 def coupons(holding, master, window=FY26):
-    return tax.bond_coupons(holding, master, *window)
+    schedule = bond_schedule.payments(holding, master)
+    if schedule is None:
+        return None
+    return bond_schedule.sum_in_window(schedule, *window)
 
 
 def test_monthly_coupon_is_face_times_quantity_times_rate_over_twelve():

@@ -108,15 +108,6 @@ def savings_interest(balance: Decimal, rate_pct: Decimal, a: date, b: date) -> D
     return balance * rate_pct / 100 * days / 365
 
 
-def bond_coupons(bond: Any, master: Any, a: date, b: date) -> Decimal | None:
-    """Coupons of one bond paid in (a, b], or None when its coupon schedule can't be worked out
-    (see bond_schedule.payments for the rules)."""
-    schedule = bond_schedule.payments(bond, master)
-    if schedule is None:
-        return None
-    return bond_schedule.sum_in_window(schedule, a, b)
-
-
 # --- Payers ------------------------------------------------------------------------------------
 
 

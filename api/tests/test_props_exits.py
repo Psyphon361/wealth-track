@@ -94,7 +94,7 @@ def test_partials_then_full_sale_sum_to_invested_exactly(invested, hp, slug):
 @given(held_st, st.integers(0, 10**8).map(cents), st.integers(0, 10**7).map(cents))
 def test_net_is_gross_less_charges_at_two_dp(qty, price, charges):
     gross = exits.gross_amount(qty, price)
-    net = exits.net_amount(qty, price, charges)
+    net = exits.gross_amount(qty, price) - exits.money(charges)
     assert net == gross - charges
     assert gross == gross.quantize(CENT) and net.as_tuple().exponent == -2
     assert gross == (qty * price).quantize(CENT, rounding="ROUND_HALF_UP")

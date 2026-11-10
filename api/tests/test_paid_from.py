@@ -7,7 +7,7 @@ import pytest
 from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
-from app.models import Cash, HoldingFunding, NpsMaster, Stock
+from app.models import HoldingFunding, NpsMaster, Stock
 from app.services import fundings, nps, purge
 from tests.test_exits_api import BOND, CASH, FD, GOLD, OTHER, RD, STOCK, add, asset, errors, item
 from tests.test_exits_api import sell, settle

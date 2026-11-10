@@ -4,8 +4,6 @@
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from app.services import bond_schedule as bs
 from app.services import valuation
 from tests.test_analytics_api import TODAY as API_TODAY  # noqa: F401
@@ -150,21 +148,7 @@ def test_by_fy_sums_coupons_per_financial_year():
     assert sum(r["gross"] for r in rows) == Decimal(12500)
 
 
-def test_window_sums_equal_the_old_bond_coupons_results():
-    from app.services import analytics_tax as tax
-
-    cases = [
-        (bond(), bmaster()),
-        (bond(maturity=date(2026, 5, 31)), bmaster()),
-        (bond(purchase=date(2026, 10, 15)), bmaster()),
-        (bond(quantity=100, face_value=1000, maturity=date(2027, 12, 15)),
-         bmaster(rate=8, frequency="quarterly")),
-    ]  # fmt: skip
-    for holding, master in cases:
-        schedule = bs.payments(holding, master)
-        for window in (FY26, FY25, (FY26[0], TODAY)):
-            assert tax.bond_coupons(holding, master, *window) == bs.sum_in_window(schedule, *window)
-    assert tax.bond_coupons(bond(), None, *FY26) is None
+def test_window_sums_of_the_monthly_bond():
     # Exactly the 12 coupons of FY 2026-27 for the monthly bond; TDS is a tenth.
     schedule = bs.payments(bond(), bmaster())
     assert bs.sum_in_window(schedule, *FY26) == 12 * ONE

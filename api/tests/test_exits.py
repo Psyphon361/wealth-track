@@ -45,7 +45,8 @@ def test_hand_checked_partial_stock_sale():
 
 def test_amount_rounds_half_up_to_paise():
     assert exits.gross_amount(D("3"), D("0.125")) == D("0.38")  # 0.375
-    assert exits.net_amount(D("3"), D("100.005"), D("0.50")) == D("299.52")  # 300.015 -> 300.02 - 0.50
+    plan = sale(quantity=D("3"), price=D("100.005"), charges=D("0.50"))
+    assert plan.amount == D("299.52")  # 300.015 -> 300.02 - 0.50
 
 
 def test_units_round_to_three_places():

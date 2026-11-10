@@ -6,9 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.models import Cash, FixedDeposit, HoldingExit, Stock
 from app.routers.assets import REGISTRY, _holding_name
-from app.routers.deleted import deleted_item, deleted_union, name_expr
+from app.routers.deleted import deleted_union, name_expr, purge_dates
 from app.services import purge
-from tests.conftest import make_cash
 from tests.test_scoping import FD, client, users  # noqa: F401  (fixtures)
 
 CASH = {"name": "Soft Savings", "kind": "savings", "balance": 25000, "balance_date": "2026-10-01"}
@@ -144,15 +143,14 @@ def test_deleted_list_window_order_and_days_left(client, users, auth_engine):  #
     assert client.get("/api/deleted").status_code == 401
 
 
-def test_deleted_item_days_left_never_negative():
+def test_purge_dates_days_left_never_negative():
     now = datetime(2026, 11, 2, 12, 0, tzinfo=timezone.utc)
-    obj = make_cash(deleted_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
-    item = deleted_item("cash", obj, now)
-    assert item.purge_on == date(2026, 10, 1)
-    assert item.days_left == 0
-    fresh = deleted_item("cash", make_cash(deleted_at=now), now)
-    assert fresh.purge_on == date(2026, 12, 2)
-    assert fresh.days_left == 30
+    purge_on, days_left = purge_dates(datetime(2026, 9, 1, tzinfo=timezone.utc), now)
+    assert purge_on == date(2026, 10, 1)
+    assert days_left == 0
+    purge_on, days_left = purge_dates(now, now)
+    assert purge_on == date(2026, 12, 2)
+    assert days_left == 30
 
 
 # --- purge ---------------------------------------------------------------------

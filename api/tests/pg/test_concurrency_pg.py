@@ -22,7 +22,6 @@ from tests.pg.helpers_t3 import (
     FD,
     FUND,
     STOCK,
-    TODAY,
     World,
     assert_clean,
     cash_body,

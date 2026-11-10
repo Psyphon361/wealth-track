@@ -67,12 +67,6 @@ def pick_on_or_before(rows: list[NavRow], on_date: date) -> NavRow | None:
     return ordered[index - 1] if index else None
 
 
-def pick_before(rows: list[NavRow], before_date: date) -> NavRow | None:
-    """The row with the greatest date strictly before before_date, or None."""
-    earlier = [r for r in rows if r[0] < before_date]
-    return max(earlier, key=lambda r: r[0]) if earlier else None
-
-
 def validate_not_future(on_date: date, today: date | None = None) -> None:
     if on_date > (today or date.today()):
         raise RequestValidationError(

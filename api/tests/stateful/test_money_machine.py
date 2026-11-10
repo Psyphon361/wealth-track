@@ -20,7 +20,6 @@ test_known_bugs.py (fixed ones stay as regression tests). Never commit @reproduc
 
 import os
 
-import pytest
 from hypothesis import HealthCheck, Phase, settings
 from hypothesis.stateful import run_state_machine_as_test
 
