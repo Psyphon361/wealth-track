@@ -48,11 +48,6 @@ export function normalize(input: string): string {
   return normalizeMapped(input).text;
 }
 
-export function tokenize(input: string): string[] {
-  const text = normalize(input);
-  return text === "" ? [] : text.split(" ");
-}
-
 /** Normalised form without spaces, for ids ("INE 002A01018" equals "INE002A01018"). */
 export function compact(input: string): string {
   return normalize(input).replace(/ /g, "");

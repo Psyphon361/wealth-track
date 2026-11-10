@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compact, normalize, normalizeMapped, tokenize } from "./normalize";
+import { compact, normalize, normalizeMapped } from "./normalize";
 
 describe("normalize", () => {
   it("lowercases, strips diacritics and collapses punctuation and spaces", () => {
@@ -15,11 +15,6 @@ describe("normalize", () => {
 
   it("makes hyphenated and spaced forms equal", () => {
     expect(normalize("hdfc-bank")).toBe(normalize("HDFC Bank"));
-  });
-
-  it("tokenizes, and gives nothing for punctuation only", () => {
-    expect(tokenize("Gold & Silver")).toEqual(["gold", "and", "silver"]);
-    expect(tokenize(" -- ")).toEqual([]);
   });
 
   it("compacts to a form without spaces", () => {
