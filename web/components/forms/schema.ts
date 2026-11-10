@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { PAID_FROM_ACCOUNT_ERROR } from "@/lib/paid-from";
 import {
   GOLD_PURITIES_BY_METAL,
   type GoldMetal,
@@ -533,11 +532,3 @@ export function sipEndAfterStart(
   if (!end || !isValidISODate(start) || !isValidISODate(end)) return true;
   return end >= start;
 }
-
-/** "Paid from" choice sent as `paid_from`; null means outside money. */
-export const paidFromSchema = z
-  .object({
-    cash_id: z.number(PAID_FROM_ACCOUNT_ERROR).int(PAID_FROM_ACCOUNT_ERROR),
-    from_exit_id: z.number().int().optional(),
-  })
-  .nullable();

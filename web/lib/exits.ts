@@ -73,12 +73,6 @@ export type ExitResult = ExitRead & {
   sips_cancelled: number;
 };
 
-export interface StockClose {
-  price: number;
-  price_date: string;
-  source: "history" | "latest";
-}
-
 /** An active cash account the money can go into. */
 export interface CashAccount {
   id: number;
@@ -393,8 +387,6 @@ export function priceHint(found: PriceOnDate): string {
 }
 
 // ---- Where the money went ----
-
-export type ExitFlow = "sell" | "settle";
 
 /** Select values: "" (not chosen), "cash:<id>", "new", "none". */
 export type DestinationChoice = string;
