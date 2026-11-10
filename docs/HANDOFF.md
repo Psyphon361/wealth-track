@@ -1,5 +1,67 @@
 # HANDOFF — session resume notes (2026-11-08)
 
+## Resume here — 2026-11-10 (wind-up: dead-code cleanup phases 1 and 2 pushed and green; next-feature ranking done, nothing planned yet)
+
+### Git state
+- origin/main = main = `e050fb5`. Nothing unpushed. The only uncommitted or unpushed change at wind-up is this notes section (docs only).
+- Pushed on 2026-11-10 with the user's OK, range `0f2ac57..e050fb5`:
+  - `71fcddf` API: remove dead code found by the unused-code scan (unused schemas `SipDuplicateResponse`, `SipSummary`; constants `BANK_CATEGORIES`, `METALS`, `RANGES`; an unused import; four unused test helpers).
+  - `639bfe1` Web: remove dead code (`paidFromSchema`, `StockClose`, `ExitFlow`, the `next-themes` dependency).
+  - `0a54399` API: remove functions only tests called (`DuplicateSip`, `pick_before`, `net_amount`, `bond_coupons`, `deleted_item`); new `purge_dates` helper in `api/app/routers/deleted.py` used by `list_deleted`; tests retargeted at live code.
+  - `e050fb5` Web: remove helpers only tests called (`dayOptionLabel`, `optionLabel`, `ratesText`, the capital-gains `heldText`, `highlightRanges`).
+- CI: both pushes green. Last runs: CI Web 42831466868 and "API migrate and deploy" 42831466751 (includes the pg suite), both success. The earlier deploy run 42663937507 (sale-cost option 2) was also confirmed green.
+- Verified locally before the pushes: API not-pg 2518 passed + 1 xfailed; OpenAPI snapshot unchanged; web tsc and lint clean; vitest 396. Not run locally: pg tests (CI ran them), `npm run build`.
+- No behaviour change in any of the four commits. No advisor review was needed (no high-risk code).
+
+### Dead-code cleanup: what is left (none approved)
+- Two small leftovers, awaiting the user's yes: delete `tokenize` in `web/lib/search/normalize.ts` (now used only by `normalize.test.ts`) with its test; drop the near-tautological `net == gross - charges` assert in `api/tests/test_props_exits.py`.
+- Phase 3 (each needs a user decision): one-off scripts `api/scripts/preflight_sale_cost.py` and its test, `preflight_0032.sql`, `preflight_delete_refund.sql` and their AGENTS.md lines; `owner_email` in `api/app/config.py`; the `date-fns` and `vite` web dependencies; web constants and the `PortfolioResponse` type chain that only tests reference.
+- Phase 4: the legacy `stopped_sips` undo path (`api/app/services/exits.py` around lines 822-832 and `api/app/routers/exits.py` around line 292). Needs a read-only prod query by the user first, then an advisor diff review.
+- Recommended to skip: unused shadcn parts and redundant `export` keywords.
+- Trap: these look unused but are pinned by API tests and must stay: `SIP_HOLDING_SOLD_ERROR`, `CASH_ACCOUNT_ERROR`, `HOLDING_CLOSED_*` in `web/components/forms/schema.ts` (message parity and `api/tests/test_edit_guards.py`), and the web `PortfolioResponse` type (`api/tests/contract/test_ts_types_vs_openapi.py`).
+
+### Next-feature ranking (2026-11-10; from three read-only scans of the docs, the API and the web; not clicked through in a browser)
+Main finding: the app shows wealth well but makes it laborious to keep the numbers current.
+Effort: S = about a day, M = a few days with a migration or new endpoint, L = a week or more.
+
+| # | Feature | Impact | Effort | Why it makes sense here |
+|---|---|---|---|---|
+| 1 | Quick "Update Balance / Value" for Cash, EPF & PPF, Other, NPS, plus a stale marker on grids | High | S | Today it takes the full Edit dialog (about 5 interactions) for the most frequent chore. Stale balances are only flagged in Analytics, and only after 6 months. |
+| 2 | Dashboard "needs attention" strip: maturities coming up, stale balances, SIPs due | High | S–M | The overview API already returns this data; the dashboard shows none of it. |
+| 3 | XIRR on every holding | Medium–High | S | Shown only for MF and gold. `analytics_returns.holding_flows` already builds flows for FD, RD, stock, bond and Other; cash and PF carry the field but hide it. |
+| 4 | Unrealised gains by term + tax-gain harvesting (STATUS 2.15, 2.16) | High before 31 March | S–M | Reuses the capital-gains classification, no migration. Limit: non-MF holdings are single lots, so their term rests on one date. |
+| 5 | Buy more of a holding (stock, MF lump sum; then PPF/EPF/NPS contributions) | Highest | L | Already "Next" item 1 in the docs. A second buy means recomputing the average by hand and losing the date. Touches valuation, FIFO, gains, net worth and the money machine. Needs a design first. |
+| 6 | CSV export of grids, capital gains and interest | Medium–High | S–M | No export exists anywhere. Plain CSV, not the ITR Schedule 112A export the user skipped. |
+| 7 | Value history chart on the holding page | Medium | S–M | Price history for stocks, MF, NPS and gold is stored and only feeds the net worth chart. Stocks go back 12 months only. |
+| 8 | Stock splits and bonuses | Medium, a correctness issue | M | A split silently makes quantity × price wrong, with no warning. |
+| 9 | SIP instalments paid from a cash account | Medium | M | "Next" item 2 in the docs. Money movement: needs an advisor review. |
+| 10 | Tax-saving tracker (2.21: 80C, 80CCD(1B), 80TTA) | Medium | M | ELSS data exists; PPF has no dated contributions and FDs have no tax-saver flag. Better after item 5. |
+| 11 | Target allocation and rebalancing (2.2) | Medium | M | Current allocation exists; needs one settings row and a card. |
+| 12 | Loans / liabilities | Medium–High if the user has a loan | M–L | Net worth is overstated without them. Not built; noted in the docs only as a possible new type. |
+| 13 | Bonds at market price, SGB at gold price | Low–Medium | M | Bonds are valued by YTM accrual from cost; bond closes are not stored. |
+
+- Suggested order: quick wins batch (items 1–4), then Buy more (item 5, design pass first), then items 6–9, then 10–11.
+- Left out on purpose. Parked or skipped by the user: broker/CDSL import, password reset, mobile/PWA, dividends, price alerts, Sharpe/beta, MF look-through, family views. Low value for the effort: goals and retirement projections, sector and market-cap split (no data source), MF overlap (no data), email reminders (no mail provider), treemap and allocation-over-time visuals.
+- The user was asked "Plan the quick-wins batch (items 1 to 4) first?" (alternative: plan Buy more first) and had not answered at wind-up. Nothing is planned or built.
+
+### Still open from the earlier agenda
+- The small follow-ups listed in the 2026-11-09 section below (SIP regression test, Sell dialog hint browser check, state-machine follow-ups).
+- Doc fix: AGENTS.md says `api/tests/test_networth_today_agreement.py` has two strict xfails; only one remains (the gold drift was fixed).
+- `docs/SPEC.md` §8b and §9 and `docs/STATE-MACHINES.md` were not read this session; read them before planning any analytics or money work.
+
+### Next steps
+1. Show the user the feature table above again (they asked for it), then ask which to plan: quick wins (items 1–4) or Buy more (item 5).
+2. Write that plan (numbered tasks: goal, files, acceptance, dependencies), advisor plan review if non-trivial, show the user before building.
+3. If the user wants the two cleanup leftovers: one builder, then `cd api && .venv/bin/python -m pytest -q -m "not pg"` and `cd web && npm run lint && npm test`, one commit, ask before pushing.
+
+### Rules that bite
+- The main agent cannot edit project files or run compound shell (for-loops, `;` chains) in the project; the hook blocks it. Commit only as `git add <paths> && git commit -F <file>` from the repo root, after running `cd /Users/psy/dev/mvp_wealth_track` alone first.
+- Never push without the user's OK for that push. Never touch ports 3000/8000. The pg cluster on port 5544 is orchestrator-owned (not started this session).
+- This session the user asked for subagents on Fable 5.2 at effort medium (`model: "fable"`); ask whether that still holds.
+
+### Usage at wind-up
+- 5-hour window 24% (resets 19:20 UTC, 2026-11-10); weekly 30%.
+
 ## Resume here — 2026-11-09 night (wind-up: sale-cost option 2 built, pushed; deploy was running at wind-up)
 
 ### Git state
