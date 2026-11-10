@@ -31,12 +31,6 @@ export function fyShort(fy: string): string {
   return `FY ${a.slice(-2)}–${b}`;
 }
 
-/** Select option label: "<name> · <n> units · bought <date>". */
-export function optionLabel(b: BondScheduleBond): string {
-  const units = `${b.quantity.toLocaleString("en-IN")} ${b.quantity === 1 ? "unit" : "units"}`;
-  return `${b.name} · ${units} · bought ${formatDate(b.purchase_date)}`;
-}
-
 /** Second line of a Select option: "<n> units · bought <date>". */
 export function optionDetail(b: BondScheduleBond): string {
   const units = `${b.quantity.toLocaleString("en-IN")} ${b.quantity === 1 ? "unit" : "units"}`;

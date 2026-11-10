@@ -149,15 +149,6 @@ function daysText(days: number): string {
   return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
-/** Holding period from a day count. Months are approximated as 30.44 days; prefer heldBetween. */
-export function heldText(days: number | null): string {
-  if (days === null || !Number.isFinite(days) || days < 0) return "Unknown";
-  const d = Math.floor(days);
-  const months = Math.floor(d / 30.44);
-  if (months < 1) return daysText(d);
-  return yearsMonthsText(months);
-}
-
 function parseYmd(s: string): [number, number, number] | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;

@@ -19,11 +19,6 @@ export function ordinal(n: number): string {
   }
 }
 
-/** Dropdown option label for a day of the month: "5th of Every Month". */
-export function dayOptionLabel(day: number): string {
-  return `${ordinal(day)} of Every Month`;
-}
-
 /** Rupees without ".00" when whole: ₹5,000 or ₹5,000.50. */
 export function amountText(n: number): string {
   return Number.isInteger(n) ? formatINRWhole(n) : formatINR(n);

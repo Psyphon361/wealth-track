@@ -1,7 +1,6 @@
 import { formatINRWhole } from "./format";
 import type {
   BenchmarkPair,
-  ReferenceRate,
   ReturnGroup,
   ReturnsBenchmark,
   ReturnsExcluded,
@@ -160,12 +159,4 @@ export function excludedText(e: ReturnsExcluded): string | null {
       ? parts[0]
       : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
   return `Not in returns: ${body}.`;
-}
-
-/** "EPF 8.25% · PPF 7.1% · NPS (Scheme) 11.2% a year"; null rates omitted. */
-export function ratesText(rates: ReferenceRate[]): string | null {
-  const parts = rates
-    .filter((r) => r.rate_pct !== null)
-    .map((r) => `${r.type === "nps" ? `NPS (${r.name})` : r.name} ${parseFloat((r.rate_pct as number).toFixed(2))}%`);
-  return parts.length === 0 ? null : `${parts.join(" · ")} a year`;
 }

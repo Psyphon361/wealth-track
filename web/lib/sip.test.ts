@@ -4,7 +4,6 @@ import {
   amountText,
   availableActions,
   countdownText,
-  dayOptionLabel,
   filterSips,
   instalmentsText,
   isSoldHolding,
@@ -59,11 +58,6 @@ describe("ordinal and day labels", () => {
     expect(ordinal(22)).toBe("22nd");
     expect(ordinal(23)).toBe("23rd");
     expect(ordinal(28)).toBe("28th");
-  });
-
-  it("labels the day options in Title Case", () => {
-    expect(dayOptionLabel(5)).toBe("5th of Every Month");
-    expect(dayOptionLabel(28)).toBe("28th of Every Month");
   });
 });
 

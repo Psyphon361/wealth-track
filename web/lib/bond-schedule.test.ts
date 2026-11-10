@@ -27,7 +27,6 @@ import {
   nextBucketIndex,
   nextSubline,
   optionDetail,
-  optionLabel,
   redemptionLabel,
   selectBonds,
   approxAmount,
@@ -85,10 +84,6 @@ describe("dates and labels", () => {
     expect(fyShort("2027-28")).toBe("FY 27–28");
   });
   it("labels select options", () => {
-    expect(optionLabel(bond({ quantity: 1200 }))).toBe(
-      "Ugro 2027 · 1,200 units · bought 5 Nov 2026",
-    );
-    expect(optionLabel(bond({ quantity: 1 }))).toContain("1 unit ·");
     expect(optionDetail(bond({ quantity: 1200 }))).toBe("1,200 units · bought 5 Nov 2026");
   });
   it("selects one bond or all, falling back to all", () => {

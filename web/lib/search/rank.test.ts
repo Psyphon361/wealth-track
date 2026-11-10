@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   editDistance,
   groupMatches,
-  highlightRanges,
   prepareIndex,
   rankHoldings,
 } from "./rank";
@@ -240,56 +239,6 @@ describe("empty and odd queries", () => {
     const index = prepareIndex([make("Alpha")]);
     expect(rankHoldings(index, "")).toEqual([]);
     expect(rankHoldings(index, " - ")).toEqual([]);
-  });
-});
-
-describe("highlightRanges", () => {
-  it("returns indexes in the original string when & expands to and", () => {
-    expect(highlightRanges("Gold & Silver", "silver")).toEqual([[7, 13]]);
-    expect(highlightRanges("Gold & Silver", "and")).toEqual([[5, 6]]);
-    expect(highlightRanges("Gold & Silver", "gold and silver")).toEqual([
-      [0, 4],
-      [5, 6],
-      [7, 13],
-    ]);
-  });
-
-  it("maps through diacritics, composed or decomposed", () => {
-    expect(highlightRanges("Crédit Suisse", "credit")).toEqual([[0, 6]]);
-    expect(highlightRanges("Crédit Suisse", "credit")).toEqual([[0, 7]]);
-    expect(highlightRanges("Crédit Suisse", "suisse")).toEqual([[7, 13]]);
-  });
-
-  it("matches punctuation-insensitively", () => {
-    expect(highlightRanges("HDFC Bank", "hdfc-bank")).toEqual([[0, 4], [5, 9]]);
-  });
-
-  it("merges overlapping ranges", () => {
-    expect(highlightRanges("Banking", "bank king")).toEqual([[0, 7]]);
-    expect(highlightRanges("Gold Gold", "gold gol")).toEqual([[0, 4], [5, 9]]);
-  });
-
-  it("highlights every occurrence, but only word starts for one character", () => {
-    expect(highlightRanges("Tata Rail", "ta")).toEqual([[0, 4]]);
-    expect(highlightRanges("Bharat Rail", "r")).toEqual([[7, 8]]);
-  });
-
-  it("highlights the whole word for a typo match", () => {
-    expect(highlightRanges("Reliance Industries", "relianse")).toEqual([[0, 8]]);
-  });
-
-  it("never goes out of bounds", () => {
-    const texts = ["Gold & Silver & Co", "&", "&&", "Æon Café — Ünïcode", "á", "😀 Gold & 😀", "", "---"];
-    const queries = ["gold", "and", "&", "a", "cafe unicode", "😀", "silve", "gld co", "aon", ""];
-    for (const t of texts) {
-      for (const q of queries) {
-        for (const [s, e] of highlightRanges(t, q)) {
-          expect(s, `${t} / ${q}`).toBeGreaterThanOrEqual(0);
-          expect(e, `${t} / ${q}`).toBeLessThanOrEqual(t.length);
-          expect(s, `${t} / ${q}`).toBeLessThan(e);
-        }
-      }
-    }
   });
 });
 

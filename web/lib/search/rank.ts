@@ -1,4 +1,4 @@
-import { compact, normalize, normalizeMapped, tokenize, type Normalized } from "./normalize";
+import { compact, normalize, normalizeMapped, type Normalized } from "./normalize";
 import type {
   HoldingMatch,
   MatchGroup,
@@ -149,11 +149,6 @@ export function rangesFor(n: Normalized, tokens: string[]): TextRange[] {
     else merged.push([r[0], r[1]]);
   }
   return merged;
-}
-
-/** Ranges ([start, end) pairs) in the ORIGINAL text that the query matches. */
-export function highlightRanges(text: string, query: string): TextRange[] {
-  return rangesFor(normalizeMapped(text), tokenize(query));
 }
 
 /** About 80 characters of the notes around the first hit of `tok`, cut on word boundaries. */

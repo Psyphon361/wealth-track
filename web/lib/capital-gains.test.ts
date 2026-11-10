@@ -10,7 +10,6 @@ import {
   flagText,
   footnotes,
   heldBetween,
-  heldText,
   rateText,
   saleTermSummary,
   termText,
@@ -50,20 +49,6 @@ describe("estimatedTax", () => {
   });
   it("handles a 0% slab", () => {
     expect(estimatedTax({ fixed_rate_tax: 100, slab_gains: 9000 }, 0)).toBe(104);
-  });
-});
-
-describe("heldText", () => {
-  it("formats days, months and years", () => {
-    expect(heldText(20)).toBe("20 days");
-    expect(heldText(1)).toBe("1 day");
-    expect(heldText(244)).toBe("8 mo");
-    expect(heldText(366)).toBe("1 yr");
-    expect(heldText(457)).toBe("1 yr 3 mo");
-    expect(heldText(800)).toBe("2 yrs 2 mo");
-  });
-  it("is Unknown without days", () => {
-    expect(heldText(null)).toBe("Unknown");
   });
 });
 

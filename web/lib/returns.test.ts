@@ -8,7 +8,6 @@ import {
   overallHeadline,
   overallSentence,
   pct1,
-  ratesText,
   returnBars,
   signedPct1,
   signedWhole,
@@ -130,16 +129,5 @@ describe("footnotes", () => {
     expect(excludedText({ at_cost: 2, no_flows: 3, other_without_invested: 1 })).toBe(
       "Not in returns: 3 holdings with no dated investments (cash, EPF/PPF, NPS), 2 holdings valued at cost and 1 Other holding without an amount invested.",
     );
-  });
-  it("rates", () => {
-    expect(ratesText([])).toBeNull();
-    expect(
-      ratesText([
-        { type: "pf", id: 1, name: "EPF", basis: "interest_rate", rate_pct: 8.25 },
-        { type: "pf", id: 2, name: "PPF", basis: "interest_rate", rate_pct: 7.1 },
-        { type: "nps", id: 3, name: "Gone", basis: "nav_cagr", rate_pct: null },
-        { type: "nps", id: 4, name: "SBI Pension", basis: "nav_cagr", rate_pct: 11.2 },
-      ]),
-    ).toBe("EPF 8.25% · PPF 7.1% · NPS (SBI Pension) 11.2% a year");
   });
 });
