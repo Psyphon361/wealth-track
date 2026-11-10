@@ -96,6 +96,7 @@ def test_fd_in_the_window_is_listed_with_its_maturity_value(env, users):
     row = attention(env, a)["maturing"][0]
     assert (row["type"], row["id"], row["days_left"]) == ("fd", fd_id, 12)
     assert row["amount"] > 100000 and row["approximate"] is False
+    assert isinstance(row["amount"], (int, float)) and not isinstance(row["amount"], str)
 
 
 def test_sgb_amount_is_present(env, users):

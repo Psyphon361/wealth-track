@@ -268,10 +268,12 @@ def add_holding_xirr(
         for e in rows:
             sales.setdefault(e.holding_id, []).append(e)
     today = date.today()
-    return [
-        {**i, "xirr": analytics_returns.holding_xirr(slug, i, today, sales.get(i["id"], ()))}
-        for i in items
-    ]
+    out = []
+    for i in items:
+        pct = analytics_returns.holding_xirr(slug, i, today, sales.get(i["id"], ()))
+        # a float, so it is a JSON number (a Decimal inside a dict[str, Any] becomes a string)
+        out.append({**i, "xirr": round(float(pct), 2) + 0.0 if pct is not None else None})
+    return out
 
 
 def _canonical_categories(items: list[dict[str, Any]]) -> list[dict[str, Any]]:

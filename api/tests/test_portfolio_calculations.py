@@ -560,7 +560,7 @@ def test_silver_999_valued_at_its_rate():
     assert out["gain_pct"] == D("28.57")
     assert out["rate_per_gram"] == D("90.00")
     assert out["rate_date"] == NAV_DATE
-    assert out["xirr"] == D("28.57")  # 365 days: the same as the plain gain
+    assert out["xirr"] == 28.57  # 365 days: the same as the plain gain
 
 
 def test_silver_925_valued_at_the_derived_rate():
@@ -576,7 +576,7 @@ def test_silver_925_valued_at_the_derived_rate():
     assert out["gain"] == D("1333.00")
     assert out["gain_pct"] == D("19.04")
     assert out["rate_per_gram"] == D("83.33")
-    assert out["xirr"] == D("19.04")
+    assert out["xirr"] == 19.04
 
 
 def test_gold_xirr_is_none_when_bought_today():

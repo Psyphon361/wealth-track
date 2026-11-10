@@ -208,6 +208,37 @@ def test_gold_xirr_still_has_no_year_floor(priced, users):
     assert holdings_router.XIRR_TYPES == ("fd", "rd", "stock", "bond", "other")
 
 
+def is_json_number(value):
+    return value is None or (isinstance(value, (int, float)) and not isinstance(value, bool))
+
+
+@pytest.mark.parametrize("slug", ["fd", "rd", "stock", "bond", "other"])
+def test_xirr_is_a_json_number_in_the_grid_and_the_detail(priced, auth_engine, users, slug):
+    a = users[0]
+    ids = seed_all(priced, auth_engine, a)
+    row = next(i for i in grid(priced, a, slug) if i["id"] == ids[slug])
+    shown = item(priced, a, slug, ids[slug])
+    for value in (row["xirr"], shown["xirr"]):
+        assert value is not None and is_json_number(value), (slug, value)
+        assert value == round(value, 2)
+    assert row["xirr"] == shown["xirr"]
+
+
+def test_xirr_is_the_exact_number_for_a_known_return(priced, users):
+    a = users[0]
+    add(priced, a, "other", {**bodies(365)["other"], "invested_amount": 100000, "current_value": 107710})
+    row = grid(priced, a, "other")[0]
+    assert row["xirr"] == pytest.approx(7.71, abs=0.01)
+    assert isinstance(row["xirr"], float)
+
+
+def test_gold_xirr_is_a_json_number_too(priced, users):
+    a = users[0]
+    gold_id = add(priced, a, "gold", {**GOLD, "purchase_date": ago(400)})
+    assert is_json_number(grid(priced, a, "gold")[0]["xirr"])
+    assert is_json_number(item(priced, a, "gold", gold_id)["xirr"])
+
+
 # --- sorting -----------------------------------------------------------------------------------
 
 

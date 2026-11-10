@@ -206,7 +206,7 @@ def value_gold(
         out["rate_per_gram"] = _q(Decimal(rate))
         out["rate_date"] = rate_date
     pct = xirr([(gold.purchase_date, -invested), (today, out["current_value"])])
-    out["xirr"] = _q(pct * 100) if pct is not None else None
+    out["xirr"] = float(_q(pct * 100)) + 0.0 if pct is not None else None
     return out
 
 
