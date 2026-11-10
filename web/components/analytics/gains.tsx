@@ -23,6 +23,7 @@ import { GainsExpectedCard } from "./gains-expected-card";
 import { GainsBucketsCard } from "./gains-buckets-card";
 import { GainsSalesCard } from "./gains-sales-card";
 import { GainsSummary } from "./gains-summary";
+import { GainsUnrealisedCard } from "./gains-unrealised-card";
 import { TOOLBAR_LABEL_CLS } from "./tax-toolbar";
 import { useAnalyticsSection } from "./use-analytics-section";
 
@@ -201,19 +202,25 @@ export function Gains() {
         }}
       />
 
-      {empty ? (
+      {empty && (
         <Card size="sm" className="relative min-w-0 gap-1 px-4">
           <p className="text-[15.4px] font-medium">No sales in FY {fyDisplay(data.fy)}</p>
           <p className="text-[13.2px] text-muted-foreground">
             Sales you record with Sell show up here.
           </p>
         </Card>
-      ) : (
+      )}
+      {!empty && (
         <>
           <GainsSummary data={data} switching={switching} slab={slab} />
           {data.bond_interest && data.bond_interest.holdings_count > 0 && (
             <GainsBondInterest interest={data.bond_interest} slab={slab} switching={switching} />
           )}
+        </>
+      )}
+      <GainsUnrealisedCard fy={fy} />
+      {!empty && (
+        <>
           <div className="min-w-0">
             <GainsBucketsCard data={data} switching={switching} />
           </div>
