@@ -325,6 +325,85 @@ def _fifo_lots(txns: Sequence[MfTxn], redemption_id: int) -> list[tuple[date, De
     return None
 
 
+def fifo_leftover_lots(txns: Sequence[MfTxn]) -> list[tuple[date, Decimal, Decimal]]:
+    """Lots (bought_on, units, cost) still held after every redemption in `txns`, oldest first.
+    Same order and consumption as `_fifo_lots`; a redemption beyond the lots held is ignored."""
+    ordered = sorted(txns, key=lambda t: (t.txn_date, t.kind != "purchase", t.id))
+    lots: deque[list[Any]] = deque()  # [units, cost, date]
+    for t in ordered:
+        units = _dec(t.units)
+        if t.kind == "purchase":
+            lots.append([units, abs(_dec(t.amount)), t.txn_date])
+            continue
+        remaining = units
+        while remaining > 0 and lots:
+            lot = lots[0]
+            if lot[0] <= remaining:
+                remaining -= lot[0]
+                lots.popleft()
+            else:
+                part = lot[1] * remaining / lot[0]
+                lot[1] -= part
+                lot[0] -= remaining
+                remaining = _ZERO
+    return [(lot[2], lot[0], lot[1]) for lot in lots]
+
+
+def reconcile_lot_costs(
+    taken: Sequence[tuple[date, Decimal, Decimal]], cost: Decimal, quantity: Decimal | None
+) -> tuple[list[Decimal], bool] | None:
+    """Lot costs that add up exactly to `cost` (the holding's or exit's invested amount, 2 dp).
+    Returns (costs, scaled) or None when the lots cannot be trusted (no units, or the amount
+    differs from the FIFO cost and the lots' units do not add up to `quantity`).
+    Within FIFO_TOLERANCE of the FIFO cost the lots keep their FIFO costs and the last lot takes
+    the remainder; further away (scaled=True) the costs are scaled by cumulative rounding."""
+    total_units = sum((u for _, u, _ in taken), _ZERO)
+    total_cost = sum((c for _, _, c in taken), _ZERO)
+    if total_units <= 0:
+        return None
+    costs: list[Decimal] = []
+    if abs(money(total_cost) - cost) > FIFO_TOLERANCE:
+        if total_cost <= 0 or quantity is None or abs(total_units - quantity) > Decimal("0.01"):
+            return None
+        cum_fifo = _ZERO
+        prev = _ZERO
+        for i, (_, _, lot_cost) in enumerate(taken):
+            cum_fifo += lot_cost
+            cum = cost if i == len(taken) - 1 else money(cost * cum_fifo / total_cost)
+            costs.append(cum - prev)
+            prev = cum
+        return costs, True
+    given = _ZERO
+    for i, (_, _, lot_cost) in enumerate(taken):
+        out = cost - given if i == len(taken) - 1 else money(lot_cost)
+        given += out
+        costs.append(out)
+    return costs, False
+
+
+def split_proceeds(proceeds: Decimal, units: Sequence[Decimal], scaled: bool) -> list[Decimal]:
+    """Split `proceeds` (2 dp) over lots by units; the shares add up exactly to `proceeds`.
+    Scaled lot costs: cumulative rounding by units. Otherwise each lot is rounded on its own and
+    the last lot takes the remainder. Shared by the realised and the unrealised side."""
+    total_units = sum(units, _ZERO)
+    shares: list[Decimal] = []
+    given = _ZERO
+    cum_units = _ZERO
+    prev_proceeds = _ZERO
+    for i, u in enumerate(units):
+        last = i == len(units) - 1
+        if scaled:
+            cum_units += u
+            cum_proceeds = proceeds if last else money(proceeds * cum_units / total_units)
+            share = cum_proceeds - prev_proceeds
+            prev_proceeds = cum_proceeds
+        else:
+            share = proceeds - given if last else money(proceeds * u / total_units)
+            given += share
+        shares.append(share)
+    return shares
+
+
 def split_lots(sale: SaleInput) -> list[dict[str, Any]]:
     """The lots of a sale as (bought_on, quantity, cost, proceeds) dicts."""
     proceeds = money(sale.proceeds)
@@ -335,57 +414,21 @@ def split_lots(sale: SaleInput) -> list[dict[str, Any]]:
     taken = _fifo_lots(sale.mf_txns, sale.mf_transaction_id)
     if not taken:
         return single
-    total_units = sum((u for _, u, _ in taken), _ZERO)
-    total_cost = sum((c for _, _, c in taken), _ZERO)
-    if total_units <= 0:
+    # The exit cost may not be the FIFO cost (an edited invested amount, changed transactions):
+    # keep the real lots (dates, units) and reconcile their costs to the exit cost.
+    reconciled = reconcile_lot_costs(taken, cost, sale.quantity)
+    if reconciled is None:
         return single
-    if abs(money(total_cost) - cost) > FIFO_TOLERANCE:
-        # The exit cost is not the FIFO cost (an edited invested amount, changed transactions):
-        # keep the real lots (dates, units) and scale their costs to the exit cost.
-        if total_cost <= 0 or sale.quantity is None or abs(total_units - sale.quantity) > Decimal("0.01"):
-            return single
-        scaled: list[dict[str, Any]] = []
-        cum_cost = _ZERO
-        cum_proceeds = _ZERO
-        cum_units = _ZERO
-        cum_fifo = _ZERO
-        prev_cost = _ZERO
-        prev_proceeds = _ZERO
-        for i, (bought, units, lot_cost) in enumerate(taken):
-            cum_units += units
-            cum_fifo += lot_cost
-            last = i == len(taken) - 1
-            cum_cost = cost if last else money(cost * cum_fifo / total_cost)
-            cum_proceeds = proceeds if last else money(proceeds * cum_units / total_units)
-            scaled.append(
-                {
-                    "bought_on": bought,
-                    "quantity": units.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP),
-                    "cost": cum_cost - prev_cost,
-                    "proceeds": cum_proceeds - prev_proceeds,
-                }
-            )
-            prev_cost = cum_cost
-            prev_proceeds = cum_proceeds
-        return scaled
+    costs, scaled = reconciled
+    shares = split_proceeds(proceeds, [u for _, u, _ in taken], scaled)
     lots: list[dict[str, Any]] = []
-    given = _ZERO
-    cost_given = _ZERO
-    for i, (bought, units, lot_cost) in enumerate(taken):
-        if i == len(taken) - 1:
-            share = proceeds - given
-            lot_cost_out = cost - cost_given
-        else:
-            share = money(proceeds * units / total_units)
-            lot_cost_out = money(lot_cost)
-        given += share
-        cost_given += lot_cost_out
+    for i, (bought, units, _) in enumerate(taken):
         lots.append(
             {
                 "bought_on": bought,
                 "quantity": units.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP),
-                "cost": lot_cost_out,
-                "proceeds": share,
+                "cost": costs[i],
+                "proceeds": shares[i],
             }
         )
     return lots
