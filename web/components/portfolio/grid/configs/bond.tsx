@@ -2,6 +2,7 @@ import { AssetForm } from "@/components/forms/asset-form";
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { maturityKpi } from "@/components/holding-detail/utils";
 import { BOND_TYPE_LABELS, type BondItem, type BondMaster } from "@/lib/types";
+import { XIRR_HINT } from "@/lib/xirr";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -20,6 +21,7 @@ const labels = {
   current_value: "Current",
   gain: "Gain",
   gain_pct: "Gain %",
+  xirr: "XIRR",
   status: "Status",
 };
 
@@ -46,6 +48,7 @@ export const bondConfig: GridConfig<BondItem> = {
     "current_value",
     "gain",
     "gain_pct",
+    "xirr",
     "status",
   ],
   filters: [
@@ -98,6 +101,7 @@ export const bondConfig: GridConfig<BondItem> = {
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),
     kit.gainPct(),
+    kit.nullablePercent("xirr", (r) => r.xirr, XIRR_HINT),
     kit.status(),
     kit.actions(handlers),
   ],

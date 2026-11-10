@@ -532,3 +532,23 @@ export function sipEndAfterStart(
   if (!end || !isValidISODate(start) || !isValidISODate(end)) return true;
   return end >= start;
 }
+
+// ---- Quick refresh (POST /api/assets/{cash|pf|other|nps}/{id}/update-value) ----
+
+/** Cash balance refresh: 0 allowed, never negative. */
+export const cashUpdateSchema = z.object({
+  amount: cashBalanceNumber,
+  date: startDateString,
+});
+
+/** EPF/PPF balance and Other value refresh: greater than 0. */
+export const moneyUpdateSchema = z.object({
+  amount: moneyNumber,
+  date: startDateString,
+});
+
+/** NPS units and contributed refresh. */
+export const npsUpdateSchema = z.object({
+  units: npsUnits,
+  contributed: moneyNumber,
+});

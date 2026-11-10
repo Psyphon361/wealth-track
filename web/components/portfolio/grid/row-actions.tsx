@@ -8,8 +8,11 @@ import {
   HandCoins,
   MoreHorizontal,
   Pencil,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
+import { UpdateValueDialog } from "@/components/portfolio/update-value-dialog";
+import { canUpdateValue, updateValueLabel } from "@/lib/update-value";
 import { SellDialog } from "@/components/exits/sell-dialog";
 import { SettleDialog } from "@/components/exits/settle-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -61,7 +64,7 @@ export function RowActions({
   onDelete: () => void;
 }) {
   // Sell and Settle open their own dialogs, so the grid needs no handlers for them.
-  const [dialog, setDialog] = useState<"sell" | "settle" | null>(null);
+  const [dialog, setDialog] = useState<"sell" | "settle" | "update" | null>(null);
   const entries: MenuEntry[] = [];
   if (canSell(type, row)) {
     entries.push({
@@ -77,6 +80,15 @@ export function RowActions({
       label: "Settle",
       icon: <CircleCheck />,
       run: () => setDialog("settle"),
+    });
+  }
+  // Quick refresh of the balance, value or units (not on closed holdings).
+  if (canUpdateValue(type, row)) {
+    entries.push({
+      key: "update",
+      label: updateValueLabel(type) ?? "",
+      icon: <RefreshCw />,
+      run: () => setDialog("update"),
     });
   }
   // Sold or settled holdings can't be edited until the exit is undone.
@@ -148,7 +160,7 @@ export function RowActions({
         >
           <MoreHorizontal />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-32">
+        <DropdownMenuContent align="end" className="w-40">
           {entries.map((e) => (
             <div key={e.key} className="contents">
               {e.separatorBefore ? <DropdownMenuSeparator /> : null}
@@ -192,6 +204,12 @@ export function RowActions({
       <SettleDialog
         type={type}
         row={dialog === "settle" ? row : null}
+        name={name}
+        onClose={() => setDialog(null)}
+      />
+      <UpdateValueDialog
+        type={type}
+        row={dialog === "update" ? row : null}
         name={name}
         onClose={() => setDialog(null)}
       />

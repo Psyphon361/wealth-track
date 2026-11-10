@@ -8,6 +8,7 @@ import {
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { formatTenure, maturityKpi } from "@/components/holding-detail/utils";
 import { cn } from "@/lib/utils";
+import { XIRR_HINT } from "@/lib/xirr";
 import {
   COMPOUNDING_LABELS,
   FD_ISSUER_CATEGORY_LABELS,
@@ -29,6 +30,7 @@ const labels = {
   current_value: "Current",
   gain: "Gain",
   gain_pct: "Gain %",
+  xirr: "XIRR",
   status: "Status",
 };
 
@@ -56,6 +58,7 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
     "current_value",
     "gain",
     "gain_pct",
+    "xirr",
     "status",
   ],
   filters: [
@@ -162,6 +165,7 @@ export const fdConfig: GridConfig<FixedDepositItem> = {
         );
       },
     },
+    kit.nullablePercent("xirr", (r) => r.xirr, XIRR_HINT),
     kit.status(),
     kit.actions(handlers),
   ],

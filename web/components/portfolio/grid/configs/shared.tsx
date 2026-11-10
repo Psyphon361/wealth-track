@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { HoldingRow, HoldingStatus } from "@/lib/types";
+import { StalePill } from "../../stale-pill";
 import { ColumnHeader } from "../column-header";
 import type { gridFeatures } from "../features";
 import { GainCell, gainTone } from "../gain-cell";
@@ -41,7 +42,7 @@ export function createColumnKit<TRow extends HoldingRow>(
 ) {
   const helper = createColumnHelper<typeof gridFeatures, TRow>();
 
-  const head = (id: string) =>
+  const head = (id: string, hint?: string) =>
     function SortableHeader<TValue>({
       column,
       table,
@@ -51,6 +52,7 @@ export function createColumnKit<TRow extends HoldingRow>(
           column={column}
           table={table}
           title={labels[id]}
+          hint={hint}
         />
       );
     };
@@ -135,8 +137,12 @@ export function createColumnKit<TRow extends HoldingRow>(
       header: head(id),
       cell: ({ row }) => {
         const v = get(row.original);
+        const stale = (row.original as { stale?: boolean }).stale === true;
         return v ? (
-          <span className="num whitespace-nowrap">{formatDate(v)}</span>
+          <span className="inline-flex items-center gap-2 whitespace-nowrap">
+            <span className="num">{formatDate(v)}</span>
+            {stale ? <StalePill /> : null}
+          </span>
         ) : (
           dash
         );
@@ -199,10 +205,11 @@ export function createColumnKit<TRow extends HoldingRow>(
   const nullablePercent = (
     id: string,
     get: (row: TRow) => number | null | undefined,
+    hint?: string,
   ): GridColumn<TRow> =>
     helper.accessor((row) => get(row) ?? null, {
       id,
-      header: head(id),
+      header: head(id, hint),
       sortUndefined: "last",
       cell: ({ row }) => {
         const v = get(row.original);

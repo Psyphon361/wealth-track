@@ -2,7 +2,8 @@ import { TrendingDown, TrendingUp } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { gainTone } from "@/components/portfolio/grid/gain-cell";
 import type { DetailKpi } from "@/components/portfolio/grid/types";
-import { formatINR, formatPct } from "@/lib/format";
+import { formatDate, formatINR, formatPct } from "@/lib/format";
+import { xirrKpi, xirrStartDate } from "@/lib/xirr";
 import { cn } from "@/lib/utils";
 import type { HoldingRow } from "@/lib/types";
 import { LABEL } from "./sections";
@@ -31,11 +32,13 @@ export function KpiStrip({
   const tone = gainTone(gain);
   const sign = gain > 0 ? "+" : "";
   const Icon = gain < 0 ? TrendingDown : TrendingUp;
+  const xirr = xirrKpi(item, xirrStartDate(item));
+  const tiles = (showGain ? 4 : 3) + (xirr ? 1 : 0);
   return (
     <div
       className={cn(
         "grid grid-cols-2 gap-3",
-        showGain ? "sm:grid-cols-4" : "sm:grid-cols-3",
+        tiles === 5 ? "sm:grid-cols-5" : tiles === 4 ? "sm:grid-cols-4" : "sm:grid-cols-3",
       )}
     >
       <Kpi label="Invested">
@@ -67,6 +70,24 @@ export function KpiStrip({
           </p>
         </div>
       </Kpi>
+      ) : null}
+      {xirr ? (
+        <Kpi label="XIRR">
+          <p
+            className={cn(
+              "num text-base font-semibold whitespace-nowrap lg:text-lg",
+              gainTone(xirr.value),
+            )}
+          >
+            {xirr.value > 0 ? "+" : ""}
+            {formatPct(xirr.value)}
+          </p>
+          {xirr.startDate ? (
+            <p className="text-xs text-muted-foreground">
+              per year since {formatDate(xirr.startDate)}
+            </p>
+          ) : null}
+        </Kpi>
       ) : null}
       <Kpi label={fourth.label}>
         <p className="truncate text-base font-semibold whitespace-nowrap lg:text-lg">

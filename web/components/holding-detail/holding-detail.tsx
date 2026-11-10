@@ -3,7 +3,10 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, HandCoins, Pencil, Trash2 } from "lucide-react";
+import { ArrowLeft, HandCoins, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { StalePill } from "@/components/portfolio/stale-pill";
+import { UpdateValueDialog } from "@/components/portfolio/update-value-dialog";
+import { STALE_LINE, canUpdateValue, updateValueLabel } from "@/lib/update-value";
 import { BondSchedule } from "@/components/analytics/bond-schedule";
 import { AssetTypeIcon } from "@/components/asset-type-icon";
 import { useBreadcrumbLabel } from "@/components/breadcrumb-label";
@@ -94,6 +97,7 @@ function TypedDetail<TRow extends HoldingRow>({
   const [deleting, setDeleting] = useState<DeleteTarget | null>(null);
   const [deletePending, setDeletePending] = useState(false);
   const [selling, setSelling] = useState(false);
+  const [updating, setUpdating] = useState(false);
   // The dashboard links here with ?settle=1 to open the settle dialog straight away.
   const [settling, setSettling] = useState(searchParams.get("settle") === "1");
   // Bumped after a sale, settlement or undo so the exits list reloads.
@@ -199,6 +203,12 @@ function TypedDetail<TRow extends HoldingRow>({
               Sell
             </Button>
           ) : null}
+          {canUpdateValue(config.type, item) ? (
+            <Button variant="outline" size="sm" onClick={() => setUpdating(true)}>
+              <RefreshCw aria-hidden />
+              {updateValueLabel(config.type)}
+            </Button>
+          ) : null}
           {canEdit(item) ? (
             <Button variant="outline" size="sm" onClick={() => setEditing(item)}>
               <Pencil aria-hidden />
@@ -270,6 +280,12 @@ function TypedDetail<TRow extends HoldingRow>({
       {config.type === "cash" ? (
         <p className="text-[13.2px] text-muted-foreground">{CASH_PAID_FROM_INFO}</p>
       ) : null}
+      {(item as { stale?: boolean }).stale ? (
+        <p className="flex items-center gap-2 text-[13.2px] text-amber-300">
+          <StalePill />
+          {STALE_LINE}
+        </p>
+      ) : null}
       <Section title="Holding" fields={detail.holding(item)} />
       {master ? (
         <Section title="Instrument" fields={detail.instrument(master, item)} />
@@ -311,6 +327,13 @@ function TypedDetail<TRow extends HoldingRow>({
           closeSettle();
           exitDone();
         }}
+      />
+      <UpdateValueDialog
+        type={config.type}
+        row={updating ? item : null}
+        name={name}
+        onClose={() => setUpdating(false)}
+        onSaved={refetch}
       />
       <EditDialog
         config={config}

@@ -1,8 +1,13 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Info } from "lucide-react";
 import type { Column, RowData, Table } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DEFAULT_DIR, DEFAULT_SORT } from "./use-holdings-query";
 import type { gridFeatures } from "./features";
@@ -22,10 +27,12 @@ export function ColumnHeader<TRow extends RowData, TValue>({
   column,
   table,
   title,
+  hint,
 }: {
   column: Column<Features, TRow, TValue>;
   table: Table<Features, TRow>;
   title: string;
+  hint?: string;
 }) {
   const dir = column.getIsSorted();
 
@@ -41,7 +48,7 @@ export function ColumnHeader<TRow extends RowData, TValue>({
 
   const Icon = dir === "asc" ? ArrowUp : dir === "desc" ? ArrowDown : ChevronsUpDown;
 
-  return (
+  const button = (
     <Button
       type="button"
       variant="ghost"
@@ -58,5 +65,17 @@ export function ColumnHeader<TRow extends RowData, TValue>({
         className={cn("size-3", dir === false && "opacity-50")}
       />
     </Button>
+  );
+  if (!hint) return button;
+  return (
+    <span className="inline-flex items-center">
+      {button}
+      <Tooltip>
+        <TooltipTrigger render={<span className="ml-1 text-muted-foreground" />}>
+          <Info className="size-3" aria-label={hint} />
+        </TooltipTrigger>
+        <TooltipContent>{hint}</TooltipContent>
+      </Tooltip>
+    </span>
   );
 }

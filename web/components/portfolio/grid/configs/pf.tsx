@@ -1,5 +1,6 @@
 import { AssetForm } from "@/components/forms/asset-form";
 import { maturityKpi } from "@/components/holding-detail/utils";
+import { StalePill } from "@/components/portfolio/stale-pill";
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import { PF_KIND_LABELS, type PfItem } from "@/lib/types";
 import type { GridConfig } from "../types";
@@ -44,7 +45,10 @@ export const pfConfig: GridConfig<PfItem> = {
     ),
     kit.text("kind", (r) => PF_KIND_LABELS[r.kind]),
     kit.display("balance", (r) => (
-      <span className="num whitespace-nowrap">{formatINR(r.balance)}</span>
+      <span className="inline-flex items-center gap-2 whitespace-nowrap">
+        <span className="num">{formatINR(r.balance)}</span>
+        {r.stale ? <StalePill /> : null}
+      </span>
     )),
     kit.display("accrued_interest", (r) => (
       <span className="num whitespace-nowrap">

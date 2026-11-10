@@ -9,6 +9,7 @@ import { anyHoldingsVersion } from "@/lib/holdings-cache";
 import { notify } from "@/lib/notify";
 import type { DashboardResponse } from "@/lib/types";
 import { AllocationCard } from "./allocation-card";
+import { AttentionCard } from "./attention-card";
 import { HoldingsByType } from "./holdings-by-type";
 import { NetWorthChart } from "./net-worth-chart";
 import { UnsettledPrompt } from "./unsettled-prompt";
@@ -100,6 +101,7 @@ export function Dashboard() {
   return (
     <div className="space-y-3">
       <UnsettledPrompt unsettled={data.unsettled} />
+      <AttentionCard attention={data.attention} onChanged={() => setAttempt((a) => a + 1)} />
       <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
         <div className="min-w-0 [&>*]:h-full">
           <NetWorthChart data={data} />

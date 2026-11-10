@@ -7,6 +7,7 @@ import {
   type FdIssuer,
   type RecurringDepositItem,
 } from "@/lib/types";
+import { XIRR_HINT } from "@/lib/xirr";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -20,6 +21,7 @@ const labels = {
   current_value: "Current",
   gain: "Gain",
   gain_pct: "Gain %",
+  xirr: "XIRR",
   status: "Status",
 };
 
@@ -42,6 +44,7 @@ export const rdConfig: GridConfig<RecurringDepositItem> = {
     "current_value",
     "gain",
     "gain_pct",
+    "xirr",
     "status",
   ],
   filters: [
@@ -71,6 +74,7 @@ export const rdConfig: GridConfig<RecurringDepositItem> = {
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),
     kit.gainPct(),
+    kit.nullablePercent("xirr", (r) => r.xirr, XIRR_HINT),
     kit.status(),
     kit.actions(handlers),
   ],

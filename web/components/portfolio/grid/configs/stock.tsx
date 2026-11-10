@@ -7,6 +7,7 @@ import {
 } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EXCHANGE_LABELS, type StockItem, type StockMaster } from "@/lib/types";
+import { XIRR_HINT } from "@/lib/xirr";
 import type { GridConfig } from "../types";
 import { createColumnKit } from "./shared";
 
@@ -21,6 +22,7 @@ const labels = {
   current_value: "Current",
   gain: "Gain",
   gain_pct: "Gain %",
+  xirr: "XIRR",
   buy_date: "Buy date",
 };
 
@@ -42,6 +44,7 @@ export const stockConfig: GridConfig<StockItem> = {
     "current_value",
     "gain",
     "gain_pct",
+    "xirr",
     "buy_date",
   ],
   filters: [
@@ -92,6 +95,7 @@ export const stockConfig: GridConfig<StockItem> = {
     kit.money("current_value", (r) => r.current_value),
     kit.gain(),
     kit.gainPct(),
+    kit.nullablePercent("xirr", (r) => r.xirr, XIRR_HINT),
     kit.date("buy_date", (r) => r.buy_date),
     kit.actions(handlers),
   ],

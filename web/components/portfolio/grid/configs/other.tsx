@@ -2,6 +2,7 @@ import { AssetForm } from "@/components/forms/asset-form";
 import { cn } from "@/lib/utils";
 import { formatDate, formatINR, formatPct } from "@/lib/format";
 import type { OtherItem } from "@/lib/types";
+import { XIRR_HINT } from "@/lib/xirr";
 import type { GridConfig } from "../types";
 import { gainTone } from "../gain-cell";
 import { createColumnKit } from "./shared";
@@ -12,6 +13,7 @@ const labels = {
   current_value: "Value",
   invested: "Invested",
   gain: "Gain",
+  xirr: "XIRR",
   value_date: "As of",
 };
 
@@ -41,7 +43,7 @@ export const otherConfig: GridConfig<OtherItem> = {
   type: "other",
   noun: "Other holdings",
   searchPlaceholder: "Search other holdings…",
-  sortKeys: ["name", "category", "current_value", "invested", "gain", "value_date"],
+  sortKeys: ["name", "category", "current_value", "invested", "gain", "xirr", "value_date"],
   filters: [{ kind: "facet", key: "category", title: "Category" }],
   statusTabs: true,
   columnLabels: labels,
@@ -79,6 +81,7 @@ export const otherConfig: GridConfig<OtherItem> = {
           </span>
         ),
     ),
+    kit.nullablePercent("xirr", (r) => r.xirr, XIRR_HINT),
     kit.date("value_date", (r) => r.value_date),
     kit.actions(handlers),
   ],

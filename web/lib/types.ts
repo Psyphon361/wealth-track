@@ -553,6 +553,39 @@ export interface DashboardByType {
   day_change: number | null;
 }
 
+export interface AttentionMaturing {
+  type: AssetType;
+  id: number;
+  name: string;
+  date: string;
+  days_left: number;
+  amount: number | null;
+  approximate: boolean;
+  rate: number | null;
+}
+
+export interface AttentionStale {
+  type: AssetType;
+  id: number;
+  name: string;
+  as_of: string;
+}
+
+export interface AttentionSip {
+  id: number;
+  fund_name: string;
+  mutual_fund_id: number | null;
+  amount: number;
+  next_date: string;
+}
+
+export interface Attention {
+  maturing: AttentionMaturing[];
+  stale: AttentionStale[];
+  sips: AttentionSip[];
+  counts: { maturing: number; stale: number; sips: number };
+}
+
 export interface DashboardResponse {
   total_invested: number;
   total_current: number;
@@ -564,6 +597,7 @@ export interface DashboardResponse {
   day_change_as_of: string | null;
   by_type: DashboardByType[];
   unsettled: Unsettled;
+  attention: Attention;
 }
 
 // Holdings grids (GET /holdings/{type})
@@ -571,17 +605,18 @@ export interface DashboardResponse {
 export type HoldingStatus = "active" | "matured" | "sold";
 export type SortDir = "asc" | "desc";
 
-export type FixedDepositItem = FixedDeposit & ComputedFields;
-export type RecurringDepositItem = RecurringDeposit & ComputedFields;
+export type FixedDepositItem = FixedDeposit & ComputedFields & { xirr?: number | null };
+export type RecurringDepositItem = RecurringDeposit & ComputedFields & { xirr?: number | null };
 export type StockItem = Stock &
   ComputedFields & {
+    xirr?: number | null;
     price: number | null;
     prev_close: number | null;
     day_change_pct: number | null;
     price_time: string | null;
     price_source: "bhavcopy" | null;
   };
-export type BondItem = Bond & ComputedFields;
+export type BondItem = Bond & ComputedFields & { xirr?: number | null };
 export type MutualFundItem = MutualFund &
   ComputedFields & {
     nav: number | null;
@@ -607,18 +642,23 @@ export type GoldItem = Gold &
 
 export type CashItem = Cash &
   ComputedFields & {
+    /** As-of date older than 6 months (from the API). */
+    stale?: boolean;
     xirr?: number | null;
   };
 
 /** Gain is null when no invested amount was entered. */
 export type OtherItem = Other &
   Omit<ComputedFields, "gain" | "gain_pct"> & {
+    stale?: boolean;
     gain: number | null;
     gain_pct: number | null;
+    xirr?: number | null;
   };
 
 export type PfItem = Pf &
   Omit<ComputedFields, "maturity_date"> & {
+    stale?: boolean;
     accrued_interest: number;
     maturity_date: string | null;
     extended_until: string | null;
