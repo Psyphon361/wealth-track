@@ -16,6 +16,7 @@ from app.routers import (
     analytics_returns,
     analytics_tax,
     analytics_unrealised,
+    buys,
     exits,
     sips,
 )
@@ -175,6 +176,7 @@ api_router.include_router(analytics_unrealised.router)
 api_router.include_router(sips.router)
 api_router.include_router(holdings.router)
 api_router.include_router(exits.router)
+api_router.include_router(buys.router)
 api_router.include_router(master.router)
 api_router.include_router(cas_import.router)
 

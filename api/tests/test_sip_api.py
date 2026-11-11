@@ -556,6 +556,7 @@ def test_transactions_page_shape_and_nav(sc, users):
     assert body["items"][0] == {
         "id": body["items"][0]["id"], "date": "2026-03-05", "kind": "purchase", "amount": 5000,
         "units": 99.995, "nav": 50.0, "sip": True,
+        "manual": False, "undoable": False,
     }  # fmt: skip
     assert [t["date"] for t in body["items"]] == ["2026-03-05", "2026-02-05", "2026-01-05"]
 

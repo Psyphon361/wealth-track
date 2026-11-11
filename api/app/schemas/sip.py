@@ -118,6 +118,10 @@ class SipTransaction(BaseModel):
     units: Annotated[Decimal, Number]
     nav: Annotated[Decimal, Number] | None
     sip: bool
+    # A purchase added with Buy more.
+    manual: bool = False
+    # A manual purchase that can be undone right now (same rule as the undo endpoint).
+    undoable: bool = False
 
 
 class SipTransactionsResponse(BaseModel):

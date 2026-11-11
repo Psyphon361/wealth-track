@@ -312,6 +312,7 @@ describe("transactions", () => {
     expect(transactionLabel({ kind: "purchase", sip: true })).toBe("SIP");
     expect(transactionLabel({ kind: "purchase", sip: false })).toBe("Purchase");
     expect(transactionLabel({ kind: "redemption", sip: false })).toBe("Redemption");
+    expect(transactionLabel({ kind: "purchase", sip: false, manual: true })).toBe("Bought");
   });
 
   it("words the Show more button", () => {

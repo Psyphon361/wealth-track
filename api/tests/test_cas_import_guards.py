@@ -297,3 +297,32 @@ def test_no_cas_transactions_with_kept_sip_rows_adds_an_opening_row(mf_client, u
     assert txn_dates(auth_engine, hid) == [date(2024, 1, 1), date(2025, 4, 5), date(2025, 5, 5)]
     units, amount = txn_sums(auth_engine, hid)
     assert units == 105 and amount == 1250
+
+
+def test_update_keeps_buy_more_rows_after_the_statement_and_replaces_older_ones(mf_client, users, auth_engine):  # noqa: F811
+    a = users[0]
+    hid = add_fund(mf_client, a)["id"]
+    with sessionmaker(bind=auth_engine)() as session:
+        for day, amount, units, manual in [
+            (date(2025, 2, 10), 300, "3.000", True),  # before the statement date: the statement has it
+            (date(2025, 4, 10), 500, "5.000", True),  # after: kept, and added to the totals
+            (date(2025, 4, 11), 40, "1.000", False),  # not a manual buy: replaced
+        ]:
+            session.add(
+                MFTransaction(
+                    mutual_fund_id=hid, txn_date=day, kind="purchase", amount=Decimal(amount),
+                    units=Decimal(units), manual=manual,
+                )
+            )  # fmt: skip
+        session.commit()
+    cas_txn = dict(date="2025-02-01", type="purchase", amount=1000, units=100)
+    r = commit_with_period(mf_client, a, "2025-03-31", hid, [cas_txn])
+    assert r.status_code == 200, r.json()
+    assert txn_dates(auth_engine, hid) == [date(2025, 2, 1), date(2025, 4, 10)]
+    h = mf_client.get(f"/api/assets/mf/{hid}", headers=a).json()
+    assert h["units"] == 105 and h["invested_amount"] == 1500
+    units, amount = txn_sums(auth_engine, hid)
+    assert units == 105 and amount == 1500
+    with sessionmaker(bind=auth_engine)() as session:
+        kept = session.query(MFTransaction).filter_by(mutual_fund_id=hid, manual=True).all()
+        assert [t.txn_date for t in kept] == [date(2025, 4, 10)]

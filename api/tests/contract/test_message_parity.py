@@ -24,6 +24,15 @@ API_ONLY = {
     "SIP_SKIP_NOT_UPCOMING_ERROR": "depends on SIP state; the web only shows the API text",
     "SIP_NO_INSTALMENT_ERROR": "depends on SIP state; the web only shows the API text",
     "SIP_HOLDING_MISMATCH_ERROR": "needs the stored holding; only the API can know and renders it",
+    "BUY_AMOUNT_TOO_SMALL_ERROR": "depends on the fund's stored totals; the web shows the API text",
+    "BUY_DONE_MESSAGE": "outcome text the API sends; the web renders it",
+    "BUY_DUPLICATE_MESSAGE": "409 text the API sends; the web renders it",
+    "BUY_UNDONE_MESSAGE": "outcome text the API sends; the web renders it",
+    "BUY_UNDO_SALE_FIRST_MESSAGE": "409 text depends on stored sales; the API sends it",
+    "BUY_UNDO_SALE_FIRST_DESCRIPTION": "409 text depends on stored sales; the API sends it",
+    "BUY_UNDO_REFUSED_MESSAGE": "409 text depends on stored totals; the API sends it",
+    "BUY_UNDO_REFUSED_DESCRIPTION": "409 text depends on stored totals; the API sends it",
+    "BUY_NOT_MF_MESSAGE": "404 text the API sends; the web renders it",
 }
 # Templated / computed API messages (f-strings, concatenations, calls) cannot be compared verbatim.
 API_TEMPLATED_ALLOWLIST: dict[str, str] = {}
@@ -44,6 +53,7 @@ WEB_FILES = [
     "lib/delete-guard.ts",
     "lib/cas-import.ts",
     "lib/duplicates.ts",
+    "lib/buy.ts",
 ]
 
 

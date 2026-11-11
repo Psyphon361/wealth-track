@@ -24,6 +24,7 @@ from app.schemas.mf_scheme import MFSchemeRead
 from app.schemas.sip import SipTransactionsResponse
 from app.services import analytics_returns
 from app.services import amfi, bond_master, fd_issuers, nps, stock_master, valuation
+from app.services import buys as buys_service
 from app.services import sip as sip_service
 
 router = APIRouter(tags=["holdings"])
@@ -646,11 +647,12 @@ def get_mf_transactions(
     user: User = Depends(current_user),
 ):
     """One mutual fund's transactions, newest first, 10 a page."""
-    owned = db.scalar(
-        select(MutualFund.id).where(MutualFund.id == item_id, MutualFund.user_id == user.id)
-    )
-    if owned is None:
+    fund = db.scalars(
+        select(MutualFund).where(MutualFund.id == item_id, MutualFund.user_id == user.id)
+    ).first()
+    if fund is None:
         raise _not_found()
+    last_sale = buys_service.last_sale_date(db, item_id)
     total = db.scalar(
         select(func.count()).select_from(MFTransaction).where(MFTransaction.mutual_fund_id == item_id)
     ) or 0
@@ -679,6 +681,8 @@ def get_mf_transactions(
             "units": units,
             "nav": nav,
             "sip": t.sip_id is not None,
+            "manual": bool(t.manual),
+            "undoable": bool(t.manual) and buys_service.undo_refusal(fund, t, last_sale) is None,
         })
     return {
         "items": items,

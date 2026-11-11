@@ -167,7 +167,7 @@ def test_pg_trgm_extension_exists(pg_engine):
 def test_downgrade_then_upgrade_round_trip(pg_admin_url):
     with scratch_database(pg_admin_url) as url:
         run_alembic(url, "upgrade", "head")
-        run_alembic(url, "downgrade", "-1")
+        run_alembic(url, "downgrade", "0031")  # past 0032, which adds the ck_ constraints
         engine = make_engine(url)
         try:
             with engine.connect() as conn:

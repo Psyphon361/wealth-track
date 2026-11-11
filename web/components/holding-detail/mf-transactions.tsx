@@ -1,13 +1,31 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Undo2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
+import { apiDelete, apiGet, toApiMessage, type ApiMessage } from "@/lib/api";
 import { dateTile } from "@/lib/bond-schedule";
-import { formatINR } from "@/lib/format";
+import {
+  UNDO_BUY_CONFIRM,
+  UNDO_BUY_KEEP,
+  UNDO_BUY_PENDING,
+  UNDO_BUY_TITLE,
+  undoBuyPath,
+} from "@/lib/buy";
+import { formatDate, formatINR } from "@/lib/format";
+import { markHoldingsStale } from "@/lib/holdings-cache";
+import { invalidateNetWorth } from "@/lib/networth-cache";
 import { notify } from "@/lib/notify";
 import { showMoreLabel, transactionLabel } from "@/lib/sip";
 import type { MfTransaction, MfTransactionsResponse } from "@/lib/types";
@@ -54,7 +72,13 @@ function ErrorLine({
   );
 }
 
-function Row({ t }: { t: MfTransaction }) {
+function Row({
+  t,
+  onUndo,
+}: {
+  t: MfTransaction;
+  onUndo: (t: MfTransaction) => void;
+}) {
   const tile = dateTile(t.date);
   return (
     <li className="flex items-center gap-3 px-3 py-2.5 text-[13.5px]">
@@ -72,12 +96,35 @@ function Row({ t }: { t: MfTransaction }) {
         </span>
       </span>
       <span className="num shrink-0 text-right">{formatINR(t.amount)}</span>
+      {t.undoable ? (
+        <Button
+          variant="ghost"
+          size="xs"
+          className="shrink-0 text-muted-foreground"
+          onClick={() => onUndo(t)}
+        >
+          <Undo2 aria-hidden />
+          Undo
+        </Button>
+      ) : null}
     </li>
   );
 }
 
 /** Transactions of one MF holding, newest first, ten at a time. */
-export function MfTransactions({ id }: { id: number }) {
+export function MfTransactions({
+  id,
+  version = 0,
+  onChanged,
+}: {
+  id: number;
+  /** Bump to reload the list (after a buy). */
+  version?: number;
+  /** Runs after a buy is undone, so the page can reload the holding. */
+  onChanged?: () => void;
+}) {
+  const [undoing, setUndoing] = useState<MfTransaction | null>(null);
+  const [undoPending, setUndoPending] = useState(false);
   const [items, setItems] = useState<MfTransaction[] | null>(null);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -112,7 +159,27 @@ export function MfTransactions({ id }: { id: number }) {
     return () => {
       counter.current++;
     };
-  }, [loadFirst]);
+  }, [loadFirst, version]);
+
+  async function confirmUndo() {
+    if (!undoing || undoPending) return;
+    setUndoPending(true);
+    try {
+      const res = await apiDelete(undoBuyPath(id, undoing.id));
+      invalidateNetWorth();
+      markHoldingsStale("mf");
+      notify.success(res);
+      setUndoing(null);
+      loadFirst();
+      onChanged?.();
+    } catch (e) {
+      notify.error(e);
+      setUndoing(null);
+      loadFirst();
+    } finally {
+      setUndoPending(false);
+    }
+  }
 
   async function loadMore() {
     const rid = requestId.current;
@@ -167,7 +234,7 @@ export function MfTransactions({ id }: { id: number }) {
         <>
           <ul className={listCls}>
             {items.map((t) => (
-              <Row key={t.id} t={t} />
+              <Row key={t.id} t={t} onUndo={setUndoing} />
             ))}
           </ul>
           {moreError ? (
@@ -193,6 +260,39 @@ export function MfTransactions({ id }: { id: number }) {
           ) : null}
         </>
       )}
+      <AlertDialog
+        open={undoing !== null}
+        onOpenChange={(open) => {
+          if (!open && !undoPending) setUndoing(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{UNDO_BUY_TITLE}</AlertDialogTitle>
+            <AlertDialogDescription className="num">
+              {undoing
+                ? `${formatINR(undoing.amount)} on ${formatDate(undoing.date)}, ${units.format(undoing.units)} units.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={undoPending}>{UNDO_BUY_KEEP}</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={undoPending}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void confirmUndo();
+              }}
+            >
+              {undoPending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              {undoPending ? UNDO_BUY_PENDING : UNDO_BUY_CONFIRM}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

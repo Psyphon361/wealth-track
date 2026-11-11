@@ -283,10 +283,10 @@ def save_transactions(
 ) -> tuple[Decimal, Decimal]:
     """Replace a holding's stored transactions with the given list (empty deletes them).
 
-    SIP instalments dated after `keep_sip_after` stay (the statement doesn't have them yet).
-    Returns (units, amount) of the kept instalments, to add to the holding's totals.
+    SIP instalments and Buy more purchases dated after `keep_sip_after` stay (the statement
+    doesn't have them yet). Returns (units, amount) of the kept rows, to add to the holding's totals.
     """
-    from sqlalchemy import delete, select
+    from sqlalchemy import delete, or_, select
 
     from app.models import MFTransaction
 
@@ -296,7 +296,7 @@ def save_transactions(
             db.scalars(
                 select(MFTransaction).where(
                     MFTransaction.mutual_fund_id == holding_id,
-                    MFTransaction.sip_id.is_not(None),
+                    or_(MFTransaction.sip_id.is_not(None), MFTransaction.manual.is_(True)),
                     MFTransaction.txn_date > keep_sip_after,
                 )
             )

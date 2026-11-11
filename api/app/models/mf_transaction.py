@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, UniqueConstraint, false, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
@@ -30,4 +30,7 @@ class MFTransaction(Base):
     units: Mapped[Decimal] = mapped_column(Numeric(14, 3))
     # Set on instalments added by a SIP; the pair with txn_date stops one being posted twice.
     sip_id: Mapped[int | None] = mapped_column(ForeignKey("mf_sips.id", ondelete="SET NULL"))
+    # True on a purchase the user added with Buy more (not from a CAS import or a SIP); a CAS
+    # re-import keeps these after the statement date, and only these can be undone.
+    manual: Mapped[bool] = mapped_column(server_default=false(), default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

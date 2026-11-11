@@ -2503,6 +2503,101 @@
         "title": "BondScheduleResponse",
         "type": "object"
       },
+      "BuyBody": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "date": {
+            "format": "date",
+            "title": "Date",
+            "type": "string"
+          },
+          "nav": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Nav"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Units"
+          }
+        },
+        "required": [
+          "date",
+          "amount",
+          "nav"
+        ],
+        "title": "BuyBody",
+        "type": "object"
+      },
+      "BuyResult": {
+        "properties": {
+          "avg_nav": {
+            "title": "Avg Nav",
+            "type": "number"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "invested_amount": {
+            "title": "Invested Amount",
+            "type": "number"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "number"
+          },
+          "units_added": {
+            "title": "Units Added",
+            "type": "number"
+          }
+        },
+        "required": [
+          "message",
+          "description",
+          "transaction_id",
+          "units_added",
+          "units",
+          "invested_amount",
+          "avg_nav"
+        ],
+        "title": "BuyResult",
+        "type": "object"
+      },
       "CasCommit": {
         "properties": {
           "rows": {
@@ -10049,6 +10144,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "manual": {
+            "default": false,
+            "title": "Manual",
+            "type": "boolean"
+          },
           "nav": {
             "anyOf": [
               {
@@ -10062,6 +10162,11 @@
           },
           "sip": {
             "title": "Sip",
+            "type": "boolean"
+          },
+          "undoable": {
+            "default": false,
+            "title": "Undoable",
             "type": "boolean"
           },
           "units": {
@@ -17519,6 +17624,138 @@
         "summary": "Get Holding Detail",
         "tags": [
           "holdings"
+        ]
+      }
+    },
+    "/api/holdings/{slug}/{item_id}/buy": {
+      "post": {
+        "operationId": "buy_more_api_holdings__slug___item_id__buy_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "confirm_duplicate",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Confirm Duplicate",
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BuyBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuyResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Buy More",
+        "tags": [
+          "buys"
+        ]
+      }
+    },
+    "/api/holdings/{slug}/{item_id}/buys/{txn_id}": {
+      "delete": {
+        "description": "Undo a purchase added with Buy more.",
+        "operationId": "undo_buy_api_holdings__slug___item_id__buys__txn_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "txn_id",
+            "required": true,
+            "schema": {
+              "title": "Txn Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outcome"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Undo Buy",
+        "tags": [
+          "buys"
         ]
       }
     },

@@ -8,11 +8,13 @@ import {
   HandCoins,
   MoreHorizontal,
   Pencil,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
 import { UpdateValueDialog } from "@/components/portfolio/update-value-dialog";
 import { canUpdateValue, updateValueLabel } from "@/lib/update-value";
+import { BuyDialog } from "@/components/buy/buy-dialog";
 import { SellDialog } from "@/components/exits/sell-dialog";
 import { SettleDialog } from "@/components/exits/settle-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -29,9 +31,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { deleteBlockedReason, isDeleteBlocked } from "@/lib/delete-guard";
+import { canBuy } from "@/lib/buy";
 import { canEdit } from "@/lib/edit-guards";
 import { canSell, canSettle } from "@/lib/exits";
-import type { AssetType, HoldingRow } from "@/lib/types";
+import type { AssetType, HoldingRow, MutualFundItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 /** Flip once the /portfolio/{type}/{id} details page exists. */
@@ -64,8 +67,16 @@ export function RowActions({
   onDelete: () => void;
 }) {
   // Sell and Settle open their own dialogs, so the grid needs no handlers for them.
-  const [dialog, setDialog] = useState<"sell" | "settle" | "update" | null>(null);
+  const [dialog, setDialog] = useState<"sell" | "settle" | "update" | "buy" | null>(null);
   const entries: MenuEntry[] = [];
+  if (canBuy(type, row)) {
+    entries.push({
+      key: "buy",
+      label: "Buy More",
+      icon: <Plus />,
+      run: () => setDialog("buy"),
+    });
+  }
   if (canSell(type, row)) {
     entries.push({
       key: "sell",
@@ -195,6 +206,11 @@ export function RowActions({
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+      <BuyDialog
+        row={dialog === "buy" && type === "mf" ? (row as MutualFundItem) : null}
+        name={name}
+        onClose={() => setDialog(null)}
+      />
       <SellDialog
         type={type}
         row={dialog === "sell" ? row : null}

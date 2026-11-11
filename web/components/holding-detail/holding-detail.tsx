@@ -3,7 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, HandCoins, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, HandCoins, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { BuyDialog } from "@/components/buy/buy-dialog";
+import { canBuy } from "@/lib/buy";
 import { StalePill } from "@/components/portfolio/stale-pill";
 import { UpdateValueDialog } from "@/components/portfolio/update-value-dialog";
 import { STALE_LINE, canUpdateValue, updateValueLabel } from "@/lib/update-value";
@@ -50,6 +52,7 @@ import {
   ASSET_TYPE_LABELS,
   type AssetType,
   type HoldingRow,
+  type MutualFundItem,
   type OtherItem,
   type PfItem,
 } from "@/lib/types";
@@ -98,6 +101,9 @@ function TypedDetail<TRow extends HoldingRow>({
   const [deletePending, setDeletePending] = useState(false);
   const [selling, setSelling] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [buying, setBuying] = useState(false);
+  // Bumped after a buy or an undone buy so the transactions list reloads.
+  const [txVersion, setTxVersion] = useState(0);
   // The dashboard links here with ?settle=1 to open the settle dialog straight away.
   const [settling, setSettling] = useState(searchParams.get("settle") === "1");
   // Bumped after a sale, settlement or undo so the exits list reloads.
@@ -153,6 +159,13 @@ function TypedDetail<TRow extends HoldingRow>({
   const paidFrom = paidFromText(item);
   const hasExits =isSellableType(config.type) || isSettleableType(config.type);
 
+  const buyable = canBuy(config.type, item);
+
+  function buyDone() {
+    refetch();
+    setTxVersion((n) => n + 1);
+  }
+
   function exitDone() {
     refetch();
     setExitsVersion((n) => n + 1);
@@ -197,6 +210,12 @@ function TypedDetail<TRow extends HoldingRow>({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {buyable ? (
+            <Button variant="outline" size="sm" onClick={() => setBuying(true)}>
+              <Plus aria-hidden />
+              Buy More
+            </Button>
+          ) : null}
           {sellable ? (
             <Button variant="outline" size="sm" onClick={() => setSelling(true)}>
               <HandCoins aria-hidden />
@@ -294,7 +313,7 @@ function TypedDetail<TRow extends HoldingRow>({
       {config.type === "mf" ? (
         <>
           <MfSipSection id={item.id} />
-          <MfTransactions id={item.id} />
+          <MfTransactions id={item.id} version={txVersion} onChanged={buyDone} />
         </>
       ) : null}
       {hasExits ? (
@@ -308,6 +327,15 @@ function TypedDetail<TRow extends HoldingRow>({
       ) : null}
       {item.notes ? <NotesSection notes={item.notes} /> : null}
 
+      <BuyDialog
+        row={buying && buyable ? (item as unknown as MutualFundItem) : null}
+        name={name}
+        onClose={() => setBuying(false)}
+        onDone={() => {
+          setBuying(false);
+          buyDone();
+        }}
+      />
       <SellDialog
         type={config.type}
         row={selling && sellable ? item : null}

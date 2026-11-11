@@ -1218,6 +1218,10 @@ export interface MfTransaction {
   nav: number | null;
   /** True when a SIP added this instalment. */
   sip: boolean;
+  /** True when the user added this purchase with Buy More. */
+  manual: boolean;
+  /** True when the purchase can be undone now. */
+  undoable: boolean;
 }
 
 export interface MfTransactionsResponse {

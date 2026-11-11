@@ -37,6 +37,13 @@ back-dated to the age the harness clock gives them. The model predicts the count
 days go with their exits, fundings and MF transactions, that links to a purged cash account become
 NULL, that no balance changes and that restore of a purged row is 404.
 
+Buy more (rules buy_more, buy_more_twice, undo_buy, undo_buy_twice; SPEC §8d): a fund (also a partly sold one) gets
+a manual purchase on a date from its purchase date and latest sale to today; units, invested and average NAV move
+by the purchase, no cash account moves. 404 deleted, 409 sold in full, 422 for a future date, a date before the
+purchase date or before the latest sale, 409 for the same buy again unless confirmed. Undo removes it again:
+409 once the fund is sold in full, while a sale is dated on or after the buy (also right after a sell the same
+day), or when the rest would leave no units or less than the cost floor; 404 for a record that is gone.
+
 Known limits (documented, see test_money_machine.py): no concurrency (tests/pg covers it); SQLite
 does not enforce foreign keys, so the harness applies the ON DELETE actions by hand after a purge
 (Postgres enforces them for real).
@@ -148,6 +155,17 @@ class ExitM:
 
 
 @dataclass
+class BuyM:
+    """A manual purchase added with Buy more (a manual mf_transactions row)."""
+
+    id: int  # the transaction id
+    hid: int  # the fund
+    when: date
+    amount: Decimal
+    units: Decimal
+
+
+@dataclass
 class SipM:
     id: int
     status: str = "active"  # active | paused | stopped
@@ -200,6 +218,7 @@ class MoneyMachine(RuleBasedStateMachine):
         self.exits: dict[int, ExitM] = {}
         self.gone: list[int] = []  # exit ids that were undone
         self.sips: dict[int, SipM] = {}
+        self.buys: dict[int, BuyM] = {}  # manual purchases (Buy more) still on record, by transaction id
         self.touched: tuple[str, int] | None = None
         self.n = 0
         self.rate_dates: dict[tuple[str, str], date] = {}  # latest rate date per metal (never goes back)
@@ -987,6 +1006,11 @@ class MoneyMachine(RuleBasedStateMachine):
         if slug == "mf" and not full and ex.post[1] != q2(pre[1] - cost):
             self.fail(f"sell mf: invested after {ex.post[1]} != before {pre[1]} less the sale cost {cost}")
         self.touched = hold.key
+        if slug == "mf" and not repeat and self.buys and data.draw(st.booleans()):
+            # right after the sale: a buy dated on or before it can't be undone (409) while it stands
+            mine = sorted((b for b in self.buys.values() if b.hid == hold.id), key=lambda b: b.id)
+            if mine:
+                self.do_undo_buy(data, repeat=False, buy=data.draw(st.sampled_from([b for b in mine if b.when == self.h.today] or mine)))
         if repeat and full:
             self.resend(f"sell {slug}", "POST", f"/api/holdings/{slug}/{hold.id}/sell", (409,), json=body)
         elif not repeat and ex.added > 0 and ex.cash_id is not None and data.draw(st.sampled_from([True, False, False, False])):
@@ -1153,6 +1177,186 @@ class MoneyMachine(RuleBasedStateMachine):
         """The cost the app recorded for an exit (read before it was deleted is not possible: use pre)."""
         # pre.invested - post.invested is exactly the cost of a partial sale
         return q2(ex.pre[1] - ex.post[1])
+
+    # ---- buy more and undo a buy (SPEC §8d) -----------------------------------------------------
+    @staticmethod
+    def _day(value) -> date | None:
+        return None if value is None else date.fromisoformat(str(value)[:10])
+
+    def fund_dates(self, hold: HM) -> tuple[date, date | None]:
+        """(purchase date, date of the latest sale) of a fund from the ledger rows: sale exits and every
+        redemption transaction."""
+        purchase = self._day(self.h.scalar("SELECT purchase_date FROM mutual_funds WHERE id = :i", i=hold.id))
+        sold = self._day(self.h.scalar(
+            "SELECT max(exit_date) FROM holding_exits WHERE asset_type = 'mf' AND holding_id = :i AND kind = 'sale'",
+            i=hold.id,
+        ))  # fmt: skip
+        redeemed = self._day(self.h.scalar(
+            "SELECT max(txn_date) FROM mf_transactions WHERE mutual_fund_id = :i AND kind = 'redemption'", i=hold.id
+        ))  # fmt: skip
+        dates = [x for x in (sold, redeemed) if x is not None]
+        return purchase, (max(dates) if dates else None)
+
+    @precondition(lambda self: bool(self.holds_of("mf")))
+    @rule(data=st.data())
+    def buy_more(self, data):
+        self.do_buy(data, repeat=False)
+
+    @precondition(lambda self: bool(self.holds_of("mf")))
+    @rule(data=st.data())
+    def buy_more_twice(self, data):
+        """Double submit: a buy, then the same request again (409 "looks like a buy you already made", nothing
+        changes); then sometimes the same request with confirm_duplicate=true, which adds a second purchase."""
+        self.do_buy(data, repeat=True)
+
+    def do_buy(self, data, repeat: bool):
+        self.refresh_mf()
+        funds = self.holds_of("mf")
+        hold = self.choose(data, [h for h in funds if h.live and not h.closed], funds)
+        today = self.h.today
+        purchase, last_sale = self.fund_dates(hold)
+        mine = sorted((b for b in self.buys.values() if b.hid == hold.id), key=lambda b: b.id)
+        if mine and not repeat and data.draw(st.sampled_from([False, False, False, True])):
+            again = data.draw(st.sampled_from(mine))  # the same buy as one already recorded
+            when, amount, units = again.when, again.amount, again.units
+        else:
+            low = max(purchase, last_sale) if last_sale is not None else purchase
+            span = max(0, (today - low).days)
+            kind = data.draw(st.sampled_from(["ok"] * 9 + ["future", "early"]))
+            if kind == "future":
+                when = today + timedelta(days=data.draw(st.integers(1, 5)))
+            elif kind == "early":
+                base = last_sale if last_sale is not None and data.draw(st.booleans()) else purchase
+                when = base - timedelta(days=data.draw(st.integers(1, 5)))
+            else:
+                offset = data.draw(st.one_of(st.just(0), st.just(span), st.integers(0, span)))
+                when = low + timedelta(days=offset)
+            amount = from_cents(data.draw(st.integers(100, 2_000_000)))
+            units = None
+        nav = Decimal(data.draw(st.integers(100_000, 3_000_000))).scaleb(-4)
+        if units is None and data.draw(st.sampled_from([False, False, True])):
+            units = from_milli(data.draw(st.integers(1, 300_000)))
+        explicit = units is not None
+        if units is None:
+            units = q3(amount / nav)
+        status = self.buy_once(data, hold, when, amount, nav, units, explicit, confirm=False, repeat=repeat)
+        if repeat and status == 201:
+            if data.draw(st.sampled_from([True, False, False])):
+                self.buy_once(data, hold, when, amount, nav, units, explicit, confirm=True, repeat=False)
+
+    def buy_once(self, data, hold: HM, when: date, amount: Decimal, nav: Decimal, units: Decimal,
+                 explicit: bool, confirm: bool, repeat: bool) -> int:  # fmt: skip
+        from app.schemas.buys import BUY_DATE_BEFORE_LAST_SALE_ERROR, BUY_DUPLICATE_MESSAGE
+        from app.schemas.exits import EXIT_DATE_FUTURE_ERROR, SELL_DATE_BEFORE_PURCHASE_ERROR
+
+        today = self.h.today
+        purchase, last_sale = self.fund_dates(hold)
+        dup = any(
+            b.hid == hold.id and (b.when, b.amount, b.units) == (when, amount, units) for b in self.buys.values()
+        )
+        prefix = None
+        if not hold.live:
+            want = 404
+        elif hold.closed:
+            want = 409
+        elif when > today:
+            want, prefix = 422, EXIT_DATE_FUTURE_ERROR
+        elif when < purchase:
+            want, prefix = 422, SELL_DATE_BEFORE_PURCHASE_ERROR
+        elif last_sale is not None and when < last_sale:
+            want, prefix = 422, BUY_DATE_BEFORE_LAST_SALE_ERROR
+        elif dup and not confirm:
+            want, prefix = 409, BUY_DUPLICATE_MESSAGE
+        else:
+            want = 201
+        body = {"date": when.isoformat(), "amount": sx(amount), "nav": sx(nav)}
+        if explicit:
+            body["units"] = sx(units)
+        url = f"/api/holdings/mf/{hold.id}/buy"
+        params = {"confirm_duplicate": "true"} if confirm else None
+        sold_in_part = any(self.exits[e].kind == "sale" for e in hold.exits)
+        pre_state = self.db_state(hold) if hold.live else None
+        r = self.h.call("POST", url, params=params, json=body)
+        if self.expect(r, (want,), "buy more", prefix) >= 400:
+            return r.status_code
+        out = r.json()
+        total_units, total_invested = hold.qty + units, hold.invested + amount
+        avg_nav = (total_invested / total_units).quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP)
+        got = (d(out["units_added"]), d(out["units"]), d(out["invested_amount"]), d(out["avg_nav"]))
+        if got != (units, total_units, total_invested, avg_nav):
+            self.fail(f"buy more: result {got} != {(units, total_units, total_invested, avg_nav)}")
+        row = self.h.rows(
+            "SELECT mutual_fund_id, txn_date, kind, amount, units, sip_id, manual FROM mf_transactions WHERE id = :i",
+            i=out["transaction_id"],
+        )  # fmt: skip
+        if len(row) != 1:
+            self.fail("buy more: the purchase row is missing")
+        t = row[0]
+        if (t.mutual_fund_id, self._day(t.txn_date), t.kind, q2(t.amount), q3(t.units), t.sip_id, bool(t.manual)) != (
+            hold.id, when, "purchase", amount, units, None, True,
+        ):  # fmt: skip
+            self.fail(f"buy more: the stored purchase differs: {tuple(t)}")
+        if self.fund_dates(hold)[0] != purchase:
+            self.fail("buy more: the purchase date moved")
+        self.buys[out["transaction_id"]] = BuyM(out["transaction_id"], hold.id, when, amount, units)
+        hold.qty, hold.invested = total_units, total_invested
+        TALLY["buy more: " + ("partly sold fund" if sold_in_part else "fund")] += 1
+        if confirm:
+            TALLY["buy more: confirmed duplicate"] += 1
+        if pre_state is not None and self.db_state(hold) != (total_units, total_invested, False):
+            self.fail(f"buy more: fund state {self.db_state(hold)} after buying onto {pre_state}")
+        self.touched = hold.key
+        if repeat:
+            self.resend("buy more", "POST", url, (409,), BUY_DUPLICATE_MESSAGE, params=params, json=body)
+        return 201
+
+    @precondition(lambda self: bool(self.buys))
+    @rule(data=st.data())
+    def undo_buy(self, data):
+        self.do_undo_buy(data, repeat=False)
+
+    @precondition(lambda self: bool(self.buys))
+    @rule(data=st.data())
+    def undo_buy_twice(self, data):
+        """Double submit: an undo, then the same request again (404: the record is gone)."""
+        self.do_undo_buy(data, repeat=True)
+
+    def do_undo_buy(self, data, repeat: bool, buy: BuyM | None = None):
+        from app.schemas.buys import BUY_UNDO_REFUSED_MESSAGE, BUY_UNDO_SALE_FIRST_MESSAGE
+
+        self.refresh_mf()
+        if buy is None:
+            every = sorted(self.buys.values(), key=lambda b: b.id)
+            good = [b for b in every if self.holds[("mf", b.hid)].live and not self.holds[("mf", b.hid)].closed]
+            buy = self.choose(data, good, every)
+        hold = self.holds[("mf", buy.hid)]
+        _, last_sale = self.fund_dates(hold)
+        left, left_invested = hold.qty - buy.units, hold.invested - buy.amount
+        prefix = None
+        if not hold.live:
+            want, prefix = 404, "Holding not found"
+        elif hold.closed:
+            want, prefix = 409, "Already sold"
+        elif last_sale is not None and last_sale >= buy.when:
+            want, prefix = 409, BUY_UNDO_SALE_FIRST_MESSAGE
+            TALLY["undo buy: refused, a sale on or after it"] += 1
+        elif left <= 0 or left_invested < floor_of("mf", left):
+            want, prefix = 409, BUY_UNDO_REFUSED_MESSAGE
+        else:
+            want = 200
+        url = f"/api/holdings/mf/{hold.id}/buys/{buy.id}"
+        r = self.h.call("DELETE", url)
+        if self.expect(r, (want,), "undo buy", prefix) >= 400:
+            return
+        if self.h.scalar("SELECT count(*) FROM mf_transactions WHERE id = :i", i=buy.id):
+            self.fail("undo buy: the purchase row is still there")
+        del self.buys[buy.id]
+        hold.qty, hold.invested = left, q2(left_invested)
+        if self.db_state(hold) != (left, q2(left_invested), False):
+            self.fail(f"undo buy: fund state {self.db_state(hold)} != {(left, q2(left_invested))}")
+        self.touched = hold.key
+        if repeat:
+            self.resend("undo buy", "DELETE", url, (404,), "Record not found")
 
     # ---- delete / restore ---------------------------------------------------------------------
     def items(self) -> list:
@@ -1323,6 +1527,8 @@ class MoneyMachine(RuleBasedStateMachine):
             del self.exits[e]
         for hold in old_holds:
             del self.holds[hold.key]
+        purged_funds = {hold.id for hold in old_holds if hold.slug == "mf"}
+        self.buys = {i: b for i, b in self.buys.items() if b.hid not in purged_funds}  # their rows went too
         for hold in self.holds.values():
             for f in hold.fundings:
                 if f.from_exit in gone_ids:
@@ -1840,7 +2046,7 @@ class MoneyMachine(RuleBasedStateMachine):
         # funds: units vs transactions, closed_on, SIP links
         txns: dict[int, list] = {}
         for r in h.rows(
-            "SELECT t.id, t.mutual_fund_id, t.kind, t.units, t.amount, t.txn_date, t.sip_id FROM mf_transactions t "
+            "SELECT t.id, t.mutual_fund_id, t.kind, t.units, t.amount, t.txn_date, t.sip_id, t.manual FROM mf_transactions t "
             "JOIN mutual_funds f ON f.id = t.mutual_fund_id WHERE f.user_id = :u", u=u,
         ):  # fmt: skip
             txns.setdefault(r.mutual_fund_id, []).append(r)
@@ -1888,9 +2094,10 @@ class MoneyMachine(RuleBasedStateMachine):
             if hold.closed:
                 if hold.slug == "mf":
                     # the machine's own basis ledger: a fund with a sale can't be edited, so what was
-                    # invested before its first sale plus the amounts of the SIP purchase rows posted
-                    # after it. "After" is row order: ids grow with insertion, and the first live
-                    # sale's redemption row (no sip_id) marks the point (dates and timestamps can tie).
+                    # invested before its first sale plus the amounts of the SIP and Buy more (manual)
+                    # purchase rows posted after it. "After" is row order: ids grow with insertion, and
+                    # the first live sale's redemption row (no sip_id) marks the point (dates and
+                    # timestamps can tie).
                     exs = [self.exits[r.id] for r in sorted(rs, key=lambda r: r.id)]
                     ts = txns.get(hold.id)
                     redemptions = [t.id for t in ts or [] if t.kind == "redemption" and t.sip_id is None]
@@ -1898,7 +2105,10 @@ class MoneyMachine(RuleBasedStateMachine):
                         self.fail(f"{key}: a live sale but no redemption transaction")
                     mark = min(redemptions)
                     sip_after = sum(
-                        (q2(t.amount) for t in ts if t.kind == "purchase" and t.sip_id is not None and t.id > mark),
+                        (
+                            q2(t.amount) for t in ts
+                            if t.kind == "purchase" and (t.sip_id is not None or t.manual) and t.id > mark
+                        ),
                         ZERO,
                     )
                     expect_total = exs[0].pre[1] + sip_after

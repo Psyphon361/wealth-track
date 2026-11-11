@@ -357,9 +357,12 @@ export function actionPath(
 
 // ---- MF transactions ----
 
-/** "SIP" for an instalment added by a SIP, else "Purchase" or "Redemption". */
-export function transactionLabel(t: Pick<MfTransaction, "kind" | "sip">): string {
+/** "SIP" for an instalment added by a SIP, "Bought" for a Buy More, else "Purchase" or "Redemption". */
+export function transactionLabel(
+  t: Pick<MfTransaction, "kind" | "sip"> & { manual?: boolean },
+): string {
   if (t.sip) return "SIP";
+  if (t.manual && t.kind === "purchase") return "Bought";
   return t.kind === "redemption" ? "Redemption" : "Purchase";
 }
 
