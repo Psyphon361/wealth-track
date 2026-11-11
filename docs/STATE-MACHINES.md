@@ -43,7 +43,9 @@ Derived data on grid items: `exit` (latest exit summary) and `settled` come from
 | live -> soft-deleted | `DELETE /api/assets/{slug}/{id}` | row locked, 404 if already deleted (`assets.py:286-292`); any exit row (sale or maturity) -> 409 (`assets.py:294-311`) | `deleted_at` set; active fundings refunded to their account, active or soft-deleted (`assets.py:314-315`, `fundings.py:308-315`) |
 | soft-deleted -> live | `POST .../restore` | locked, must still be deleted else 404 (`assets.py:326-334`); funding re-debit must fit the balance else 409 (`fundings.py:318-338`, `assets.py:335-342`) | `refunded_at` cleared, account debited; NPS sync rescheduled |
 | soft-deleted -> purged | `/api/cron/purge`, `python -m app.jobs.purge_deleted` | `deleted_at < now - 30 days` re-evaluated under lock (`purge.py:73-88`); lock timeout 10 s -> `PurgeLockTimeout` -> 503 (`purge.py:50-66`, `routers/cron.py:99-104`) | delete exits and fundings of the holding (`purge.py:164-174`), the row; FK SET NULL on SIP `mutual_fund_id`, funding/exit `cash_holding_id` |
-| MF live -> MF updated | `POST /api/import/cas/commit` row `action=update` | refused (422) when any exit exists for the fund (`routers/cas_import.py:97-99,126-128,137-138`; `services/cas_import.py:246-263`); holding locked (`:99-106,130-134`) | units/avg_nav/invested/purchase_date overwritten, transactions replaced except later SIP rows (`services/cas_import.py:281-318`) |
+| MF live -> MF updated | `POST /api/import/cas/commit` row `action=update` | refused (422) when any exit exists for the fund (`routers/cas_import.py:97-99,126-128,137-138`; `services/cas_import.py:246-263`); holding locked (`:99-106,130-134`) | units/avg_nav/invested/purchase_date overwritten, transactions replaced except later SIP rows and later manual (Buy more) rows (`services/cas_import.py:281-318`) |
+| MF live / sold in part -> MF + buy | `POST /api/holdings/mf/{id}/buy` (SPEC §8d) | fund locked (`FOR UPDATE OF`, `populate_existing`, `routers/buys.py`); `_not_active` (sold in full -> 409); date not future, not before `purchase_date`, not before the latest sale (sale exits and redemption rows) -> 422; units > 0 and <= 1 crore; same manual buy (date, amount, units) -> 409 unless `confirm_duplicate`; mf only, else 404 (`services/buys.py` `record_mf_buy`) | opening purchase if no transactions; `mf_transactions` purchase row (`sip_id` NULL, `manual` true); units, invested, avg_nav raised; `purchase_date` kept; no cash moves |
+| MF + buy -> MF (undo buy) | `DELETE /api/holdings/mf/{id}/buys/{txn_id}` | fund locked; row must be a manual purchase of this fund else 404; `undo_refusal`: sold in full -> 409; a sale or redemption dated on or after the buy (same day included) -> 409; units left <= 0 or invested below `remainder_floor('mf', left)` -> 409 (`services/buys.py`) | row deleted; units, invested subtracted, avg_nav recomputed; `purchase_date` kept. `undoable` on the transactions list uses the same rule |
 | MF live -> MF + instalment | SIP posting (`post_due`) | holding must be live and open; see lifecycle 4 | units, invested, avg_nav, `last_posted_on` updated (`services/sip.py:365-373`) |
 
 ### 1c. Illegal combinations
@@ -61,6 +63,8 @@ Derived data on grid items: `exit` (latest exit summary) and `settled` come from
 | Sale/settle exit on a type that cannot have it (nps, cash, pf) | CHECK on `asset_type` enum; API `SELL_TYPES`/`SETTLE_TYPES` (`routers/exits.py:131-132,177-178`). `sale` on fd/rd and `maturity` on stock/mf/gold/other pass the enum, prevented by API only |
 | Exit/funding row whose holding row is gone | INV `orphan_exit`, `orphan_funding` (no FK by design) |
 | Live MF with transactions whose units != net | INV `mf_units_vs_transactions` (only open live funds); MACHINE |
+| Buy dated before the fund's purchase date or latest sale | API 422 (`services/buys.py`); MACHINE buy_more; TEST `tests/test_buy_more.py` |
+| Undo of a buy a later or same-day sale may have used | API 409 `undo_refusal`; MACHINE undo_buy (also right after a sell the same day); TEST `tests/pg/test_buy_more_pg.py` |
 | Partly sold holding edited in sold-in-part fields | API `assets.py:236-249`; TEST `tests/test_edit_guards.py` |
 | Edit of closed or settled holding | API `assets.py:227-235`; TEST `tests/test_edit_guards.py`; MACHINE (GET then PUT roundtrip) |
 
@@ -223,7 +227,7 @@ Derived data on grid items: `exit` (latest exit summary) and `settled` come from
 | Linked to sold fund | `mutual_fund_id` -> fund with `closed_on` set |
 | Linked to soft-deleted fund | `mutual_fund_id` -> fund with `deleted_at` set (row hidden by the filter) |
 | Skip | row in `mf_sip_skips` (UQ `(sip_id, due_date)`) |
-| Instalment | `mf_transactions` row with `sip_id` set, UQ `(sip_id, txn_date)`; `sip.last_posted_on` = due date of the last one |
+| Instalment | `mf_transactions` row with `sip_id` set, UQ `(sip_id, txn_date)`; `sip.last_posted_on` = due date of the last one. A Buy more purchase is a different row: `sip_id` NULL, `manual` true (lifecycle 1) |
 
 ### 4b. Transitions
 

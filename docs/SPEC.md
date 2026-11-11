@@ -241,8 +241,9 @@ Reference checks: FD 100000 @ 7% quarterly, start 2025-10-24, 1y, on 2026-10-24 
 - **Edit guards** (`PUT /assets/{type}/{id}`). The PUT locks the holding row (`FOR UPDATE OF` the holding table), then checks `holding_exits`:
   - Closed holding (sold in full: `closed_on` set, status `sold`; or settled: a maturity exit) → 409 "This holding is closed" / "Undo the sale or settlement first to change it." Matured but unsettled holdings can still be edited.
   - Sold in part (a sale exit exists, the holding is still open): changing a protected field → 422 per changed field, loc `("body", field)`, "Sold in part: undo the sale to change this." Unchanged values pass. Protected fields (`SOLD_IN_PART_FIELDS` in `api/app/schemas/assets.py`): stock `master_id`, `symbol`, `exchange`, `quantity`, `avg_buy_price`, `buy_date`; bond `master_id`, `isin`, `quantity`, `purchase_price`, `invested_amount`, `purchase_date`; MF `scheme_code`, `units`, `avg_nav`, `invested_amount`, `purchase_date`; gold `metal`, `purity`, `weight_grams`, `invested_amount`, `purchase_date` (the identity fields keep a recorded sale pointing at the same security; names are re-filled from the master, text compares ignore case and spaces; the pickers and selects show read-only with the same note, and "Enter manually" is disabled); Other `invested_amount`, `acquired_on` (an Other sale is always full, so this rarely applies). Other types have none.
+  - Buy more (§8d) is not an edit: it works on a fund sold in part (the cost fields stay read-only in the Edit dialog) and is refused only on a fund sold in full.
   - Web: Edit is hidden on closed holdings (grid row actions and details page, `canEdit` in `web/lib/edit-guards.ts`). The Edit dialog shows protected fields read-only with a helper line; autofill (gold rate, MF NAV, bond pick) doesn't overwrite a locked field. The constants are mirrored in `web/components/forms/schema.ts` and `web/lib/edit-guards.ts`; `api/tests/test_edit_guards.py` pins them to `assets.py`.
-- **Row locks.** Delete, restore, sell, settle and PUT all lock the holding row. Every `FOR UPDATE` on a holding model uses `with_for_update(of=Model)`, because Nps and FixedDeposit load their masters with a join. Lock order: Paid From with `from_exit_id` locks the exit row before the cash row (undo locks exit, holding, cash), so reinvest and undo serialise; SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
+- **Row locks.** Delete, restore, sell, settle, buy more, undo buy and PUT all lock the holding row. Every `FOR UPDATE` on a holding model uses `with_for_update(of=Model)`, because Nps and FixedDeposit load their masters with a join. Lock order: Paid From with `from_exit_id` locks the exit row before the cash row (undo locks exit, holding, cash), so reinvest and undo serialise; SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
 - **Soft delete** (migration 0025: nullable `deleted_at` on the nine holding tables; `other_holdings` has it from migration 0026). `DELETE /assets/{type}/{id}` sets `deleted_at`; every query (grids, portfolio, dashboard, net worth, details) hides deleted rows. MF transactions stay with their fund.
 - `DELETE /assets/{type}/{id}` is refused with 409 for a holding that has a sale or settlement on record (a partly sold one too), because deleting it would leave the sale's money in a cash account with nothing behind it: `{message: "Undo the sale first", description: "Delete this holding after you undo its sale."}`, or "Undo the settlement first" / "Delete this holding after you undo its settlement." (the sale wording wins when both exist). Undo the exit, then delete. Undone exits leave no row, so they don't block. Holdings deleted before this rule restore as before. The web shows the API's error toast (grid and details page).
 - `POST /assets/{type}/{id}/restore` clears `deleted_at` → `{message: "<Type> restored", description}`; 404 for a holding that isn't deleted or isn't yours.
@@ -559,6 +560,7 @@ Code: `api/app/services/cas_import.py`, `api/app/routers/cas_import.py`, `api/ap
   - Body has an optional `statement_to` (the web sends it). A `statement_to` after today (IST) → 422 "Couldn't import — nothing was saved" / "The statement date is in the future." (`FUTURE_STATEMENT_DATE` in `services/cas_import.py`).
   - SIP rows (`mf_transactions` with `sip_id` set) dated after the cutoff are kept, and their units and amount are added back to the holding totals; avg NAV = invested ÷ units, 4 dp half-up (same as the SIP poster). Cutoff = the later of `statement_to` and the latest CAS transaction date for that fund; neither → none kept. When the CAS has no transactions for the fund but SIP rows are kept, an opening purchase transaction (CAS units and invested, dated at the payload `purchase_date`) is added.
   - SIP rows before the cutoff become plain (non-SIP) rows, so the SIPs table "Instalments" and "Invested via SIP" drop after a re-import (§8a).
+  - Manual rows (`manual=true`, added with Buy more, §8d) are kept after the cutoff the same way as SIP rows, with their units and amount added back to the holding totals; before the cutoff the statement replaces them.
 - Manual entries never get transactions (no per-transaction entry).
 - Transaction checks, in the same all-or-nothing 422 (`<fund name> — <reason>`):
   - "Transaction date can't be in the future"
@@ -620,12 +622,12 @@ Each outcome returns `message` and `description`. A SIP read has: `id`, `mutual_
 - `POST /api/sips/{id}/skip`, body `{due_date?}` (default: the next instalment). Message "Instalment skipped", description `<fund> · 5 Dec 2026`. The date must be an upcoming instalment: today or later, on the SIP's day, not already posted, not after `end_date`. Otherwise 422 on `due_date` "Pick an upcoming instalment date". With no instalment left, 422 "There is no upcoming instalment to skip". The SIP must be active (409 "SIP isn't running" / "Only a running SIP has instalments to skip."). Already skipped: 409 "Instalment already skipped" / "<date> is already skipped."
 - `DELETE /api/sips/{id}/skip/{due_date}`: undoes a skip while the date is still upcoming. Message "Skip removed", description `<fund> · 5 Dec 2026 will be added`. Not skipped: 404 "Skip not found" / "That instalment isn't skipped." A past date: 422 "Pick an upcoming instalment date".
 - `DELETE /api/sips/{id}`: deletes the SIP and its skips (deleting, selling or purging a holding never deletes its SIP). Message "SIP deleted", description "<fund> · instalments already added stay in your holding".
-- `GET /api/holdings/mf/{id}/transactions?page=`: one fund's transactions, newest first, 10 a page (`page` is clamped to the last page). Items: `id`, `date`, `kind` (`purchase` | `redemption`), `amount`, `units`, `nav` (amount ÷ units; a SIP instalment's stamp duty is undone first, so this is the NAV used; null when units are 0), `sip` (true for a SIP instalment). Response: `items`, `total`, `page`, `page_size`, `page_count`. 404 when the fund isn't yours.
+- `GET /api/holdings/mf/{id}/transactions?page=`: one fund's transactions, newest first, 10 a page (`page` is clamped to the last page). Items: `id`, `date`, `kind` (`purchase` | `redemption`), `amount`, `units`, `nav` (amount ÷ units; a SIP instalment's stamp duty is undone first, so this is the NAV used; null when units are 0), `sip` (true for a SIP instalment), `manual` (true for a Buy more purchase) and `undoable` (a manual purchase that can be undone now, §8d). Response: `items`, `total`, `page`, `page_size`, `page_count`. 404 when the fund isn't yours.
 - **`sip` on MF holdings.** `GET /api/holdings/mf` rows and `GET /api/holdings/mf/{id}` carry `sip: {id, amount, day_of_month, status, next_date} | null`: the holding's active SIP, or its paused one when none is active; null otherwise (cancelled SIPs are hidden).
 
 ### CAS re-import
 
-A CAS update keeps SIP rows dated after the statement cutoff and turns earlier ones into plain rows, so "Instalments" and "Invested via SIP" drop after a re-import. A fund with a recorded sale can't be updated from a statement (§8). SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
+A CAS update keeps SIP rows (and Buy more rows, §8d) dated after the statement cutoff and turns earlier ones into plain rows, so "Instalments" and "Invested via SIP" drop after a re-import. A fund with a recorded sale can't be updated from a statement (§8). SIP posting re-reads the SIP row under lock after the fund lock and posts only if it is still active.
 
 ### Web
 
@@ -849,8 +851,54 @@ Before the delete-refund fix, deleting a holding whose cash account was already 
 
 ### Out of scope
 
-- "Buy more" for an existing holding (adding money to a holding already held).
+- "Buy more" for stocks and the other types (built for mutual funds only, §8d), and "Paid From" on Buy more (§8d: a holding can have only one active funding).
 - SIP instalments taking money from an account. A SIP's instalments are not paid from a cash account.
+
+## 8d. Buy more (mutual funds)
+
+Code: `api/app/services/buys.py` (`record_mf_buy`, `undo_mf_buy`, `undo_refusal`, `last_sale_date`; the only writers of manual purchases, they never commit), `api/app/routers/buys.py`, `api/app/schemas/buys.py` (body, result and messages shared with the web). Migration `0033` (`mf_transactions.manual boolean NOT NULL DEFAULT false`). Web: see "Web" below. Tests: `api/tests/test_buy_more.py`, `test_migration_0033.py`, `tests/pg/test_buy_more_pg.py`, the money machine rules `buy_more`, `buy_more_twice`, `undo_buy`, `undo_buy_twice`.
+
+Adds a purchase to a mutual fund already held. Each buy is one `mf_transactions` row with `kind='purchase'`, `sip_id` NULL and `manual=true`, so XIRR (§5), FIFO sale cost (§8b), capital gains lots (§9) and net worth history (§5) count it like a CAS purchase. Funds only; stocks and other types are not built.
+
+### Buy (`POST /api/holdings/mf/{id}/buy`, 201)
+
+- Body: `date`, `amount` (> 0, 2 dp, at most ₹100 crore), `nav` (> 0, 4 dp), `units` (optional, > 0, 3 dp, at most 1 crore). Without `units` they are `amount ÷ nav` rounded to 3 dp half-up; units from a statement override it (stamp duty makes `amount ÷ nav` overstate them). Query flag `confirm_duplicate`.
+- Allowed on an open fund, including one sold in part. A fund sold in full is 409.
+- Date: not in the future; on or after 1 Jan 1990; not before the holding's purchase date (it never moves; to buy earlier, edit the purchase date first, possible while the fund has no sale); not before the latest sale. Latest sale = the latest of the fund's `sale` exits and all its `redemption` transactions (CAS redemptions have no exit row). A buy on the day of the latest sale is allowed.
+- Under the fund's row lock (`FOR UPDATE OF mutual_funds`, re-read with `populate_existing`), in one transaction: a fund with no transactions first gets an opening purchase for its current units (as for a sale or SIP, §8a, §8b); then the purchase row; `units += u`, `invested_amount += amount`, `avg_nav = invested ÷ units` (4 dp half-up). `purchase_date` is never changed. No network call under the lock (the web fills the NAV from the NAV endpoint).
+- Double submit: an existing manual buy of the same fund with the same date, amount and units is 409 with a `duplicates` list (the fund); `confirm_duplicate=true` adds it anyway (same dialog as §4 "Duplicate warnings").
+- Result (`BuyResult`): `message`, `description`, `transaction_id`, `units_added`, and the fund's new `units`, `invested_amount`, `avg_nav`.
+- No Paid From: no cash account moves. A holding can have only one active funding (`uq_holding_fundings_active`), so several buys can't each take money from an account yet. The dialog says so with an info line (below). SIP instalments behave the same way.
+
+### Undo (`DELETE /api/holdings/mf/{id}/buys/{txn_id}`)
+
+- Only a manual purchase of this fund and user. SIP rows, CAS rows, rows of other funds or users, and an already undone id are 404 "Record not found".
+- Refused (409), nothing changes:
+  - The fund is sold in full: "Already sold" / "This holding has been sold. Undo the sale first if it was a mistake."
+  - A sale (exit or CAS redemption) is dated on or after the buy's date, the same day included, because purchases sort before redemptions on a day and a same-day sale may have used these units: "Undo the later sale first" / "A sale dated on or after this buy's date may have used these units."
+  - Removing it would leave no units, or less invested than the partial-sale floor (§8b: 0.01, and 0.00005 per unit left rounded up to the next paisa): "Can't undo this buy" / "Removing it would leave the fund with no units or too little invested."
+- Under the same fund lock: the row is deleted, `units -= u`, `invested_amount -= amount`, `avg_nav` recomputed. `purchase_date` is not touched.
+- Undoing a partial sale adds the sold units and cost back (§8b), so a buy made after a sale survives that undo.
+- The same function `undo_refusal` decides the refusals and the `undoable` flag on the transactions list, so the web hides Undo rather than ending in a 409.
+
+### CAS re-import
+
+A CAS update (§8) keeps manual buys dated after the cutoff the way it keeps SIP rows (units and amount added back to the holding totals; manual rows before the cutoff are replaced by the statement). A fund with a recorded sale still can't be updated from a statement.
+
+### Endpoints and messages
+
+- `GET /api/holdings/mf/{id}/transactions` items carry `manual` (true for a Buy more purchase) and `undoable` (a manual purchase that can be undone now).
+- Validation (422 on the field named; the web form uses the same wording): amount: "Required", "Must be greater than 0", "Up to 2 decimal places allowed", "Must be at most ₹100 crore"; nav: the same with "Up to 4 decimal places allowed"; units: "Must be greater than 0", "Up to 3 decimal places allowed", "Must be at most 1 crore"; date: "Date can't be in the future", "Date must be on or after 1 Jan 1990", "Date can't be before the purchase date", "Date can't be before the last sale"; amount: "Amount is too small for this many units" (the result would leave the fund with less invested than the partial-sale floor).
+- Conflicts (409): "Already sold" (as in §8b); "Looks like a buy you already made" / "<fund> · ₹X on 5 Jan 2026 is already recorded." (duplicate); the undo refusals above.
+- Not found (404): "Holding not found" (as in §8b); "Can't add to this holding" (Buy or undo on any type but `mf`); "Record not found" (undo).
+- Success: "More units added" / `<fund> · 12.5 units for ₹5,000`; undo "Buy undone" / `<fund> · 12.5 units removed.`
+
+### Web
+
+As built in `web/`; the code is the reference when the two differ. Logic in `web/lib/buy.ts` (`canBuy`, `buyDateError`, `previewUnits`, the field rules and the info and hint texts; vitest tests in `buy.test.ts`).
+
+- **Buy dialog** (`components/buy/buy-dialog.tsx`; the MF grid row menu "Buy More" and the details page's Buy More button, shown on open funds only, partly sold included). Title "Buy More of {name}". Fields: Date; "Amount Invested"; "NAV Per Unit" (filled from the NAV for the date, can be changed); "Units (Optional)" (hint "Leave blank to use amount ÷ NAV. Enter the units from your statement if they differ."). A live line reads "Adds 12.5 units · ₹5,000 invested". Info line: "Bought with money from one of your accounts? Update that account's balance yourself, so it isn't counted twice." Submit "Buy More", pending "Adding…". The dates before the purchase date or the last sale are flagged in the form with the API wording. A 409 duplicate opens the duplicate dialog; "Add anyway" retries with `confirm_duplicate=true`. After a buy the holdings are marked stale (§5, "Fresh data after changes") and the net worth chart reloads.
+- **Transactions list** (`components/holding-detail/mf-transactions.tsx`). A manual purchase is labelled "Bought" (SIP rows "SIP", other purchases "Purchase"). Rows with `undoable` show an Undo button; a dialog asks "Undo this buy?" with "Keep It" and "Undo" (pending "Undoing…"). The list and the holding reload after a buy or an undo.
 
 ## 9. Analytics (slice 1: Overview)
 

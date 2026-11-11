@@ -133,7 +133,11 @@ Verified only via API/curl or build: RD/bond/MF save through the UI, per-field v
 
 ## Next
 
-- Buy more for existing holdings.
+- Buy more, remaining (MF Buy more with undo is built, uncommitted at the time of writing; SPEC §8d):
+  - Paid From on Buy more: needs several fundings per holding (the partial unique index `uq_holding_fundings_active` allows one active funding).
+  - Buy more for stocks: needs a `stock_transactions` table and changes to XIRR, FIFO sale cost and lots in capital gains and unrealised, net worth history and the funding amount. `avg_buy_price` is 2 dp, so decide whether invested is stored or summed from the lots.
+  - Other types later (gold, bonds; PPF, EPF and NPS "add contribution" is a different concept).
+- Known gap: `api/app/jobs/copy_holdings.py` does not copy `mf_transactions` (a copied MF loses its transactions, including Buy more rows).
 - SIP instalments paid from a cash account.
 
 ## Next (planned assets)
